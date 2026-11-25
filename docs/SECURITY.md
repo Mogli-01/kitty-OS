@@ -57,6 +57,27 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | KASLR | saber onde está o kernel | PLANEADA | 8 |
 | ASLR em user space | ROP com endereços fixos | PLANEADA | 8 |
 | Capacidades / permissões por processo | escalada de privilégios | PLANEADA | 8 |
+| Objetos do kernel só por handle com direitos (D-018) | acesso a buffers/canais que ninguém nos deu | PLANEADA | 6/12 |
+| Filas de IPC limitadas | DoS da memória do kernel por user space | PLANEADA | 12 |
+| Compositor em user space (D-017) | bug no compositor comprometer o kernel | PLANEADA | 13 |
+| Isolamento entre janelas (ver secção abaixo) | ler o ecrã, o input ou os buffers de outra aplicação | PLANEADA | 10–13 |
+
+## Isolamento entre janelas (Fases 10–13)
+
+Objetivo: uma aplicação gráfica maliciosa não consegue ver nem influenciar
+outra aplicação, nem enganar o utilizador.
+
+| Regra | Como é garantida |
+|---|---|
+| Cada aplicação desenha só no **seu** buffer | o buffer é um objeto do kernel; a aplicação tem o handle com `WRITE`, o compositor recebe uma cópia do handle só com `READ`/`MAP`. Mais ninguém tem handle. |
+| Nenhuma aplicação lê o ecrã nem buffers de outras | só o compositor tem a capacidade `DISPLAY` (mapear o framebuffer); não existe syscall de "ler o ecrã". Capturas de ecrã só pelo compositor, com ação explícita do utilizador. |
+| Input só chega à janela com foco | só o compositor tem `INPUT` (D-019) e encaminha cada evento para uma única janela. Não há input global para aplicações (anti-keylogger). |
+| O foco não pode ser roubado | só o compositor muda o foco, como resposta a ações do utilizador (clique, atalho), nunca a pedido livre de uma aplicação. |
+| Secure attention key | uma combinação de teclas é sempre tratada pelo compositor e nunca entregue a aplicações: o utilizador tem sempre forma de chegar a UI confiável. |
+| Sem janelas impostoras / clickjacking | decorações (título, botões) desenhadas pelo compositor, não pela aplicação; janelas transparentes/sobrepostas não recebem cliques destinados a outras. |
+| O compositor trata buffers como não confiáveis | os píxeis são só copiados/compostos, nunca interpretados; estruturas lidas de memória partilhada são copiadas primeiro e validadas (contra double fetch/TOCTOU); tamanhos vêm do kernel, não da aplicação. |
+| Recursos libertados ao morrer | quando um processo morre o kernel fecha os seus handles; os frames só são reutilizados (e limpos a zero) quando a última referência desaparece. |
+| Clipboard e arrastar/largar | passam pelo compositor e só por ação explícita do utilizador; a aplicação de destino recebe uma cópia. |
 
 ## Regras permanentes
 - Nunca imprimir endereços do kernel em output visível ao user space.
