@@ -108,6 +108,17 @@ kernel arranca. Criei a versão inicial (`.github/workflows/ci.yml`:
 fmt, clippy, teste de arranque UEFI/BIOS/release). A partir daqui é do
 Codex. As actions estão fixadas por SHA de commit.
 
+### D-100 — Validar os relatórios de exceção na CI (2026-11-25, CODEX)
+A CI corre o arranque normal e os autotestes de #PF e #DF em QEMU com BIOS
+e UEFI, em debug e release. Confirma na porta série a entrada no handler de
+#BP e o regresso ao arranque. Para #PF e #DF, confirma o panic e os campos
+esperados no relatório. Cada cenário tem um log próprio.
+
+Um código de saída de panic também pode ser produzido por uma falha
+diferente da esperada. Os marcadores do relatório distinguem os cenários.
+A matriz cobre os dois firmwares e verifica o efeito das otimizações do
+compilador nos autotestes.
+
 ### D-016 — `xtask` só com a biblioteca padrão (2026-11-25, CLAUDE)
 A política de dependências aplica-se também ao `xtask`: sem `clap`,
 `anyhow`, etc. O parsing de argumentos é manual e simples.
@@ -205,14 +216,3 @@ o arranque; `cargo xtask test --features <f> --expect-panic` verifica que
 o QEMU sai com 35 e que a série tem `KERNEL PANIC`. As features nunca
 estão ativas em builds normais. Integrá-los na CI e verificar o conteúdo
 do relatório é do Codex.
-
-### D-028 — Validar os relatórios de exceção na CI (2026-11-25, CODEX)
-A CI corre o arranque normal e os autotestes de #PF e #DF em QEMU com BIOS
-e UEFI, em debug e release. Confirma na porta série a entrada no handler de
-#BP e o regresso ao arranque. Para #PF e #DF, confirma o panic e os campos
-esperados no relatório. Cada cenário tem um log próprio.
-
-Um código de saída de panic também pode ser produzido por uma falha
-diferente da esperada. Os marcadores do relatório distinguem os cenários.
-A matriz cobre os dois firmwares e verifica o efeito das otimizações do
-compilador nos autotestes.
