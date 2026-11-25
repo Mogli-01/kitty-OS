@@ -7,6 +7,7 @@
 //!   run   [--release] [--bios]   boot in QEMU (UEFI from build/esp, or BIOS from the ISO)
 //!   test  [--release] [--bios]   boot headless, check serial output and exit code
 //!   test-memory [--release] [--bios]   check the Phase 3 memory protections in QEMU
+//!   test-keyboard [--release] [--bios] check PS/2 key events through IRQ1 in QEMU
 //!
 //! Extra options:
 //!   --features <a,b>   extra kernel cargo features (e.g. selftest-page-fault)
@@ -27,6 +28,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
 
+mod keyboard_tests;
 mod memory_tests;
 
 /// Limine binary release we boot with. Pinned to an exact commit of the
@@ -98,11 +100,13 @@ fn main() -> ExitCode {
         "run" => run(&opts),
         "test" => test(&opts),
         "test-memory" => memory_tests::run(&opts),
+        "test-keyboard" => keyboard_tests::run(&opts),
         _ => {
             eprintln!(
                 "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--expect-panic] [--expect text]"
             );
             eprintln!("       cargo xtask test-memory [--release] [--bios]");
+            eprintln!("       cargo xtask test-keyboard [--release] [--bios]");
             return ExitCode::FAILURE;
         }
     };
@@ -352,7 +356,7 @@ fn find_ovmf(qemu: &Path) -> Result<(PathBuf, Option<PathBuf>)> {
 }
 
 /// Builds the QEMU command line for the requested boot mode.
-fn qemu_command(opts: &Opts, kernel: &Path, headless: bool) -> Result<Command> {
+fn qemu_command(opts: &Opts, kernel: &Path) -> Result<Command> {
     let qemu = qemu_binary();
     let mut cmd = Command::new(&qemu);
     cmd.current_dir(root());
@@ -382,18 +386,12 @@ fn qemu_command(opts: &Opts, kernel: &Path, headless: bool) -> Result<Command> {
         cmd.args(["-drive", "format=raw,file=fat:rw:build/esp"]);
     }
 
-    if headless {
-        cmd.args(["-display", "none", "-monitor", "none", "-serial", "stdio"]);
-        cmd.args(["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04"]);
-    } else {
-        cmd.args(["-serial", "stdio"]);
-    }
     Ok(cmd)
 }
 
 fn run(opts: &Opts) -> Result<()> {
     let kernel = build_kernel(opts, false)?;
-    run_cmd(&mut qemu_command(opts, &kernel, false)?)
+    run_cmd(qemu_command(opts, &kernel)?.args(["-serial", "stdio"]))
 }
 
 fn test(opts: &Opts) -> Result<()> {
@@ -402,7 +400,9 @@ fn test(opts: &Opts) -> Result<()> {
 
 fn boot_test(opts: &Opts, log: &Path) -> Result<String> {
     let kernel = build_kernel(opts, true)?;
-    let mut cmd = qemu_command(opts, &kernel, true)?;
+    let mut cmd = qemu_command(opts, &kernel)?;
+    cmd.args(["-display", "none", "-monitor", "none", "-serial", "stdio"]);
+    cmd.args(["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04"]);
     let mode = if opts.bios { "BIOS/ISO" } else { "UEFI" };
     println!("xtask: boot test ({mode})");
 

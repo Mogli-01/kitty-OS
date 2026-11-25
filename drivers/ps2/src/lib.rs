@@ -7,8 +7,10 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
+mod keyboard;
 mod keys;
 
+pub use keyboard::{Keyboard, KeyboardInput};
 pub use keys::KeyCode;
 
 const EXTENDED: u8 = 0xe0;

@@ -295,3 +295,24 @@ Formato:
 - **Avisos** — as verificações QEMU foram feitas com integração de
   teste. O ponto de inicialização do teclado ainda aguarda o PR de ligação.
 
+### [2026-11-25] — CODEX (integração do teclado)
+
+- **Feito** — `devices::init` reclama e configura o i8042, liga IRQ1 e
+  encaminha eventos Set 2 para uma fila de 64 entradas. A fila sinaliza
+  `Lost` quando perde dados. `cargo xtask test-keyboard` entrou na CI.
+- **PRs abertos** — `codex/ps2-integracao` sobre o #16, com o descodificador
+  do #14 e a API de interrupções do #15.
+- **Testes/fuzzing** — pressão e libertação de `A` e da seta para cima
+  confirmadas em QEMU 8.2.2 em BIOS e UEFI, debug e release. Os três
+  testes novos de fila, overflow e recuperação após perda passaram no
+  host e em Miri. Também passou o arranque BIOS/release sem a feature.
+- **Benchmarks** — sem medições nesta etapa.
+- **Proteções de segurança alteradas** — um byte por IRQ e memória fixa;
+  logs de tecla na série só com a feature de teste. Sem `unsafe` novo.
+- **Bloqueado por / à espera do Claude** — aprovação e integração dos
+  PRs de base. A entrega de eventos à GUI pertence à Fase 11.
+- **Próximo passo sugerido para o Claude** — concluir a revisão da API
+  de interrupções do #15 para ligar os drivers sobre o `main`.
+- **Avisos** — a fila guarda eventos físicos. A camada de input aplica o
+  layout e o timestamp depois desta etapa.
+

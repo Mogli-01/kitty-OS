@@ -84,6 +84,13 @@ impl<P: PortBlock> I8042<P> {
         result
     }
 
+    /// Stops the keyboard clock and clears any pending output. The kernel
+    /// masks the interrupt line before shutting down an active driver.
+    pub fn stop_keyboard(&mut self) -> Result<(), Error> {
+        self.write(STATUS_COMMAND, DISABLE_KEYBOARD_PORT)?;
+        self.drain_output()
+    }
+
     /// Reads one available byte without waiting. A corrupt byte is consumed
     /// so the caller can reset the correct decoder and continue receiving.
     pub fn try_read(&mut self) -> Result<Option<OutputByte>, Error> {

@@ -31,7 +31,10 @@ selftest-heap-overflow = []
 # Fires a real hardware interrupt (PIT IRQ0 through the 8259 PIC) and
 # checks it reaches its handler. Does not panic: expect exit code 33.
 selftest-irq-pit = []
+# Prints decoded events to the serial console for the automated QEMU test.
+selftest-ps2-keyboard = []
 
 [dependencies]
 limine = "0.6.5"
 kitty-hal = { path = "../hal" }
+kitty-ps2 = { path = "../drivers/ps2" }

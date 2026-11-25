@@ -406,3 +406,13 @@ da validação de paridade e timeout.
 O transporte é partilhável com a futura porta auxiliar. O descodificador
 do teclado recebe só bytes validados da sua porta e pode limpar o estado
 quando o controlador sinaliza uma perda.
+
+### D-104 — Fila limitada para o teclado PS/2 em IRQ1 (2026-11-25, CODEX)
+O handler recolhe um byte por IRQ e guarda as teclas descodificadas numa
+fila de 64 eventos. Um erro do teclado ou uma fila cheia gera `Lost` antes
+dos eventos seguintes, para que o consumidor limpe teclas que julgava
+premidas. A porta auxiliar segue um percurso distinto.
+
+A fila mantém o trabalho em interrupção limitado e usa memória fixa. O
+teste QEMU envia uma tecla normal e uma estendida e valida as pressões e
+libertações pela saída série de um build de teste.

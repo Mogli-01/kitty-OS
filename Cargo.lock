@@ -18,12 +18,17 @@ name = "kitty-kernel"
 version = "0.1.0"
 dependencies = [
  "kitty-hal",
+ "kitty-ps2",
  "limine",
 ]
 
 [[package]]
 name = "kitty-ps2"
 version = "0.1.0"
+dependencies = [
+ "kitty-hal",
+ "kitty-i8042",
+]
 
 [[package]]
 name = "limine"

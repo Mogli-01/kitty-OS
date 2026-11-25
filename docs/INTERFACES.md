@@ -109,6 +109,11 @@ das falhas, confirma `frame allocator self-test passed`, a auditoria W^X,
 heap e o do MMIO. Guarda a série em `build/memory-tests/<firmware>-<perfil>/`.
 `test` e `test-memory` dão erro se o log não puder ser gravado.
 
+`cargo xtask test-keyboard [--bios] [--release]` verifica a pressão e
+libertação de `A` e da seta para cima através de IRQ1. Usa a feature
+`selftest-ps2-keyboard` para a emissão dos marcadores de teste e guarda a
+série em `build/serial-keyboard.log`.
+
 ### Heap do kernel (`alloc`) — ESTÁVEL
 Fornece: CLAUDE (`kernel/src/mm/heap.rs`). Usa: todos.
 `Box`, `Vec`, `String`, … funcionam depois de `mm::heap::init()`.

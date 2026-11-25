@@ -3,3 +3,7 @@ name = "kitty-ps2"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
+
+[dependencies]
+kitty-hal = { path = "../../hal" }
+kitty-i8042 = { path = "../i8042" }

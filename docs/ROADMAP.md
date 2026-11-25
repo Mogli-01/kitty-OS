@@ -61,7 +61,7 @@ preparado para a interface gráfica (Fases 10–14).
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | TODO |
 | Descodificador Set 2 do teclado PS/2, testes no host e Miri | CODEX | FEITO |
 | Transporte i8042 (configuração Set 2 e leitura de bytes) | CODEX | FEITO |
-| Integração do teclado PS/2 no kernel | CODEX | TODO |
+| Integração do teclado PS/2 no kernel e testes de IRQ1 em QEMU | CODEX | FEITO |
 | Driver UART completo (interrupções, input) | CODEX | TODO |
 
 ## Fase 5 — Scheduler
