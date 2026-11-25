@@ -51,6 +51,19 @@ reescrever o resto.
    Limine em tipos seguros (`boot_info::BootInfo`) e chama `kmain`.
 6. `kmain` inicializa as consolas e escreve `Hello from kitty-OS`.
 
+## Exceções e interrupções (Fase 2)
+
+```
+CPU deteta a exceção N
+  -> lê a gate N da IDT (DPL 0, interrupt gate, IST se N for 2, 8 ou 18)
+  -> se IST: muda para a pilha IST indicada na TSS
+  -> empilha SS, RSP, RFLAGS, CS, RIP (+ código de erro em alguns vetores)
+  -> kitty_trap_N: empilha 0 (se não houver código de erro) e N
+  -> kitty_trap_common: guarda 15 registos, chama trap_dispatch(&mut TrapFrame)
+  -> exceptions::handle: #BP/NMI -> regista e volta; resto -> relatório + panic
+  -> (se voltar) repõe os registos, iretq
+```
+
 ## Mapa de memória virtual (x86_64, paginação de 4 níveis, 48 bits)
 
 Um endereço virtual de 64 bits só é válido se for **canónico**: os bits

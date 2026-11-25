@@ -27,9 +27,10 @@ preparado para a interface gráfica (Fases 10–14).
 ## Fase 2 — CPU: GDT, TSS, IDT, exceções
 | Tarefa | Dono | Estado |
 |---|---|---|
-| GDT própria + TSS com pilhas IST (double fault, NMI, machine check) | CLAUDE | TODO |
-| IDT + handlers de exceções com relatório útil (registos, código de erro) | CLAUDE | TODO |
-| Testes: provocar #BP, #PF, double fault e verificar o relatório | CODEX | TODO |
+| GDT própria + TSS com pilhas IST (double fault, NMI, machine check) | CLAUDE | FEITO |
+| IDT + handlers de exceções com relatório útil (registos, código de erro) | CLAUDE | FEITO |
+| Autotestes no kernel (`selftest-page-fault`, `selftest-double-fault`) + `xtask --features/--expect-panic` | CLAUDE | FEITO |
+| Testes na CI: provocar #PF e double fault e verificar o relatório | CODEX | TODO |
 
 ## Fase 3 — Memória
 | Tarefa | Dono | Estado |

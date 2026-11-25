@@ -86,6 +86,27 @@ pub fn emergency_print(args: fmt::Arguments<'_>) {
     }
 }
 
+/// Debug output that goes **only** to the serial port, never to the screen.
+///
+/// Use it for anything containing kernel addresses (crash reports): the
+/// serial port is the developer's debug channel and will never be exposed to
+/// user space, while the screen will be. Never blocks on the console lock.
+pub fn debug_print(args: fmt::Arguments<'_>) {
+    const ATTEMPTS: u32 = 1_000_000;
+    for _ in 0..ATTEMPTS {
+        if let Some(mut consoles) = CONSOLES.try_lock() {
+            if let Some(serial) = consoles.serial.as_mut() {
+                let _ = serial.write_fmt(args);
+            }
+            return;
+        }
+        core::hint::spin_loop();
+    }
+    if let Some(mut serial) = SerialPort::init_com1() {
+        let _ = serial.write_fmt(args);
+    }
+}
+
 /// Prints to every kernel console.
 #[macro_export]
 macro_rules! kprint {

@@ -14,6 +14,11 @@ Escrevem em todas as consolas (série + framebuffer). Mesma sintaxe que
 `print!`/`println!`. **Não formatar endereços do kernel** (`{:p}`, `{:#x}`
 de ponteiros) em mensagens que o user space possa ver.
 
+### `console::debug_print(format_args!(…))` — ESTÁVEL
+Fornece: CLAUDE. Usa: todos, para mensagens com endereços do kernel.
+Escreve **só** na porta série (nunca no ecrã) e nunca bloqueia no lock da
+consola. Ver D-023.
+
 ### `trait Console` — INSTÁVEL
 Fornece: CLAUDE. Implementa: CODEX (drivers de consola).
 ```rust
@@ -67,6 +72,18 @@ Fornece: CLAUDE (`xtask`). Mantém: CODEX.
 `qemu-exit`, arranca o QEMU sem ecrã, guarda a série em
 `build/serial-test.log` e passa se o QEMU sair com código 33 e a série
 contiver `Hello from kitty-OS`. O panic handler sai com código 35.
+
+Opções (Fase 2):
+- `--features a,b` — features extra do kernel (ex.: `selftest-page-fault`,
+  `selftest-double-fault`).
+- `--expect-panic` — o teste passa só se o kernel entrar em panic (código
+  35 e `KERNEL PANIC` na série).
+
+Textos estáveis na série que os testes podem verificar:
+`[cpu] breakpoint exception handled, execution resumed`,
+`*** CPU EXCEPTION: <nome>`, `=== <nome> (vector N)`,
+`non-present page on read in kernel mode`,
+`(running on the IST double-fault stack)`.
 
 ---
 

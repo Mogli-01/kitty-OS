@@ -25,6 +25,29 @@ pub fn halt() {
     }
 }
 
+/// Reads CR2: the linear address that caused the last page fault.
+pub fn read_cr2() -> u64 {
+    let value: u64;
+    // SAFETY: reading CR2 has no side effects; we are in ring 0.
+    unsafe {
+        asm!("mov {}, cr2", out(reg) value, options(nomem, nostack, preserves_flags));
+    }
+    value
+}
+
+/// Executes `int3`, raising a breakpoint exception (#BP).
+///
+/// Used as a boot self-test of the IDT: the handler logs and resumes.
+pub fn breakpoint() {
+    // SAFETY: `int3` transfers control to the #BP handler, which saves and
+    // restores every register and returns to the next instruction. Calling
+    // this before the IDT is loaded would triple-fault, so `arch::init`
+    // must run first (enforced by the boot order in kmain).
+    unsafe {
+        asm!("int3", options(nomem, nostack));
+    }
+}
+
 /// Parks the current CPU forever.
 ///
 /// Interrupts are disabled first, so only an NMI can wake the core; the loop

@@ -7,6 +7,11 @@
 //!   run   [--release] [--bios]   boot in QEMU (UEFI from build/esp, or BIOS from the ISO)
 //!   test  [--release] [--bios]   boot headless, check serial output and exit code
 //!
+//! Extra options:
+//!   --features <a,b>   extra kernel cargo features (e.g. selftest-page-fault)
+//!   --expect-panic     (test) pass only if the kernel panics: QEMU exit code
+//!                      35 and "KERNEL PANIC" on the serial port
+//!
 //! Environment overrides: KITTY_QEMU (qemu binary), KITTY_OVMF (UEFI code
 //! firmware), KITTY_XORRISO (xorriso binary).
 //!
@@ -29,6 +34,9 @@ const KERNEL_NAME: &str = "kitty-kernel";
 const BOOT_MESSAGE: &str = "Hello from kitty-OS";
 /// isa-debug-exit: kernel writes 0x10 -> QEMU exits with (0x10 << 1) | 1.
 const QEMU_SUCCESS: i32 = 33;
+/// Kernel panicked under the `qemu-exit` feature: (0x11 << 1) | 1.
+const QEMU_FAILURE: i32 = 35;
+const PANIC_MESSAGE: &str = "KERNEL PANIC";
 const TEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 type Result<T> = std::result::Result<T, String>;
@@ -37,16 +45,28 @@ type Result<T> = std::result::Result<T, String>;
 struct Opts {
     release: bool,
     bios: bool,
+    features: Vec<String>,
+    expect_panic: bool,
 }
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let cmd = args.next().unwrap_or_default();
     let mut opts = Opts::default();
-    for a in args {
+    while let Some(a) = args.next() {
         match a.as_str() {
             "--release" => opts.release = true,
             "--bios" => opts.bios = true,
+            "--expect-panic" => opts.expect_panic = true,
+            "--features" => match args.next() {
+                Some(list) => opts
+                    .features
+                    .extend(list.split(',').filter(|f| !f.is_empty()).map(String::from)),
+                None => {
+                    eprintln!("xtask: --features needs a value");
+                    return ExitCode::FAILURE;
+                }
+            },
             other => {
                 eprintln!("xtask: unknown option `{other}`");
                 return ExitCode::FAILURE;
@@ -65,7 +85,9 @@ fn main() -> ExitCode {
         "run" => run(&opts),
         "test" => test(&opts),
         _ => {
-            eprintln!("usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios]");
+            eprintln!(
+                "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios]                  [--features a,b] [--expect-panic]"
+            );
             return ExitCode::FAILURE;
         }
     };
@@ -119,8 +141,12 @@ fn build_kernel(opts: &Opts, qemu_exit: bool) -> Result<PathBuf> {
     if opts.release {
         cmd.arg("--release");
     }
+    let mut features = opts.features.clone();
     if qemu_exit {
-        cmd.args(["--features", "qemu-exit"]);
+        features.push("qemu-exit".into());
+    }
+    if !features.is_empty() {
+        cmd.arg("--features").arg(features.join(","));
     }
     run_cmd(&mut cmd)?;
     let profile = if opts.release { "release" } else { "debug" };
@@ -401,13 +427,19 @@ fn test(opts: &Opts) -> Result<()> {
     let Some(status) = status else {
         return Err(format!("timed out after {}s", TEST_TIMEOUT.as_secs()));
     };
-    if status.code() != Some(QEMU_SUCCESS) {
+    if !serial.contains(BOOT_MESSAGE) {
+        return Err(format!("serial output does not contain {BOOT_MESSAGE:?}"));
+    }
+    if opts.expect_panic {
+        if status.code() != Some(QEMU_FAILURE) || !serial.contains(PANIC_MESSAGE) {
+            return Err(format!(
+                "expected a kernel panic, got QEMU exit status {status}"
+            ));
+        }
+    } else if status.code() != Some(QEMU_SUCCESS) {
         return Err(format!(
             "kernel reported failure (QEMU exit status {status})"
         ));
-    }
-    if !serial.contains(BOOT_MESSAGE) {
-        return Err(format!("serial output does not contain {BOOT_MESSAGE:?}"));
     }
     println!("xtask: boot test passed ({mode})");
     Ok(())
