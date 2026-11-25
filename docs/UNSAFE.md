@@ -18,7 +18,8 @@ Verificação rápida: `git grep -n "unsafe" -- kernel/src`.
 | `kernel/src/arch/x86_64/qemu.rs` | 1 bloco: `Port::new(0xF4)` | sair do QEMU nos testes | só existe com a feature `qemu-exit`; a escrita termina a VM | CLAUDE |
 | `kernel/src/arch/x86_64/boot.rs` | atributos `#[unsafe(link_section)]` (5) e `#[unsafe(no_mangle)]` (1); 1 bloco `slice::from_raw_parts_mut` do framebuffer | o Limine encontra os requests pela secção; o linker encontra `kernel_entry` pelo nome; o framebuffer só nos chega como ponteiro | secções dedicadas só com estes statics; nome único; o Limine garante o mapeamento de `pitch*height` bytes, validamos ponteiro/tamanho e um `AtomicBool` garante que o `&'static mut` só é criado uma vez | CLAUDE |
 | `kernel/src/sync/spinlock.rs` | `unsafe impl Sync for SpinLock<T>`; 2 blocos (`Deref`/`DerefMut` do guard) | um lock transforma acesso partilhado a `UnsafeCell` em `&mut T` | só existe um guard de cada vez (garantido pelo `AtomicBool` com Acquire/Release); `T: Send` exigido | CLAUDE |
-| `kernel/src/mm/` | nenhum (só tipos de endereço) | — | — | CLAUDE |
+| `kernel/src/mm/pmm.rs` | `unsafe impl Send for Pmm`; inicializar e criar o slice da base de dados de frames; `write_bytes` para limpar frames; `unsafe fn PhysFrame::from_raw`; 2 acessos voláteis no autoteste | a memória física só é acessível por ponteiros (via HHDM) | a base de dados fica numa região usable reservada só para ela e inicializada antes de criar o slice; só se limpa um frame sem dono (refcount 0) ou acabado de tirar da lista, com o lock do PMM; `from_raw` documenta que cada referência só pode ser recriada uma vez | CLAUDE |
+| `kernel/src/mm/hhdm.rs` | nenhum (só aritmética de endereços) | — | — | CLAUDE |
 
 Dependências externas com `unsafe`: crate `limine` (leitura volátil das
 respostas do bootloader). Usado só em `arch/x86_64/boot.rs`.
