@@ -365,3 +365,17 @@ cabeçalhos de extensão são recusados. A montagem no VFS valida conflitos
 entre nomes. O acesso às páginas do módulo é tratado na #22.
 
 [POSIX.1-2024, formato USTAR](https://pubs.opengroup.org/onlinepubs/9799919799/utilities/pax.html#tag_20_94_13_06)
+
+### D-109 — Índice inicial do VFS sobre o initrd (2026-11-25, CODEX)
+
+A primeira raiz só de leitura mantém uma entrada de índice por cabeçalho
+USTAR e empresta os dados do módulo. A montagem valida o arquivo completo
+e ordena as entradas pela sequência de componentes do caminho. Entradas
+com o mesmo caminho ficam adjacentes. Um ficheiro que seja prefixo de
+outro caminho fica imediatamente antes do primeiro descendente. A
+montagem recusa ambos os conflitos antes de disponibilizar a raiz.
+
+A pesquisa usa busca binária. Os nomes com um prefixo comum formam um
+intervalo pelo qual se listam os filhos de um diretório, incluindo os
+implícitos. O índice é criado com reserva de memória falível. A leitura
+por offset copia apenas bytes do ficheiro para um buffer já validado.

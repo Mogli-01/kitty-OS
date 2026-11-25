@@ -1,6 +1,7 @@
 #![no_main]
 
 use kitty_initrd::{Archive, EntryKind};
+use kitty_vfs::{InitrdFs, Inode};
 use libfuzzer_sys::fuzz_target;
 
 const BLOCK: usize = 512;
@@ -30,6 +31,7 @@ fuzz_target!(|input: &[u8]| {
 
 fn exercise(input: &[u8]) {
     if let Ok(archive) = Archive::parse(input) {
+        let fs = InitrdFs::mount(input);
         for entry in archive.entries() {
             for part in entry.path.components() {
                 assert!(!matches!(part, "" | "." | ".."));
@@ -38,6 +40,24 @@ fn exercise(input: &[u8]) {
             if let EntryKind::File(data) = entry.kind {
                 assert!(!entry.path.is_root());
                 assert!(data.len() <= input.len());
+            }
+            if let Ok(fs) = &fs {
+                let path = if entry.path.is_root() {
+                    "/".to_owned()
+                } else {
+                    format!("/{}", entry.path)
+                };
+                match (entry.kind, fs.lookup(&path)) {
+                    (EntryKind::Directory, Ok(Inode::Directory)) => {}
+                    (EntryKind::File(data), Ok(Inode::File(file))) => {
+                        let mut bytes = [0; 16];
+                        let length = file.read_at(0, &mut bytes);
+                        assert_eq!(file.len(), data.len());
+                        assert_eq!(length, data.len().min(bytes.len()));
+                        assert_eq!(&bytes[..length], &data[..length]);
+                    }
+                    _ => panic!("mounted entry did not resolve to its declared type"),
+                }
             }
         }
     }

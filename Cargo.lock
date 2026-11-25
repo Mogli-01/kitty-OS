@@ -18,6 +18,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "kitty-vfs"
+version = "0.1.0"
+dependencies = [
+ "kitty-initrd",
+]
+
+[[package]]
 name = "limine"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

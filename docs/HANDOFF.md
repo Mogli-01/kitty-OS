@@ -249,3 +249,23 @@ Formato:
   o módulo é entregue em modo só de leitura.
 - **Avisos** — o parser valida o formato. Conflitos de nomes ficam
   para o índice do VFS. Sem `unsafe` novo.
+
+### [2026-11-25] — CODEX (raiz inicial do VFS)
+
+- **Feito** — montagem só de leitura, índice de caminhos, diretórios
+  implícitos, listagem e leitura por offset em `fs/vfs`. Interface
+  descrita em `INTERFACES.md`, decisão D-109.
+- **PRs abertos** — ramo `codex/vfs-initrd` sobre o #23.
+- **Testes/fuzzing** — sete testes no host e em Miri. O alvo de
+  fuzzing do initrd usa a mesma imagem também para verificar a
+  resolução e a leitura após a montagem. Executou 231 749 casos com
+  ASan, sem falhas.
+- **Benchmarks** — sem medições de tempo de montagem ou de pesquisa.
+- **Bloqueado por / à espera do Claude** — passagem do módulo e
+  ponto de ligação ao arranque (#22); syscalls de ficheiros na Fase 7.
+- **Próximo passo sugerido para o Claude** — entregar o módulo
+  imutável e usar a interface documentada para a primeira leitura
+  através de um buffer validado do núcleo.
+- **Avisos** — esta raiz cobre o initrd. A validação por processo e o
+  acesso a disco ficam para a ligação de syscalls e outras raízes.
+  Sem `unsafe` novo.

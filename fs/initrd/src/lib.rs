@@ -9,6 +9,7 @@ const BLOCK_LEN: usize = 512;
 const END_LEN: usize = 2 * BLOCK_LEN;
 const CHECKSUM_START: usize = 148;
 const CHECKSUM_END: usize = 156;
+const MAX_PATH_LEN: usize = 155 + 1 + 100;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -32,6 +33,18 @@ pub struct Path<'a> {
 }
 
 impl<'a> Path<'a> {
+    /// Validates a relative lookup path with the same component rules as an
+    /// archive entry. An empty path denotes the root.
+    pub fn from_relative(path: &'a str) -> Option<Self> {
+        if path.len() > MAX_PATH_LEN || (!path.is_empty() && !valid_components(path)) {
+            return None;
+        }
+        Some(Self {
+            prefix: "",
+            name: path,
+        })
+    }
+
     /// The optional entry for the archive root has no components.
     pub const fn is_root(self) -> bool {
         self.name.is_empty()

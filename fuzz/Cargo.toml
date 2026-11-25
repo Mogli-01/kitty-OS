@@ -10,6 +10,7 @@ cargo-fuzz = true
 [dependencies]
 kitty-acpi = { path = "../drivers/acpi" }
 kitty-initrd = { path = "../fs/initrd" }
+kitty-vfs = { path = "../fs/vfs" }
 libfuzzer-sys = "0.4"
 
 [workspace]

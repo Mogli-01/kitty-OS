@@ -21,9 +21,9 @@ jobs:
         run: |
           rustup toolchain install
           rustup component add miri
-      - run: cargo clippy -p kitty-acpi -p kitty-initrd --all-targets --locked -- -D warnings
-      - run: cargo test -p kitty-acpi -p kitty-initrd --locked
-      - run: cargo miri test -p kitty-acpi -p kitty-initrd --locked
+      - run: cargo clippy -p kitty-acpi -p kitty-initrd -p kitty-vfs --all-targets --locked -- -D warnings
+      - run: cargo test -p kitty-acpi -p kitty-initrd -p kitty-vfs --locked
+      - run: cargo miri test -p kitty-acpi -p kitty-initrd -p kitty-vfs --locked
       - run: cargo fmt --manifest-path fuzz/Cargo.toml --all --check
       - run: cargo install cargo-fuzz --version 0.13.2 --locked
       - run: cargo fetch --manifest-path fuzz/Cargo.toml --locked

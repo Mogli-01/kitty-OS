@@ -151,6 +151,32 @@ segurança de memória (ex.: DMA). Para registos de dispositivos use
 Fornece: CLAUDE. Uso interno do núcleo (pilhas de threads, heap).
 `MapFlags { writable, executable, user, global, cache }`; W+X é recusado.
 
+### Raiz só de leitura do initrd (`kitty-vfs`) — INSTÁVEL
+
+Fornece: CODEX (`fs/vfs`). O módulo de arranque vem do núcleo (#22).
+
+```rust
+impl<'a> InitrdFs<'a> {
+    pub fn mount(bytes: &'a [u8]) -> Result<Self, Error>;
+    pub fn lookup(&self, path: &str) -> Result<Inode<'a>, Error>;
+    pub fn read_dir(&self, path: &str) -> Result<ReadDir<'_, 'a>, Error>;
+}
+impl File<'_> {
+    pub fn read_at(self, offset: u64, destination: &mut [u8]) -> usize;
+}
+```
+
+`lookup` e `read_dir` recebem caminhos absolutos canónicos UTF-8. A raiz
+é `/`. Os restantes caminhos têm até 256 bytes depois da barra inicial.
+`lookup` devolve `Inode::Directory` ou `Inode::File(File)`. `read_dir`
+enumera os filhos diretos por ordem das componentes, incluindo diretórios
+implícitos. `read_at` lê para um buffer Rust já validado, devolve zero no
+fim do ficheiro e preserva o resto do buffer. O inode de ficheiro e as
+entradas de diretório conservam o tempo de vida dos bytes do arquivo.
+
+O caminho por syscall depende de validação de ponteiros e direitos pelo
+núcleo. Esta interface é a primeira implementação da raiz do VFS.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |
