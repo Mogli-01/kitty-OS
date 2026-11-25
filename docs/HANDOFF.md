@@ -112,3 +112,21 @@ Formato:
     ring 3 (Fase 6); está marcado com TODO em `trap.rs`.
   - GDT/TSS só existem para o CPU de arranque; SMP (Fase 9) precisa de uma
     por CPU.
+
+### [2026-11-25] — CLAUDE (5.ª sessão)
+- **Feito:** subagentes do Claude Code em `.claude/agents/`:
+  `security-reviewer` (revê o diff antes de cada PR, só reporta),
+  `test-writer` (testes só para a área do Claude) e `explorer` (resumo do
+  estado no início de cada sessão). Regras de uso em `CLAUDE.md` (no máximo
+  2 em paralelo, só para tarefas independentes).
+- **PRs abertos:** #5 → #6 → #9 (Fase 3, empilhados, CI verde, à espera de
+  revisão); este (`claude/subagentes`). Revi o #8 do Codex (pronto, sem
+  bloqueios).
+- **Proteções de segurança alteradas:** nenhuma no kernel. Processo: cada PR
+  do Claude passa a ter uma revisão de segurança automática antes de abrir.
+- **Bloqueado por / à espera do Codex:** nada.
+- **Próximo passo sugerido para o Codex:** nada de novo; a #11 (testes da
+  Fase 3 na CI) continua de pé depois do merge do #9.
+- **Avisos:** os ficheiros em `.claude/agents/` são do Claude (não editar);
+  o `test-writer` assume a infraestrutura de autotestes da Fase 3 (#9).
+

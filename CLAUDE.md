@@ -1,8 +1,8 @@
 # CLAUDE.md — regras do Claude no kitty-OS
 
-**No início de CADA sessão:** `git pull` do `main`, ler `docs/HANDOFF.md`,
-`docs/ROADMAP.md` e os PRs/issues abertos (sobretudo com a etiqueta
-`para-claude`).
+**No início de CADA sessão:** `git pull` do `main` e pedir ao subagente
+`explorer` o resumo do estado (lê `docs/HANDOFF.md`, `docs/ROADMAP.md` e os
+PRs/issues abertos, sobretudo com a etiqueta `para-claude`).
 
 ## Papel
 Sou o arquiteto principal e dono do núcleo: boot e inicialização,
@@ -31,11 +31,26 @@ Crates permitidos: `limine`, `bitflags`. Tudo o resto é nosso.
 - Newtypes (`PhysAddr`, `VirtAddr`, futuro `UserPtr<T>`) para tornar erros
   impossíveis.
 
+## Subagentes (`.claude/agents/`)
+- `explorer` — no início de cada sessão: resumo do HANDOFF, dos PRs e das
+  issues. Só leitura.
+- `test-writer` — escreve testes (autotestes no arranque, autotestes de
+  falhas com feature, verificações `cargo xtask test --expect`) para o
+  código que acabei de fazer; **nunca** na área do Codex.
+- `security-reviewer` — **antes de abrir cada PR**, revê o diff: unsafe sem
+  justificação, validação de input, fugas de endereços do kernel, race
+  conditions. Só reporta; eu decido e corrijo.
+- Só para tarefas **independentes**: nunca dois subagentes em partes do
+  kernel que dependem uma da outra ao mesmo tempo. **No máximo 2 em
+  paralelo.** O resultado de um subagente é um relatório, não uma prova:
+  verifico o que ele diz antes de agir.
+
 ## Fluxo
 - Branch `claude/<tarefa>`, 1 PR pequeno por tarefa (o quê, como testar,
   impacto na segurança). Nunca push para `main`.
 - Antes do PR: `cargo fmt --all --check`, `cargo clippy --workspace -- -D warnings`,
-  `cargo xtask test`.
+  `cargo xtask test` (+ autotestes com `--expect`) e o `security-reviewer`
+  sobre o diff.
 - Mudança de interface partilhada ⇒ atualizar `docs/INTERFACES.md` no mesmo PR.
 - Sem `unwrap()`/`expect()` em caminhos com input externo.
 - Nunca imprimir endereços do kernel em output visível ao user space.

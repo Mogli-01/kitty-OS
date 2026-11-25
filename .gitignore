@@ -34,3 +34,6 @@ qemu*.log
 serial*.log
 *.ppm
 OVMF_VARS*.fd
+
+# Claude Code: agents in .claude/agents/ are shared; local settings are not
+.claude/settings.local.json

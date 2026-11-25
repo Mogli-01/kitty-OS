@@ -13,6 +13,7 @@ preparado para a interface gráfica (Fases 10–14).
 | `cargo xtask` (build, esp, iso, run, test) | CLAUDE | FEITO |
 | CI inicial (fmt, clippy, arranque UEFI/BIOS/release) | CLAUDE → CODEX | FEITO (dono passa a CODEX) |
 | Etiquetas `para-claude` / `para-codex` no GitHub | CLAUDE | FEITO |
+| Subagentes do Claude Code (`security-reviewer`, `test-writer`, `explorer`) | CLAUDE | FEITO |
 
 ## Fase 1 — Arranque e output
 | Tarefa | Dono | Estado |
