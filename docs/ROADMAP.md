@@ -57,7 +57,7 @@ preparado para a interface gráfica (Fases 10–14).
 | API de registo de handlers de IRQ (`irq::register_isa`, EOI pelo núcleo, trait `InterruptController`) | CLAUDE | FEITO |
 | PIC 8259 como controlador de arranque (remapeado, tudo mascarado) | CLAUDE | FEITO |
 | `kitty-hal` + portas legadas reclamáveis (i8042, PIT, CMOS) + `devices::init` | CLAUDE | FEITO |
-| Driver do Local APIC + IO APIC | CODEX | TODO |
+| Driver do Local APIC + IO APIC | CODEX | Registos do I/O APIC em revisão no ramo `codex/ioapic`; Local APIC e integração pendentes (#18) |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | TODO |
 | Driver do teclado PS/2 | CODEX | TODO |
 | Driver UART completo (interrupções, input) | CODEX | TODO |

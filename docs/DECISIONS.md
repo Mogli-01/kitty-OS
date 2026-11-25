@@ -384,3 +384,23 @@ e **antes** do `sti`. Um driver pode alocar, reclamar o hardware e registar
 o seu IRQ sem correr o risco de receber a primeira interrupção a meio da
 inicialização. O kernel passou a terminar o arranque em idle com as
 interrupções ligadas (em vez de `cli; hlt`).
+
+### D-107 — Programar rotas I/O APIC com a entrada mascarada (2026-11-25, CODEX)
+
+O driver recebe um `RegisterBlock` exclusivo. Escreve o índice de 8 bits
+em IOREGSEL (offset `0x00`) e acede ao registo de 32 bits em IOWIN (offset
+`0x10`). A versão define quantas entradas cabem na tabela. Cada entrada
+ocupa dois índices consecutivos a partir de `0x10`. O par seletor/janela
+requer exclusão mútua por dispositivo.
+
+Antes de escrever a metade alta (destino) e depois a baixa (vetor,
+polaridade e trigger), o driver confirma a máscara da rota anterior.
+Se houver entrega em curso ou Remote IRR, mantém a máscara e espera
+que o dono do handler trate a interrupção antiga antes de voltar a
+tentar. O driver confirma por leitura os campos da rota nova e só
+permite desmascará-la após uma configuração completa.
+
+O núcleo fornece o mapeamento UC e valida a topologia antes da mudança de
+controlador (#18). A ligação futura confirma que o destino é um APIC ID
+válido, que os intervalos GSI não se sobrepõem e que o handler está
+instalado antes de desmascarar.

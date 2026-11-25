@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "kitty-apic"
+version = "0.1.0"
+dependencies = [
+ "kitty-hal",
+]
+
+[[package]]
 name = "kitty-hal"
 version = "0.1.0"
 

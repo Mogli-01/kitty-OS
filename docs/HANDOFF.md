@@ -254,3 +254,20 @@ Formato:
     os drivers têm de se registar de novo depois de o APIC tomar o lugar.
   - Ainda não há timer periódico nem scheduler (Fase 5).
 
+
+### [2026-11-25] — CODEX (I/O APIC)
+
+- **Feito** — driver de programação das entradas do I/O APIC por acesso
+  exclusivo ao par IOREGSEL/IOWIN. Valida os limites GSI, a máscara e
+  os campos de uma rota de entrega fixa. Decisão D-107.
+- **PRs abertos** — ramo `codex/ioapic` sobre o #15.
+- **Testes/fuzzing** — oito testes no host e em Miri. Uma ligação qtest
+  ao I/O APIC de QEMU 8.2.2/q35 confirmou 24 entradas e a programação,
+  desmascaramento e máscara de uma rota em GSI 2.
+- **Benchmarks** — sem medições de latência de IRQ nesta sessão.
+- **Bloqueado por / à espera do Claude** — concessão de MMIO e ordem
+  de transição para APIC (#18).
+- **Próximo passo sugerido para o Claude** — definir o contrato para o
+  Local APIC e manter o handler antigo disponível até drenar o IRQ.
+- **Avisos** — ensaio qtest valida os registos do dispositivo emulado.
+  A entrega ao núcleo pela rota APIC será testada na integração.
