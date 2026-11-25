@@ -1,0 +1,5 @@
+# Keep LF everywhere: linker scripts, shell snippets and CI break with CRLF.
+* text=auto eol=lf
+*.fd binary
+*.bin binary
+*.efi binary

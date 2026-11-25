@@ -1,0 +1,20 @@
+[workspace]
+resolver = "3"
+members = ["kernel", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+repository = "https://github.com/Mogli-01/kitty-OS"
+
+# Kernel code must never unwind: there is no unwinder in the kernel and
+# unwinding tables only make the image bigger.
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = 1 # line tables only: useful panic locations / addr2line, small cost
