@@ -9,6 +9,14 @@
 //! The previous interrupt state is restored on release, so nested
 //! `IrqSpinLock`s work: only the outermost guard re-enables interrupts.
 //!
+//! **Rule: release nested guards in reverse order (LIFO).** Each guard
+//! remembers the state it found. `let a = A.lock(); let b = B.lock();
+//! drop(a);` would re-enable interrupts while `B` is still held, and an
+//! interrupt handler taking `B` would then deadlock. Normal scoping (guards
+//! dropped at the end of their block) is always LIFO; only explicit
+//! out-of-order `drop` breaks it. A per-CPU nesting counter will replace
+//! this rule when per-CPU data exists (Phase 9).
+//!
 //! Use it for any data that interrupt handlers may touch (console, memory
 //! allocators, IRQ tables). Keep critical sections short: interrupts are
 //! delayed for their whole duration.

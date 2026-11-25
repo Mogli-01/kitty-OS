@@ -21,6 +21,13 @@
 //! - must not allocate (it is technically safe since the heap lock is an
 //!   `IrqSpinLock`, but it makes interrupt latency unbounded);
 //! - **does not send EOI**: the core does it after the handler returns.
+//!
+//! EOI rule: every non-spurious interrupt on a device vector (0x20–0xEF) is
+//! acknowledged, *whether or not a handler is registered*. Deciding by
+//! "is it registered?" would leave the controller's in-service bit set if a
+//! line is unregistered while its interrupt is in flight (on SMP), blocking
+//! that line and every lower-priority one. Kernel-internal vectors
+//! (0xF0–0xFE) get no controller EOI.
 
 use super::pic::Pic8259;
 use crate::console;
@@ -142,7 +149,11 @@ pub fn register_isa(line: u8, handler: IrqHandler) -> Result<Vector, IrqError> {
         .find(|&v| t.handlers[v as usize].is_none())
         .ok_or(IrqError::NoFreeVector)?;
     let vector = controller.connect_isa(line, Vector(preferred))?;
-    if vector.0 < FIRST_INTERRUPT_VECTOR || t.handlers[vector.0 as usize].is_some() {
+    // A controller may only hand out device vectors: never an exception,
+    // a kernel-internal vector (0xF0+) or the APIC spurious vector.
+    if !(FIRST_INTERRUPT_VECTOR..=LAST_DYNAMIC).contains(&vector.0)
+        || t.handlers[vector.0 as usize].is_some()
+    {
         return Err(IrqError::ControllerError);
     }
     // Install the handler *before* unmasking, so the first interrupt finds it.
@@ -191,7 +202,7 @@ pub(super) fn dispatch(vector: u8) {
     let v = Vector(vector);
     // Copy what we need and drop the lock before calling the handler, so a
     // handler may itself use this API (e.g. unregister its own line).
-    let (handler, controller, from_controller) = {
+    let (handler, controller) = {
         let mut t = TABLE.lock();
         let controller = t.controller;
         if vector == APIC_SPURIOUS_VECTOR || controller.is_some_and(|c| c.is_spurious(v)) {
@@ -201,9 +212,9 @@ pub(super) fn dispatch(vector: u8) {
         if handler.is_none() {
             t.unexpected += 1;
         }
-        let from_controller = t.isa.contains(&Some(vector));
-        (handler, controller, from_controller)
+        (handler, controller)
     };
+    let device_vector = (FIRST_INTERRUPT_VECTOR..=LAST_DYNAMIC).contains(&vector);
 
     match handler {
         Some(h) => h(v),
@@ -213,7 +224,7 @@ pub(super) fn dispatch(vector: u8) {
         )),
     }
 
-    if from_controller && let Some(c) = controller {
+    if device_vector && let Some(c) = controller {
         c.eoi(v);
     }
 }

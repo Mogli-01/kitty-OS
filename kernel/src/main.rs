@@ -96,6 +96,10 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     }
 
     assert!(arch::irq::selftest(), "interrupt dispatch self-test failed");
+    assert!(
+        arch::legacy::selftest(),
+        "legacy port filter self-test failed"
+    );
     devices::init();
     arch::enable_interrupts();
     assert!(
@@ -103,7 +107,7 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         "IrqSpinLock self-test failed"
     );
     kprintln!(
-        "[irq] interrupts enabled (controller: {}); dispatch and IrqSpinLock self-tests passed",
+        "[irq] interrupts enabled (controller: {}); dispatch, IrqSpinLock and port-filter self-tests passed",
         arch::irq::controller_name()
     );
 

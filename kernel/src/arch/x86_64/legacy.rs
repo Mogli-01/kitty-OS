@@ -5,8 +5,16 @@
 //! implements `kitty_hal::PortBlock` for **only** that device's ports. Each
 //! device can be claimed once, so two drivers never fight over it.
 //!
-//! The allow-list contains devices that cannot perform DMA or change the
-//! memory map, which is what makes handing out their ports safe.
+//! Two allow-lists make handing out these ports safe:
+//! - **devices**: none of them can perform DMA;
+//! - **values**: some registers of these devices *can* affect the whole
+//!   machine, so writes to them are filtered too. The i8042 command port
+//!   accepts "pulse output line" (0xF0–0xFF, 0xFE resets the CPU) and
+//!   "write output port" (0xD1: bit 0 = system reset, bit 1 = A20 gate —
+//!   turning A20 off aliases physical memory, i.e. memory corruption). The
+//!   CMOS index port's bit 7 disables NMIs system-wide. A driver only gets
+//!   the commands a PS/2 keyboard/mouse driver needs (found by the security
+//!   review of this phase).
 
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -19,12 +27,21 @@ use super::port::Port;
 pub enum LegacyDevice {
     /// 8042 PS/2 controller: data port 0x60 (offset 0) and status/command
     /// port 0x64 (offset 4). Port 0x61 (speaker/NMI control) is excluded.
+    /// Commands written to offset 4 must be in [`I8042_ALLOWED_COMMANDS`].
     I8042,
     /// 8253/8254 PIT: channels 0–2 at 0x40–0x42, mode/command at 0x43.
     Pit,
-    /// CMOS/RTC: index 0x70 (offset 0) and data 0x71 (offset 1).
+    /// CMOS/RTC: index 0x70 (offset 0) and data 0x71 (offset 1). Bit 7 of
+    /// the index (NMI disable) is always written as 0.
     Cmos,
 }
+
+/// i8042 controller commands a driver may send (offset 4 = port 0x64):
+/// read/write the configuration byte, disable/enable/test the two ports,
+/// controller self-test, and "next data byte goes to the mouse" (0xD4).
+/// Everything else (output-port writes, line pulses/reset, …) is refused.
+pub const I8042_ALLOWED_COMMANDS: &[u8] =
+    &[0x20, 0x60, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAD, 0xAE, 0xD4];
 
 impl LegacyDevice {
     const ALL: [LegacyDevice; 3] = [LegacyDevice::I8042, LegacyDevice::Pit, LegacyDevice::Cmos];
@@ -84,9 +101,11 @@ impl LegacyPorts {
         }
         let port = self.device.base().checked_add(offset)?;
         // SAFETY: `port` is one of the allow-listed registers of a device
-        // that has no DMA capability and cannot alter the memory map (PS/2
-        // controller, PIT, CMOS). Accessing it in any order can at most
-        // misconfigure that device.
+        // that has no DMA capability (PS/2 controller, PIT, CMOS). Reads have
+        // no system-wide effect. Writes that could affect the whole machine
+        // (i8042 output port / reset / line pulses, CMOS NMI-disable bit) are
+        // filtered by `write8` *before* reaching this port, so the remaining
+        // accesses can at most misconfigure the device itself.
         Some(unsafe { Port::new(port) })
     }
 }
@@ -97,6 +116,11 @@ impl PortBlock for LegacyPorts {
     }
 
     fn write8(&self, offset: u16, value: u8) -> Option<()> {
+        let value = match (self.device, offset) {
+            (LegacyDevice::I8042, 4) if !I8042_ALLOWED_COMMANDS.contains(&value) => return None,
+            (LegacyDevice::Cmos, 0) => value & 0x7F, // keep NMIs enabled
+            _ => value,
+        };
         self.port(offset).map(|p| p.write(value))
     }
 }
@@ -105,4 +129,20 @@ impl Drop for LegacyPorts {
     fn drop(&mut self) {
         CLAIMED[self.device.index()].store(false, Ordering::Release);
     }
+}
+
+/// Boot self-test of the value filters (no hardware access for refused
+/// writes: `write8` returns `None` before touching the port).
+pub fn selftest() -> bool {
+    let Some(kbd) = claim(LegacyDevice::I8042) else {
+        return false;
+    };
+    let refused = [0xD1, 0xFE, 0xF0, 0xD2, 0xD3]
+        .iter()
+        .all(|&cmd| kbd.write8(4, cmd).is_none());
+    let bad_offsets = kbd.read8(1).is_none() && kbd.write8(1, 0).is_none();
+    let twice = claim(LegacyDevice::I8042).is_none();
+    drop(kbd);
+    let released = claim(LegacyDevice::I8042).is_some();
+    refused && bad_offsets && twice && released
 }

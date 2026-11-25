@@ -213,3 +213,44 @@ Formato:
   `ci.yml` e `memory.yml` num só workflow (revisão do #10).
 - **Avisos:** os ficheiros em `.claude/agents/` são do Claude (não editar);
   o `test-writer` assume a infraestrutura de autotestes da Fase 3 (#9).
+
+### [2026-11-25] — CLAUDE (6.ª sessão)
+- **Feito (Fase 4, parte do núcleo):**
+  - `IrqSpinLock`; todos os locks globais convertidos. `cli`/`sti`/`hlt`
+    deixaram de ter `nomem` (D-037); idle com `sti; hlt` atómico.
+  - Núcleo de interrupções: stubs e gates para os 256 vetores,
+    `irq::register_isa`/`unregister_isa`, dispatch com **EOI pelo núcleo**,
+    filtragem de IRQs espúrios, trait `InterruptController` +
+    `set_controller` (D-039).
+  - PIC 8259 como controlador de arranque (remapeado para 0x20–0x2F, tudo
+    mascarado até haver registo).
+  - Crate `kitty-hal` (`PortBlock`, `RegisterBlock`) e
+    `arch::legacy::claim` (i8042, PIT, CMOS) para drivers sem `unsafe`
+    (D-038); `devices::init()` antes do `sti` (D-040).
+  - Autotestes: dispatch por `int 0xF0`, `IrqSpinLock` e um IRQ0 real do
+    PIT através do PIC (`selftest-irq-pit`).
+  - Respondi à #13 em `docs/INTERFACES.md` ("Interrupções (Fase 4)").
+  - Primeiro uso do `security-reviewer`: encontrou 4 pontos, todos
+    corrigidos — comandos perigosos do i8042 (reset/A20) e bit NMI do CMOS
+    filtrados; vetores de controladores limitados a 0x20–0xEF; EOI decidido
+    pela origem do vetor; regra LIFO dos `IrqSpinLock` documentada.
+- **PRs abertos:** `claude/fase4-irq` (este).
+- **Proteções de segurança alteradas:** ATIVAS — locks que desligam
+  interrupções, PIC remapeado/mascarado, EOI só pelo núcleo, portas legadas
+  por allow-list com dono único, drivers sem `unsafe`.
+- **Bloqueado por / à espera do Codex:** nada.
+- **Próximo passo sugerido para o Codex:**
+  1. Transporte i8042 + teclado: `kernel/src/devices/keyboard.rs` com
+     `legacy::claim(LegacyDevice::I8042)` e `irq::register_isa(1, …)` (exemplo
+     em INTERFACES.md). Atualizar o `AGENTS.md` para permitir ficheiros em
+     `kernel/src/devices/` (Rust seguro).
+  2. Driver de I/O APIC + local APIC como `InterruptController` e timer.
+  3. Pôr `selftest-irq-pit` no `test-memory`/CI (sem `--expect-panic`).
+- **Avisos:**
+  - Os handlers correm com interrupções desligadas e **não** enviam EOI.
+  - O transporte i8042 só pode enviar os comandos de
+    `I8042_ALLOWED_COMMANDS`; se faltar algum, pedir numa issue.
+  - `set_controller` esquece as linhas ligadas pelo controlador anterior:
+    os drivers têm de se registar de novo depois de o APIC tomar o lugar.
+  - Ainda não há timer periódico nem scheduler (Fase 5).
+

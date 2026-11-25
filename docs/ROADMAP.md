@@ -53,8 +53,10 @@ preparado para a interface gráfica (Fases 10–14).
 ## Fase 4 — Interrupções de hardware
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Spinlocks que desativam interrupções (`IrqSpinLock`) | CLAUDE | TODO |
-| API de registo de handlers de IRQ | CLAUDE | TODO |
+| Spinlocks que desativam interrupções (`IrqSpinLock`); todos os locks globais convertidos | CLAUDE | FEITO |
+| API de registo de handlers de IRQ (`irq::register_isa`, EOI pelo núcleo, trait `InterruptController`) | CLAUDE | FEITO |
+| PIC 8259 como controlador de arranque (remapeado, tudo mascarado) | CLAUDE | FEITO |
+| `kitty-hal` + portas legadas reclamáveis (i8042, PIT, CMOS) + `devices::init` | CLAUDE | FEITO |
 | Driver do Local APIC + IO APIC | CODEX | TODO |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | TODO |
 | Driver do teclado PS/2 | CODEX | TODO |

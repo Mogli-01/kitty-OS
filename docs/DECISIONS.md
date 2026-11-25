@@ -327,3 +327,60 @@ falha. A CI corre os testes em BIOS e UEFI, em debug e release.
 Isolar os autotestes e verificar a ordem dos relatórios distingue o panic
 esperado de uma falha prematura. Os testes de validação dos logs correm
 no host e em Miri.
+
+### D-037 — `IrqSpinLock` em todos os locks globais; `cli`/`sti`/`hlt` sem `nomem` (2026-11-25, CLAUDE)
+Um handler que tente apanhar um lock que o código interrompido já tem fica
+a girar para sempre (no mesmo CPU o dono nunca volta a correr). O
+`IrqSpinLock` desliga as interrupções **antes** de apanhar o lock e repõe o
+estado anterior **depois** de o libertar (por esta ordem; ao contrário
+haveria uma janela para o deadlock). Aninhar funciona: só o guard exterior
+volta a ligar as interrupções. Consola, PMM, espaço do kernel, memory map,
+heap e tabela de IRQs passaram todos a `IrqSpinLock`.
+**Mesma lição da #7:** os `asm!` de `cli`, `sti` e `hlt` tinham `nomem`, o
+que deixava o compilador mover acessos à memória para dentro ou para fora
+da secção crítica. Agora são barreiras de memória do compilador. O idle usa
+`sti; hlt` numa só instrução `asm!`: o `sti` só tem efeito depois da
+instrução seguinte, por isso nenhuma interrupção se "perde" entre os dois.
+
+### D-038 — Drivers sem `unsafe`: `kitty-hal` + portas reclamáveis (2026-11-25, CLAUDE)
+Os crates de `drivers/` (Codex) são `#![forbid(unsafe_code)]` e não
+dependem do kernel. Falam com o hardware só através dos traits do crate
+`kitty-hal` (`PortBlock` para portas I/O, `RegisterBlock` para MMIO). O
+kernel implementa-os sobre as suas camadas `unsafe` auditadas e entrega
+**objetos-capacidade** só para os registos permitidos:
+`arch::legacy::claim(LegacyDevice::I8042)` devolve um `LegacyPorts` que só
+deixa tocar em 0x60 e 0x64 (a 0x61, controlo do altifalante/NMI, fica de
+fora). Cada dispositivo só pode ser reclamado uma vez. A cola entre um driver
+e o kernel vai em `kernel/src/devices/<dispositivo>.rs`, em Rust seguro (o
+lint do crate proíbe `unsafe` aí). **Porquê:** todo o `unsafe` de hardware
+fica num sítio pequeno e revisto, e um bug num driver não consegue tocar em
+portas ou memória que não lhe foram dadas — o primeiro passo para mais tarde
+mover drivers para user space (D-001).
+**Valores também filtrados** (encontrado pelo `security-reviewer`): mesmo sem
+DMA, alguns registos afetam a máquina inteira. Na porta de comando do i8042,
+`0xFE` reinicia o CPU e `0xD1` escreve o output port (reset e **A20 gate**:
+desligar o A20 sobrepõe endereços físicos, ou seja, corrupção de memória
+provocada por código "seguro"). Por isso só passam os comandos de uma lista
+(`I8042_ALLOWED_COMMANDS`), e no CMOS o bit "desligar NMIs" é sempre limpo.
+
+### D-039 — PIC 8259 como controlador de arranque; EOI pelo núcleo (2026-11-25, CLAUDE)
+O núcleo traz um driver mínimo do 8259 (só portas I/O): remapeia as linhas
+para 0x20–0x2F (de origem iam para 0x08–0x0F, em cima das exceções — 0x08 é
+o double fault!) e deixa-as todas mascaradas até alguém registar. Assim as
+IRQs funcionam já, antes de existir driver de APIC. O driver de I/O APIC do
+Codex implementa o trait `InterruptController` e toma o lugar do PIC com
+`irq::set_controller`, que mascara o PIC por completo.
+**EOI:** é o núcleo que o envia, depois de o handler voltar, para todos os
+vetores 0x20–0xEF (exceto IRQs espúrios), **haja ou não handler**: decidir
+por "está registado?" deixaria o bit "em serviço" preso se a linha fosse
+desregistada com a interrupção a caminho (SMP), bloqueando essa linha e as de
+menor prioridade. Um driver nunca envia EOI.
+**Mapa de vetores:** 0x20–0x2F PIC, 0x30–0xEF dinâmicos (`register_isa`),
+0xF0–0xFE internos do kernel, 0xFF espúrio do APIC.
+
+### D-040 — `devices::init()`: o ponto de ligação dos drivers (2026-11-25, CLAUDE)
+Corre uma vez no CPU de arranque, depois do heap e do núcleo de interrupções
+e **antes** do `sti`. Um driver pode alocar, reclamar o hardware e registar
+o seu IRQ sem correr o risco de receber a primeira interrupção a meio da
+inicialização. O kernel passou a terminar o arranque em idle com as
+interrupções ligadas (em vez de `cli; hlt`).

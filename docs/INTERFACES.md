@@ -40,8 +40,8 @@ impl<T> SpinLock<T> {
     pub fn try_lock(&self) -> Option<SpinLockGuard<'_, T>>;
 }
 ```
-**Aviso:** ainda NÃO desativa interrupções. Não usar dentro de handlers de
-interrupção até à Fase 4 (`IrqSpinLock`).
+**Não** desativa interrupções: só para dados que nenhum handler de
+interrupção toca. Para o resto, `IrqSpinLock` (abaixo).
 
 ### `mm::PhysAddr` / `mm::VirtAddr` — ESTÁVEL
 Fornece: CLAUDE (`kernel/src/mm/addr.rs`). Usa: todos.
@@ -95,9 +95,12 @@ Textos estáveis na série que os testes podem verificar:
 Autotestes de falhas (todos com `--expect-panic`): `selftest-page-fault`,
 `selftest-double-fault`, `selftest-stack-overflow` (double fault),
 `selftest-write-text` e `selftest-write-idt` (#PF de escrita),
-`selftest-exec-data` (#PF de instruction fetch), `selftest-heap-overflow`
+`selftest-exec-data` (#PF de instruction fetch), `selftest-irq-pit` (**sem**
+`--expect-panic`: `--expect "hardware IRQ0 (PIT) delivered"`),
+`selftest-heap-overflow`
 (`non-present page on write`). Arranque normal: `[mm] kernel heap ready`,
-`heap self-test passed`.
+`heap self-test passed`,
+`[irq] interrupts enabled (controller: 8259 PIC); dispatch, IrqSpinLock and port-filter self-tests passed`.
 
 `cargo xtask test-memory [--bios] [--release]` corre o arranque normal e
 uma compilação separada para cada um dos sete autotestes de falhas. Antes
@@ -109,8 +112,9 @@ heap e o do MMIO. Guarda a série em `build/memory-tests/<firmware>-<perfil>/`.
 ### Heap do kernel (`alloc`) — ESTÁVEL
 Fornece: CLAUDE (`kernel/src/mm/heap.rs`). Usa: todos.
 `Box`, `Vec`, `String`, … funcionam depois de `mm::heap::init()`.
-Alocações vêm sempre a zeros. **Não alocar em handlers de interrupção** até
-à Fase 4 (o lock ainda não desliga interrupções).
+Alocações vêm sempre a zeros. O lock do heap é um `IrqSpinLock` (Fase 4),
+mas continua a ser **desaconselhado alocar em handlers de interrupção**
+(latência imprevisível).
 
 ---
 
@@ -151,12 +155,104 @@ segurança de memória (ex.: DMA). Para registos de dispositivos use
 Fornece: CLAUDE. Uso interno do núcleo (pilhas de threads, heap).
 `MapFlags { writable, executable, user, global, cache }`; W+X é recusado.
 
+### Interrupções (Fase 4) — INSTÁVEL
+Fornece: CLAUDE (`kernel/src/arch/x86_64/irq.rs`, reexportado como
+`arch::irq`). Usa: CODEX (drivers). Responde à issue #13.
+
+**Registar um IRQ de uma linha ISA** (ex.: teclado PS/2 = linha 1):
+```rust
+pub type IrqHandler = fn(Vector);
+pub fn arch::irq::register_isa(line: u8, handler: IrqHandler) -> Result<Vector, IrqError>;
+pub fn arch::irq::unregister_isa(line: u8) -> Result<(), IrqError>;
+```
+- O núcleo escolhe um vetor livre, pede ao controlador ativo para ligar a
+  linha a esse vetor (o PIC usa sempre `0x20 + linha`, por isso o IRQ1 chega
+  no vetor **0x21**; o I/O APIC poderá usar outro), instala o handler e **só
+  depois** desmascara a linha.
+- `IrqError`: `InvalidLine`, `InUse`, `NoFreeVector`, `ControllerError`,
+  `NotInitialised`.
+
+**Contexto em que o handler corre:**
+- ring 0, na pilha atual do kernel, com **interrupções desligadas** (os
+  handlers nunca se aninham);
+- curto, sem bloquear nem dormir;
+- pode usar `IrqSpinLock` (todos os globais do kernel usam); nunca um
+  `SpinLock` simples que código fora de interrupções também use;
+- não deve alocar (é seguro, mas torna a latência imprevisível);
+- **não envia EOI**: o núcleo envia-o depois de o handler voltar, para todo o
+  interrupt não espúrio num vetor 0x20–0xEF, haja ou não handler. IRQs
+  espúrios (IRQ7/IRQ15 do PIC, vetor 0xFF do APIC) nunca chegam ao handler.
+- `connect_isa` de um controlador só pode devolver vetores 0x20–0xEF
+  (senão `ControllerError`).
+
+**Controlador de interrupções** (para o driver de I/O APIC + local APIC):
+```rust
+pub trait InterruptController: Sync {
+    fn name(&self) -> &'static str;
+    fn connect_isa(&self, line: u8, preferred: Vector) -> Result<Vector, IrqError>; // deixa mascarada
+    fn unmask_isa(&self, line: u8);
+    fn mask_isa(&self, line: u8);
+    fn eoi(&self, vector: Vector);
+    fn is_spurious(&self, vector: Vector) -> bool;
+    fn disable(&self);
+}
+pub fn arch::irq::set_controller(c: &'static dyn InterruptController);
+```
+Até haver driver de APIC, o controlador é o PIC 8259 do núcleo (D-039).
+`set_controller` mascara o anterior e esquece as linhas ligadas por ele (os
+drivers registam-se de novo). Os métodos são chamados com interrupções
+desligadas e o lock da tabela preso: não podem chamar de volta `arch::irq`.
+
+**Mapa de vetores:** 0x00–0x1F exceções · 0x20–0x2F PIC · 0x30–0xEF
+dinâmicos · 0xF0–0xFE internos do kernel · 0xFF espúrio do APIC.
+
+**Acesso a hardware sem `unsafe`** (crate `kitty-hal`, D-038):
+```rust
+pub trait kitty_hal::PortBlock {            // portas I/O, por offset da base
+    fn read8(&self, offset: u16) -> Option<u8>;
+    fn write8(&self, offset: u16, value: u8) -> Option<()>;
+}
+pub trait kitty_hal::RegisterBlock { /* read32/write32/read64/write64 por offset */ }
+pub fn arch::legacy::claim(d: LegacyDevice) -> Option<LegacyPorts>; // impl PortBlock
+// LegacyDevice::I8042 → offsets 0 (0x60, dados) e 4 (0x64, estado/comando)
+// LegacyDevice::Pit   → offsets 0–3 (0x40–0x43) · LegacyDevice::Cmos → 0–1
+```
+Cada dispositivo só pode ser reclamado uma vez (o `Drop` liberta-o). Offsets
+fora da lista devolvem `None`. **Escritas filtradas:** na porta de comando do
+i8042 (offset 4) só passam `0x20, 0x60, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAD,
+0xAE, 0xD4` (`I8042_ALLOWED_COMMANDS`); `0xD1` (output port: reset/A20) e
+`0xF0`–`0xFF` (pulsos/reset) devolvem `None`. No CMOS, o bit 7 do índice
+(desliga NMIs) é sempre escrito a 0. Se um driver precisar de outro comando,
+pede-o numa issue `para-claude`.
+
+**Onde ligar um driver:** em `kernel::devices::init()`
+(`kernel/src/devices/`), que corre depois do heap e do núcleo de
+interrupções e **antes** de as interrupções serem ligadas (D-040). Ex. para
+o teclado:
+```rust
+// kernel/src/devices/keyboard.rs (Rust seguro; o lint proíbe unsafe aqui)
+static KBD: IrqSpinLock<Option<kitty_ps2::I8042<LegacyPorts>>> = IrqSpinLock::new(None);
+fn on_irq1(_: Vector) { if let Some(k) = KBD.lock().as_mut() { k.on_interrupt(); } }
+pub fn init() {
+    let Some(ports) = legacy::claim(LegacyDevice::I8042) else { return };
+    // … configurar o i8042 (Set 2, sem tradução) …
+    *KBD.lock() = Some(kitty_ps2::I8042::new(ports));
+    let _ = irq::register_isa(1, on_irq1);
+}
+```
+
+### `sync::IrqSpinLock<T>` — ESTÁVEL
+Fornece: CLAUDE (`kernel/src/sync/irq_spinlock.rs`). Usa: todos.
+Mesma API que `SpinLock` (`new`, `lock`, `try_lock`); desliga as
+interrupções enquanto o guard existe e repõe o estado anterior ao libertar.
+Usar para tudo o que um handler de interrupção possa tocar. **Regra:**
+guards aninhados libertam-se por ordem inversa (LIFO); um `drop` fora de
+ordem pode religar as interrupções com outro lock ainda preso.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |
 |---|---|---|---|
-| `arch::irq::register(vector, handler: fn(&InterruptFrame))` | CLAUDE | CODEX | 4 |
-| `sync::IrqSpinLock<T>` | CLAUDE | todos | 4 |
 | `sched::tick()` — chamada pelo driver do timer a cada interrupção | CLAUDE | CODEX | 4/5 |
 | `sched::spawn_kernel_thread(fn() -> !)` | CLAUDE | CODEX | 5 |
 | `UserPtr<T>`, `copy_from_user`, `copy_to_user` | CLAUDE | CODEX (VFS) | 6 |
