@@ -36,14 +36,15 @@ preparado para a interface gráfica (Fases 10–14).
 | Tarefa | Dono | Estado |
 |---|---|---|
 | PMM (base de dados de frames + lista livre fora de banda, a partir do memory map do Limine) | CLAUDE | FEITO |
-| Paginação própria (tabelas de 4 níveis), mapear kernel e HHDM | CLAUDE | TODO |
+| Paginação própria (tabelas de 4 níveis), mapear kernel e HHDM | CLAUDE | FEITO |
 | Heap do kernel (`#[global_allocator]`) | CLAUDE | TODO |
-| SEGURANÇA: NX (EFER.NXE), W^X em todo o kernel, CR0.WP | CLAUDE | TODO |
-| SEGURANÇA: páginas de guarda em todas as pilhas | CLAUDE | TODO |
+| SEGURANÇA: NX (EFER.NXE), W^X em todo o kernel, CR0.WP | CLAUDE | FEITO |
+| SEGURANÇA: GDT/IDT só de leitura, alias do kernel no HHDM só de leitura, auditoria W^X no arranque | CLAUDE | FEITO |
+| SEGURANÇA: páginas de guarda em todas as pilhas | CLAUDE | FEITO |
 | SEGURANÇA: frames libertados limpos a zero | CLAUDE | FEITO |
 | Registo dinâmico de consolas (`console::register`) | CLAUDE | TODO |
 | GUI-PREP: PMM com contagem de referências por frame (frames partilhados entre espaços de endereçamento; limpo a zero só quando a última referência sai) | CLAUDE | FEITO |
-| GUI-PREP: tipos de cache no VMM via PAT (WB, WC, UC) — `map_mmio(…, CacheType::WriteCombining)` | CLAUDE | TODO |
+| GUI-PREP: tipos de cache no VMM via PAT (WB, WC, UC) — `map_mmio(…, CacheType::WriteCombining)` | CLAUDE | FEITO |
 | Testes e fuzzing do allocator | CODEX | TODO |
 
 ## Fase 4 — Interrupções de hardware

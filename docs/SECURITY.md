@@ -32,22 +32,25 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | Rust + `deny(unsafe_code)` fora de arch/mm/sync | a maioria dos bugs de memória por construção | ATIVA | 1 |
 | `// SAFETY:` obrigatório, 1 operação unsafe por bloco | unsafe sem justificação | ATIVA | 1 |
 | Sem `unwrap`/`expect` no kernel (lint) | panics provocados por input | ATIVA | 1 |
-| W^X por segmento do ELF (R / RX / R / RW) | executar dados, alterar código | ATIVA (mapeamento do Limine) | 1 |
+| W^X por segmento do ELF (R / RX / R / RW) | executar dados, alterar código | ATIVA (nas nossas tabelas desde a Fase 3) | 1 |
 | Requests do Limine só de leitura | redirecionar respostas do bootloader | ATIVA | 1 |
 | Kernel sem SSE, sem red zone | corrupção da pilha por interrupções; fuga de estado vetorial | ATIVA | 1 |
 | Panic sem endereços (só ficheiro:linha) | fuga de layout do kernel | ATIVA | 1 |
 | Porta de saída do QEMU só em builds de teste | escrita em porta indevida em hardware real | ATIVA | 1 |
 | Limine e GitHub Actions fixados por commit | ataques à cadeia de fornecimento | ATIVA | 1 |
 | CI com `permissions: contents: read` | abuso do token da CI | ATIVA | 1 |
-| Pilhas IST para double fault / NMI / #MC | triple fault por pilha corrompida | ATIVA (sem página de guarda até à Fase 3) | 2 |
+| Pilhas IST para double fault / NMI / #MC | triple fault por pilha corrompida | ATIVA (com página de guarda) | 2 |
 | IDT: DPL 0 em todos os vetores, interrupt gates, vetores sem handler não presentes (D-026) | user space disparar interrupções com `int n` | ATIVA | 2 |
 | TSS sem bitmap de I/O (`iomap_base` = fim da TSS) | user space usar `in`/`out` | ATIVA | 2 |
 | Relatórios de crash com endereços só na série (D-023) | fuga de endereços do kernel pelo ecrã | ATIVA | 2 |
-| GDT/IDT só de leitura depois do arranque | sobrescrever a IDT para desviar exceções | PLANEADA | 3 |
-| NX (EFER.NXE) nas nossas tabelas de páginas | executar dados | PLANEADA (hoje via Limine) | 3 |
-| W^X em todo o kernel com paginação própria | executar dados, alterar código | PLANEADA | 3 |
-| CR0.WP (ring 0 respeita páginas só de leitura) | o kernel escrever em `.text`/`.rodata` | PLANEADA | 3 |
-| Páginas de guarda em todas as pilhas | stack overflow silencioso | PLANEADA | 3 |
+| GDT/IDT só de leitura depois do arranque (D-031) | sobrescrever a IDT para desviar exceções | ATIVA | 3 |
+| NX (EFER.NXE) nas nossas tabelas de páginas | executar dados | ATIVA | 3 |
+| W^X em todo o kernel com paginação própria, garantido na API e auditado no arranque (D-032) | executar dados, alterar código | ATIVA | 3 |
+| Alias da imagem do kernel no HHDM só de leitura (D-029) | reescrever `.text` pelo mapa direto | ATIVA | 3 |
+| Sem remapeamentos silenciosos; bit user recusado na metade do kernel | trocar um mapeamento existente por engano | ATIVA | 3 |
+| `map_mmio` recusa RAM/firmware (D-033) | alias MMIO de memória do kernel | ATIVA | 3 |
+| CR0.WP (ring 0 respeita páginas só de leitura) | o kernel escrever em `.text`/`.rodata` | ATIVA | 3 |
+| Páginas de guarda em todas as pilhas (D-030) | stack overflow silencioso | ATIVA | 3 |
 | Frames libertados limpos a zero; frames entregues sempre a zeros | fuga de dados entre processos | ATIVA | 3 |
 | Lista livre do PMM fora de banda (D-028) | use-after-free corromper o alocador de frames | ATIVA | 3 |
 | Deteção de double free e overflow de referências no PMM | dois donos para a mesma memória | ATIVA | 3 |

@@ -235,3 +235,58 @@ frame entregue está a zeros. Double free e overflow da contagem são bugs
 fatais (panic) em vez de corrupção silenciosa.
 **Limitações:** a memória "bootloader reclaimable" ainda não é reutilizada
 (tem a pilha de arranque e o memory map); índices de 32 bits limitam a 16 TiB.
+
+### D-029 — Tabelas de páginas próprias, construídas a partir das do Limine (2026-11-25, CLAUDE)
+O kernel cria o seu PML4 e muda o CR3 no arranque. Os endereços físicos de
+cada página do kernel são lidos **das tabelas do Limine** (e não calculados
+com uma fórmula), por isso não dependemos de como o Limine dispôs a imagem
+na RAM. Antes de carregar o CR3 verificamos que o código e a pilha em uso
+estão mapeados (senão seria um triple fault sem diagnóstico).
+- As 256 entradas da metade do kernel no PML4 são **pré-alocadas** (1 MiB):
+  na Fase 6 cada processo copia estas entradas e vê automaticamente tudo o
+  que o kernel mapear depois.
+- O HHDM usa **páginas de 2 MiB** sempre que possível (~512× menos entradas
+  e menos falhas de TLB) e todas as entradas do kernel são **globais**
+  (CR4.PGE): sobrevivem às trocas de CR3.
+- Permissões do HHDM por tipo de região: RAM e ACPI RW+NX; a imagem do
+  kernel **só de leitura** (senão o `.text` podia ser reescrito pelo alias
+  do HHDM, contornando o W^X); o framebuffer em write-combining; regiões
+  "reserved"/"bad" não são mapeadas.
+
+### D-030 — Páginas de guarda: memória em `.bss` que fica por mapear (2026-11-25, CLAUDE)
+A pilha principal (64 KiB) e as 3 pilhas IST (16 KiB) vivem em `.bss`,
+cada uma com uma página de 4 KiB por baixo que **não** é mapeada nas nossas
+tabelas. Um stack overflow bate na página de guarda → #PF → (a entrega do
+#PF também falha) → double fault na pilha IST. Assim não é preciso reescrever
+a TSS depois do arranque (evita escritas não atómicas a entradas IST que um
+NMI podia ler a meio). Depois de mudar o CR3, o kernel salta para a pilha
+principal com `run_on_main_stack` e abandona a pilha do Limine.
+
+### D-031 — GDT e IDT em páginas próprias, só de leitura (2026-11-25, CLAUDE)
+A GDT e a IDT ocupam cada uma uma página alinhada e são mapeadas só de
+leitura. Um atacante com uma primitiva de escrita no kernel já não consegue
+desviar exceções reescrevendo a IDT. **Detalhe:** o CPU escreve o bit
+"accessed" de um descritor na primeira vez que o segmento é carregado; esse
+bit é pré-ativado em todos os descritores para o CPU nunca precisar de
+escrever na GDT. A TSS continua RW (o RSP0 muda a cada troca de thread na
+Fase 6).
+
+### D-032 — W^X garantido na construção e auditado no arranque (2026-11-25, CLAUDE)
+`MapFlags` com `writable && executable` é recusado por `map_4k`/`map_2m`
+(`MapError::WriteAndExecute`), mapear por cima de um mapeamento existente é
+um erro, e o bit "user" é recusado na metade do kernel. Depois de construir
+as tabelas, uma auditoria percorre toda a metade do kernel e **o arranque
+pára** se encontrar alguma página W+X ou acessível ao user.
+
+### D-033 — `map_mmio` é unsafe e recusa RAM (2026-11-25, CLAUDE)
+Mesmo raciocínio do `Port::new` (D-010): o perigo está em *que* dispositivo
+se mapeia (DMA). `map_mmio` mapeia numa janela própria (1 TiB a partir de
+`0xFFFF_D000_0000_0000`), nunca executável, e **recusa intervalos que
+coincidam com RAM ou firmware** do memory map (um alias MMIO de RAM
+contornaria todas as outras proteções). O `MmioRegion` devolvido só faz
+acessos voláteis, com limites e alinhamento verificados.
+
+### D-034 — PAT programado no arranque (2026-11-25, CLAUDE)
+`IA32_PAT = 0x0007_0106_0007_0106`: índice 0 = WB, 1 = WC, 2 = UC-, 3 = UC
+(4–7 repetem). `CacheType` escolhe os bits PWT/PCD das entradas. É feito com
+`wbinvd` antes, imediatamente antes de carregar as tabelas novas.
