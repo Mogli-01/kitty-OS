@@ -1,0 +1,5 @@
+[package]
+name = "kitty-ps2"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true

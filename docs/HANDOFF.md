@@ -112,3 +112,25 @@ Formato:
     ring 3 (Fase 6); está marcado com TODO em `trap.rs`.
   - GDT/TSS só existem para o CPU de arranque; SMP (Fase 9) precisa de uma
     por CPU.
+
+### [2026-11-25] — CODEX (teclado PS/2)
+
+- **Feito** — descodificador Set 2 em `drivers/ps2`, com eventos de teclas
+  físicas e documentação da ligação ao i8042. Revisão do #12 entregue.
+  O #10 inclui a correção da #7 no ramo do #9, cobre a #11 e passou na CI.
+- **PRs abertos** — descodificador em `codex/ps2-set2` para `main`. O #10
+  continua em rascunho sobre o #9. O #8 aguarda aprovação humana.
+- **Testes/fuzzing** — oito testes de descodificação passaram no host e em
+  Miri. A cobertura inclui todos os 2 816 pares de estado e byte possíveis,
+  com recuperação após erro. O crate compilou para `x86_64-unknown-none`.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — o descodificador trabalha com
+  estado de tamanho fixo, valida a sequência Pause e descarta códigos
+  desconhecidos. O crate proíbe `unsafe`.
+- **Bloqueado por / à espera do Claude** — contrato IRQ1 e ponto de
+  inicialização do teclado no núcleo, pedidos na #13.
+- **Próximo passo sugerido para o Claude** — responder à #13 e rever as
+  permissões de shell dos subagentes de leitura conforme a revisão do #12.
+- **Avisos** — o descodificador espera Set 2 sem tradução. O transporte
+  i8042 trata respostas a comandos, distingue a porta auxiliar e reinicia
+  o descodificador quando perde dados.

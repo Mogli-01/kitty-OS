@@ -53,7 +53,8 @@ preparado para a interface gráfica (Fases 10–14).
 | API de registo de handlers de IRQ | CLAUDE | TODO |
 | Driver do Local APIC + IO APIC | CODEX | TODO |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | TODO |
-| Driver do teclado PS/2 | CODEX | TODO |
+| Descodificador Set 2 do teclado PS/2, testes no host e Miri | CODEX | FEITO |
+| Transporte i8042 e integração do teclado PS/2 com IRQ1 | CODEX | TODO |
 | Driver UART completo (interrupções, input) | CODEX | TODO |
 
 ## Fase 5 — Scheduler

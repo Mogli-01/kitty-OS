@@ -146,6 +146,17 @@ encaminha para a janela com foco. As aplicações nunca leem input global.
 **Porquê:** impede keyloggers e que uma aplicação veja cliques/teclas
 destinados a outra.
 
+### D-102 — Descodificar o teclado PS/2 em Set 2 (2026-11-25, CODEX)
+O crate interno `kitty-ps2` processa um byte de cada vez e produz eventos
+de teclas físicas. Compila em `no_std`, sem alocação, `unsafe` ou crates
+externos. O transporte do i8042 fornece o fluxo Set 2 sem tradução e o
+layout e o timestamp são aplicados pela camada de input.
+
+A separação permite exercitar todas as transições com bytes arbitrários
+no host e em Miri. A tabela de teclas preserva posições que têm o mesmo
+código base, como a seta para cima e o 8 do teclado numérico, bem como
+a tecla adicional ISO. [Referência de códigos](https://github.com/qemu/keycodemapdb/blob/master/data/keymaps.csv)
+
 ### D-020 — Tipos de cache (PAT) geridos pelo VMM (2026-11-25, CLAUDE)
 O roadmap pede o framebuffer com write-combining. Programar o MSR `IA32_PAT`
 e escolher os bits PAT/PCD/PWT das entradas de página é paginação, logo
