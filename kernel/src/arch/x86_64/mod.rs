@@ -14,7 +14,8 @@ pub mod qemu;
     feature = "selftest-stack-overflow",
     feature = "selftest-write-text",
     feature = "selftest-exec-data",
-    feature = "selftest-write-idt"
+    feature = "selftest-write-idt",
+    feature = "selftest-heap-overflow"
 ))]
 pub mod selftest;
 pub mod serial;

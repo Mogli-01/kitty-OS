@@ -78,7 +78,7 @@ metade de baixo para o user space e a de cima para o kernel.
 | (dentro do user space) | | | mapeamentos de buffers partilhados (janelas, framebuffer do compositor), em endereços aleatórios (ASLR) | Fase 12 |
 | `0x0000_8000_0000_0000` | `0xFFFF_7FFF_FFFF_FFFF` | — | não canónico (buraco) | hardware |
 | `0xFFFF_8000_0000_0000` | … | até 64 TiB | **HHDM**: toda a RAM física mapeada linearmente (offset dado pelo Limine) | Limine (hoje) |
-| `0xFFFF_C000_0000_0000` | … | 1 TiB | heap do kernel | Fase 3 |
+| `0xFFFF_C000_0000_0000` | … | 1 TiB | heap do kernel (alocações grandes seguidas de página de guarda) | hoje |
 | `0xFFFF_D000_0000_0000` | … | 1 TiB | janela MMIO (`map_mmio`), uncached/WC, NX | hoje |
 | `0xFFFF_E000_0000_0000` | … | 1 TiB | pilhas das threads do kernel (cada uma com página de guarda) | Fase 5 |
 | `0xFFFF_FFFF_8000_0000` | `0xFFFF_FFFF_FFFF_FFFF` | 2 GiB | **imagem do kernel** (inclui a pilha principal e as IST em `.bss`, com páginas de guarda por mapear) | hoje |

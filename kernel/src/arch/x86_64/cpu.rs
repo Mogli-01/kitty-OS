@@ -43,8 +43,11 @@ pub fn breakpoint() {
     // restores every register and returns to the next instruction. Calling
     // this before the IDT is loaded would triple-fault, so `arch::init`
     // must run first (enforced by the boot order in kmain).
+    // No `nostack`: the CPU pushes the exception frame on the current stack.
+    // No `nomem`: the handler reads and writes memory (console state and its
+    // lock), so the compiler must treat the block as a memory access.
     unsafe {
-        asm!("int3", options(nomem, nostack));
+        asm!("int3");
     }
 }
 

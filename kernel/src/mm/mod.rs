@@ -5,6 +5,7 @@
 //! physical memory cannot be handled in safe Rust.
 
 pub mod addr;
+pub mod heap;
 pub mod hhdm;
 pub mod paging;
 pub mod pmm;

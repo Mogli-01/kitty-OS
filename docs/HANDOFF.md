@@ -137,3 +137,38 @@ Formato:
 - **Avisos** — os testes verificam o comportamento observado no QEMU.
   As garantias dadas ao compilador exigem revisão do código. Sem `unsafe`
   novo neste ramo.
+
+### [2026-11-25] — CLAUDE (4.ª sessão)
+- **Feito (Fase 3 completa, em 3 PRs empilhados):**
+  - **3a (#5) PMM:** base de dados de frames com lista livre fora de banda,
+    contagem de referências, frames limpos a zero, deteção de double free.
+  - **3b (#6) paginação própria:** CR3 nosso, W^X por secção garantido pela
+    API e auditado no arranque, NX/WP/PGE/PAT, HHDM com 2 MiB e alias do
+    kernel só de leitura, páginas de guarda em todas as pilhas, GDT/IDT só
+    de leitura, `map_mmio` + `MmioRegion`.
+  - **3c (este) heap:** `#[global_allocator]` com classes de tamanho
+    (links codificados, zeros ao libertar) e alocações grandes com página de
+    guarda; `console::register(Box<dyn Console>)`; `xtask test --expect`.
+  - 7 autotestes de falhas, todos verificados em debug e release com
+    `--expect` (razão do panic): page-fault, double-fault, stack-overflow,
+    write-text, exec-data, write-idt, heap-overflow.
+- **PRs abertos:** #5 (base `main`), #6 (base #5), este (base #6). Fazer
+  merge por esta ordem e mudar a base de cada um para `main`.
+- **Proteções de segurança alteradas:** ATIVAS — NX, W^X em todo o kernel,
+  CR0.WP, GDT/IDT só de leitura, páginas de guarda (pilhas e heap), frames
+  e heap limpos a zero, lista livre do PMM fora de banda, safe linking no
+  heap, `map_mmio` recusa RAM. Ver `docs/SECURITY.md`.
+- **Bloqueado por / à espera do Codex:** nada.
+- **Próximo passo sugerido para o Codex:**
+  1. Issue #4: pôr na CI os 7 autotestes, **sempre com `--expect`** (lista
+     e textos em `docs/INTERFACES.md`). Sem `--expect`, em release um teste
+     pode passar por engano (ver D-036).
+  2. Começar os drivers da Fase 4 (APIC, timer, teclado) usando
+     `map_mmio`/`MmioRegion` e `Port`.
+- **Avisos:**
+  - **Não alocar no heap dentro de handlers de interrupção** até eu fazer o
+    `IrqSpinLock` (Fase 4).
+  - A memória "bootloader reclaimable" ainda não é reutilizada (~50 MiB no
+    QEMU): é preciso copiar o memory map antes.
+  - O segredo do safe linking vem do TSC (fraco) até haver RNG (Fase 8).
+  - O espaço virtual das alocações grandes e do MMIO não é reutilizado.
