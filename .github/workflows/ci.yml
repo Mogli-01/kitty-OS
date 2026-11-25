@@ -41,7 +41,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Install pinned toolchain and Miri
-        run: rustup toolchain install --component miri
+        run: |
+          rustup toolchain install
+          rustup component add miri
       - run: cargo clippy -p kitty-pit --locked --all-targets -- -D warnings
       - run: cargo test -p kitty-pit --locked
       - run: cargo miri test -p kitty-pit --locked
