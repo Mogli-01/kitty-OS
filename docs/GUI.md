@@ -25,3 +25,14 @@ cargo build -p kitty-gfx --target x86_64-unknown-none --release --locked
 O compositor usará estas superfícies para desenhar em RAM antes de
 apresentar uma imagem. A concessão `DISPLAY` e a descrição do formato
 do framebuffer entram pela interface do núcleo prevista no roadmap.
+
+## Desenho e apresentação em dois buffers
+
+`DoubleBuffer` recebe duas superfícies de escrita com a mesma largura e
+altura. Cada uma pode ter um pitch próprio. `draw()` empresta apenas a
+superfície onde se prepara o frame. `present()` copia toda a área visível.
+`present_region(rect)` copia a interseção dessa área com um retângulo
+alterado, preservando o resto da imagem apresentada.
+
+A apresentação é uma cópia de memória. A sincronização com a leitura
+do ecrã depende da futura interface de apresentação do dispositivo.

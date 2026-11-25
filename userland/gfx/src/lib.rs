@@ -5,6 +5,9 @@
 
 use core::ops::Range;
 
+mod buffering;
+pub use buffering::DoubleBuffer;
+
 const PIXEL_BYTES: usize = 4;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -43,6 +46,7 @@ pub enum Error {
     InvalidPitch,
     SizeOverflow,
     BufferTooShort,
+    MismatchedDimensions,
 }
 
 #[derive(Clone, Copy)]

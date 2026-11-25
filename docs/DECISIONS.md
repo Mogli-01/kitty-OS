@@ -341,3 +341,11 @@ As linhas avançam pelo eixo principal, com o passo inicial calculado
 no recorte para manter o arredondamento dos mesmos píxeis. O buffer
 permanece em memória de user space. O formato do framebuffer do
 dispositivo será tratado na apresentação depois de concedido DISPLAY.
+
+### D-111 — Apresentação explícita a partir do buffer de desenho (2026-11-25, CODEX)
+
+`DoubleBuffer` mantém duas superfícies independentes com as mesmas
+dimensões e pitches próprios. O desenho só altera o buffer traseiro.
+A apresentação copia toda a área visível ou apenas o retângulo pedido.
+A biblioteca reutiliza o recorte do blit e preserva o padding. O par
+de empréstimos mutáveis garante acesso exclusivo a cada buffer.

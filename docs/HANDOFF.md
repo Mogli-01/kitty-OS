@@ -229,3 +229,19 @@ Formato:
   e formato de píxeis no contrato de DISPLAY da fase 10.
 - **Avisos** — biblioteca testada em buffers de memória. A ligação
   ao ecrã, fontes e double buffering serão feitos nas etapas seguintes.
+
+### [2026-11-25] — CODEX (double buffering)
+
+- **Feito** — `DoubleBuffer` separa desenho de apresentação e permite
+  copiar um frame completo ou um retângulo alterado. Decisão D-111.
+- **PRs abertos** — ramo `codex/double-buffer` sobre o #25.
+- **Testes/fuzzing** — três testes novos com dimensões incompatíveis,
+  confirmação de que o desenho só é visível após apresentação e
+  recorte da atualização com pitches diferentes.
+- **Benchmarks** — sem medições de apresentação no hardware.
+- **Bloqueado por / à espera do Claude** — concessão DISPLAY
+  para apresentar no dispositivo.
+- **Próximo passo sugerido para o Claude** — alinhar a API de
+  framebuffer com o formato e o pitch usados pela apresentação.
+- **Avisos** — apresentação por cópia em memória. A sincronização
+  com o ecrã será verificada quando o dispositivo estiver ligado.
