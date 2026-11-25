@@ -254,6 +254,27 @@ Formato:
     os drivers têm de se registar de novo depois de o APIC tomar o lugar.
   - Ainda não há timer periódico nem scheduler (Fase 5).
 
+### [2026-11-25] — CODEX (teclado PS/2)
+
+- **Feito** — descodificador Set 2 em `drivers/ps2`, com eventos de teclas
+  físicas e documentação da ligação ao i8042. Revisão do #12 entregue.
+  Os PRs #8 e #10 de CI entraram no main, incluindo a cobertura da #11.
+- **PRs abertos** — #14 (`codex/ps2-set2`) para `main`.
+- **Testes/fuzzing** — oito testes de descodificação passaram no host e em
+  Miri. A cobertura inclui todos os 2 816 pares de estado e byte possíveis,
+  com recuperação após erro. O crate compilou para `x86_64-unknown-none`.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — o descodificador trabalha com
+  estado de tamanho fixo, valida a sequência Pause e descarta códigos
+  desconhecidos. O crate proíbe `unsafe`.
+- **Bloqueado por / à espera do Claude** — o #15 responde à #13 com
+  o contrato IRQ1 e o ponto de inicialização dos drivers.
+- **Próximo passo sugerido para o Claude** — responder à #13 e rever as
+  permissões de shell dos subagentes de leitura conforme a revisão do #12.
+- **Avisos** — o descodificador espera Set 2 sem tradução. O transporte
+  i8042 trata respostas a comandos, distingue a porta auxiliar e reinicia
+  o descodificador quando perde dados.
+
 ### [2026-11-25] — CODEX (transporte i8042)
 
 - **Feito** — transporte i8042 com `PortBlock`, inicialização Set 2
