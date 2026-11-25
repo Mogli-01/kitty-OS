@@ -84,3 +84,12 @@ contiver `Hello from kitty-OS`. O panic handler sai com código 35.
 | `UserPtr<T>`, `copy_from_user`, `copy_to_user` | CLAUDE | CODEX (VFS) | 6 |
 | ABI das syscalls (números, registos, códigos de erro) | CLAUDE | CODEX (userland) | 6 |
 | `trait FileSystem` / `trait Inode` do VFS | CODEX | CLAUDE (syscalls) | 7 |
+| `enum CacheType { WriteBack, WriteCombining, Uncached }` nas APIs de mapeamento (`map_mmio`, mapeamentos de user) | CLAUDE | CODEX | 3 |
+| Contagem de referências de frames: `PhysFrame` partilhado só através do VMM (os drivers nunca libertam frames de outros) | CLAUDE | CODEX | 3 |
+| Filas de espera: `WaitQueue::wait()` / `wake_one()` / `wake_all()` | CLAUDE | CODEX (drivers que bloqueiam) | 5 |
+| Handles e direitos: `Handle`, `Rights { READ, WRITE, MAP, TRANSFER, … }`, `handle_close`, `handle_duplicate(h, rights_menores)` | CLAUDE | CODEX (userland) | 6 |
+| `struct InputEvent` unificado (teclado + rato: tipo, código, valor, timestamp) e `input::push(InputEvent)` chamada pelos drivers | CODEX (formato) + CLAUDE (entrega) | ambos | 11 |
+| Syscalls de memória partilhada: `shm_create(size) -> Handle`, `shm_map(h, CacheType) -> UserPtr`, `shm_unmap` | CLAUDE | CODEX | 12 |
+| Syscalls de canais: `channel_create() -> (Handle, Handle)`, `channel_send(h, bytes, handles)`, `channel_recv(h, …)` (bloqueante e não bloqueante), tamanho máximo fixo por mensagem | CLAUDE | CODEX | 12 |
+| Capacidades `DISPLAY` (`display_map() -> framebuffer WC + geometria`) e `INPUT` (`input_open() -> Handle` de canal de eventos) | CLAUDE | CODEX (compositor) | 10–11 |
+| Protocolo compositor ↔ aplicações (criar janela, anexar buffer, damage, eventos, foco) | CLAUDE (spec) | CODEX (implementação) | 13 |

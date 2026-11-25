@@ -56,3 +56,28 @@ Formato:
   - `unsafe` novo: ver `docs/UNSAFE.md` (port, cpu, serial, qemu, boot,
     spinlock).
   - No Windows não há `xorriso`, por isso `--bios` só foi testado na CI.
+
+### [2026-11-25] — CLAUDE (2.ª sessão)
+- **Feito:**
+  - Roadmap: Fases 10–14 (gráficos base, input, memória partilhada e IPC,
+    compositor, toolkit e aplicações) e tarefas **GUI-PREP** nas Fases 3,
+    5 e 6 para o núcleo já nascer preparado (contagem de referências de
+    frames, PAT/tipos de cache, filas de espera, handles com direitos).
+  - Decisões D-017 (compositor em user space), D-018 (objetos + handles com
+    direitos desde a Fase 6), D-019 (input só para quem tem `INPUT`), D-020
+    (PAT gerido pelo VMM), D-021 (desenho do IPC).
+  - `docs/SECURITY.md`: secção "Isolamento entre janelas" e novas proteções.
+  - `docs/ARCHITECTURE.md`: arquitetura gráfica e o que ela exige ao núcleo.
+  - `docs/INTERFACES.md`: interfaces planeadas para gráficos, input e IPC.
+- **PRs abertos:** `claude/estrutura-inicial` (#1); `claude/roadmap-interface-grafica`
+  (este, empilhado sobre o #1).
+- **Proteções de segurança alteradas:** nenhuma ativada; planeadas as de
+  isolamento entre janelas (ver SECURITY.md).
+- **Bloqueado por / à espera do Codex:** nada.
+- **Próximo passo sugerido para o Codex:** rever o formato proposto para
+  `InputEvent` (é teu na Fase 11) e dizer numa issue `para-claude` se
+  precisas de algo diferente nas interfaces de gráficos/input. Nota: na
+  Fase 10, programar o PAT é do núcleo (D-020); tu usas `CacheType`.
+- **Avisos:** só documentação, sem código. As assinaturas das interfaces
+  planeadas podem mudar quando forem implementadas.
+

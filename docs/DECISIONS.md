@@ -111,3 +111,55 @@ Codex. As actions estão fixadas por SHA de commit.
 ### D-016 — `xtask` só com a biblioteca padrão (2026-11-25, CLAUDE)
 A política de dependências aplica-se também ao `xtask`: sem `clap`,
 `anyhow`, etc. O parsing de argumentos é manual e simples.
+
+### D-017 — O compositor corre em user space (2026-11-25, CLAUDE)
+O compositor / gestor de janelas (Fase 13) é um **processo normal em ring
+3**, não código do kernel. **Porquê (segurança):**
+- O compositor processa input complexo e não confiável: conteúdo de buffers
+  de todas as aplicações, mensagens do protocolo de janelas, eventos de rato
+  e teclado. Um bug aí, no kernel, daria controlo total da máquina; em user
+  space, fica contido num processo com só as capacidades `DISPLAY` e
+  `INPUT`.
+- Mantém o kernel pequeno (menos código privilegiado = menos superfície de
+  ataque) e segue a direção microkernel do projeto (D-001).
+- Se o compositor falhar, o kernel continua de pé e pode reiniciá-lo.
+
+**Custo:** cada frame implica IPC e trocas de contexto. Mitigação: zero
+cópias de píxeis (memória partilhada, Fase 12), mensagens pequenas, só se
+redesenham as zonas alteradas. Medimos antes de otimizar.
+
+### D-018 — Objetos do kernel com handles e direitos, desde a Fase 6 (2026-11-25, CLAUDE)
+Buffers partilhados, canais, o ecrã e o input são **objetos do kernel**. Um
+processo só lhes chega através de um *handle* (índice na sua tabela de
+handles) com **direitos** explícitos (ex.: `READ`, `WRITE`, `MAP`,
+`TRANSFER`). Não há nomes globais nem IDs adivinháveis.
+**Porquê:** é o modelo de capacidades da Fase 8 introduzido cedo. Partilhar
+um buffer passa a ser "enviar um handle com menos direitos por um canal" —
+o kernel verifica tudo e é impossível um processo aceder a um buffer que
+ninguém lhe deu. A tabela de handles nasce com os processos (Fase 6) para
+não ter de ser retrofitted mais tarde.
+
+### D-019 — Input só é entregue ao processo com a capacidade `INPUT` (2026-11-25, CLAUDE)
+Os drivers (Codex) produzem `InputEvent`s unificados; o kernel entrega-os
+**só** ao processo que tem a capacidade `INPUT` (o compositor), que os
+encaminha para a janela com foco. As aplicações nunca leem input global.
+**Porquê:** impede keyloggers e que uma aplicação veja cliques/teclas
+destinados a outra.
+
+### D-020 — Tipos de cache (PAT) geridos pelo VMM (2026-11-25, CLAUDE)
+O roadmap pede o framebuffer com write-combining. Programar o MSR `IA32_PAT`
+e escolher os bits PAT/PCD/PWT das entradas de página é paginação, logo
+núcleo (Claude, Fase 3). O VMM expõe `CacheType { WriteBack,
+WriteCombining, Uncached }` nas APIs de mapeamento; o Codex usa-o na Fase 10.
+**Porquê WC:** escritas no framebuffer são agrupadas em rajadas em vez de
+irem uma a uma para o barramento — tipicamente várias vezes mais rápido a
+desenhar; ler do framebuffer continua lento, daí o double buffering em RAM.
+
+### D-021 — IPC: canais com mensagens pequenas + dados grandes por memória partilhada (2026-11-25, CLAUDE)
+Canais bidirecionais com fila limitada (sem alocação sem limite pedida pelo
+user space → sem DoS de memória do kernel). Cada mensagem tem bytes
+copiados (tamanho máximo fixo, pequeno) e pode transportar handles. Píxeis
+e outros dados grandes vão sempre em buffers partilhados: zero cópias.
+**Porquê:** copiar mensagens pequenas é mais rápido e mais seguro do que
+partilhar memória para tudo (o recetor recebe uma cópia que o emissor já não
+pode alterar — sem double fetch / TOCTOU).

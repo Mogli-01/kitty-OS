@@ -62,6 +62,7 @@ metade de baixo para o user space e a de cima para o kernel.
 |---|---|---|---|---|
 | `0x0000_0000_0000_0000` | `0x0000_0000_0000_0FFF` | 4 KiB | página nula, **nunca mapeada** (apanha null derefs) | planeado (Fase 6) |
 | `0x0000_0000_0000_1000` | `0x0000_7FFF_FFFF_FFFF` | ~128 TiB | user space (um por processo) | Fase 6 |
+| (dentro do user space) | | | mapeamentos de buffers partilhados (janelas, framebuffer do compositor), em endereços aleatórios (ASLR) | Fase 12 |
 | `0x0000_8000_0000_0000` | `0xFFFF_7FFF_FFFF_FFFF` | — | não canónico (buraco) | hardware |
 | `0xFFFF_8000_0000_0000` | … | até 64 TiB | **HHDM**: toda a RAM física mapeada linearmente (offset dado pelo Limine) | Limine (hoje) |
 | `0xFFFF_C000_0000_0000` | … | 1 TiB | heap do kernel | Fase 3 |
@@ -86,6 +87,44 @@ endereços de 64 bits.
 Cada segmento começa numa fronteira de 4 KiB para que nenhuma página tenha
 de misturar permissões. Isto dá **W^X desde a primeira instrução** (verificado
 com `llvm-readobj --program-headers`).
+
+## Interface gráfica (Fases 10–14) — já considerada no design
+
+```
+  app A          app B                 compositor (user space)
+ [buffer A]     [buffer B]   --READ--> compõe dirty rects --> framebuffer (WC)
+     ^ WRITE        ^ WRITE                ^ DISPLAY             |
+     |              |                      | INPUT               v
+     +---- canais (mensagens + handles) ---+                    ecrã
+                                           ^
+ kernel:  objetos (buffer, canal, display, input) + handles com direitos
+          drivers de teclado/rato --> InputEvent --> só para quem tem INPUT
+```
+
+O que isto obriga o núcleo a ter **desde as primeiras fases** (tarefas
+GUI-PREP no roadmap):
+
+- **PMM com contagem de referências** (Fase 3): o mesmo frame físico pode
+  estar mapeado no espaço da aplicação e do compositor. Só é libertado — e
+  limpo a zero — quando a última referência desaparece.
+- **Tipos de cache no VMM** (Fase 3, D-020): o PAT é programado no arranque
+  com WB/WC/UC; os mapeamentos dizem qual querem. O framebuffer é WC.
+- **Filas de espera no scheduler** (Fase 5): uma thread bloqueia à espera
+  de uma mensagem ou de um evento sem gastar CPU, e é acordada pelo emissor.
+- **Objetos do kernel + handles com direitos** (Fase 6, D-018): buffers,
+  canais, ecrã e input são objetos; processos só os veem através de handles.
+- **Compositor em user space** (D-017): o kernel não sabe o que é uma
+  janela. Só fornece memória partilhada, canais e as capacidades `DISPLAY`
+  e `INPUT`.
+
+Caminho de um frame (zero cópias de píxeis): a aplicação desenha no seu
+buffer → envia "damage(x, y, w, h)" pelo canal → o compositor copia só esse
+retângulo para o seu back buffer → copia as zonas alteradas para o
+framebuffer WC.
+
+Caminho de uma tecla: IRQ → driver de teclado → `InputEvent` → fila do
+objeto `INPUT` → compositor acorda → decide a janela com foco → mensagem
+pelo canal dessa aplicação.
 
 ## Convenções
 

@@ -2,6 +2,8 @@
 
 Estados: **TODO** · **EM CURSO** · **FEITO**. Dono: **CLAUDE** ou **CODEX**.
 Cada um atualiza só as suas tarefas (no mesmo PR em que as faz).
+As tarefas marcadas **GUI-PREP** existem para que o núcleo já nasça
+preparado para a interface gráfica (Fases 10–14).
 
 ## Fase 0 — Organização do projeto
 | Tarefa | Dono | Estado |
@@ -39,6 +41,8 @@ Cada um atualiza só as suas tarefas (no mesmo PR em que as faz).
 | SEGURANÇA: páginas de guarda em todas as pilhas | CLAUDE | TODO |
 | SEGURANÇA: frames libertados limpos a zero | CLAUDE | TODO |
 | Registo dinâmico de consolas (`console::register`) | CLAUDE | TODO |
+| GUI-PREP: PMM com contagem de referências por frame (frames partilhados entre espaços de endereçamento; limpo a zero só quando a última referência sai) | CLAUDE | TODO |
+| GUI-PREP: tipos de cache no VMM via PAT (WB, WC, UC) — `map_mmio(…, CacheType::WriteCombining)` | CLAUDE | TODO |
 | Testes e fuzzing do allocator | CODEX | TODO |
 
 ## Fase 4 — Interrupções de hardware
@@ -57,6 +61,7 @@ Cada um atualiza só as suas tarefas (no mesmo PR em que as faz).
 | Threads do kernel + troca de contexto mínima em assembly | CLAUDE | TODO |
 | Scheduler preemptivo round-robin, depois prioridades | CLAUDE | TODO |
 | DESEMPENHO: medir a troca de contexto em ciclos (rdtsc) | CLAUDE | TODO |
+| GUI-PREP: filas de espera (bloquear/acordar threads) — base do IPC e dos eventos de input | CLAUDE | TODO |
 | Benchmarks automáticos (troca de contexto, syscalls) | CODEX | TODO |
 
 ## Fase 6 — User mode
@@ -66,6 +71,7 @@ Cada um atualiza só as suas tarefas (no mesmo PR em que as faz).
 | `UserPtr<T>`, `copy_from_user` / `copy_to_user` | CLAUDE | TODO |
 | Espaços de endereçamento separados por processo | CLAUDE | TODO |
 | ELF loader | CLAUDE | TODO |
+| GUI-PREP: objetos do kernel + tabela de handles por processo, com direitos (D-018) | CLAUDE | TODO |
 | SEGURANÇA: SMEP, SMAP, UMIP ativos | CLAUDE | TODO |
 | Biblioteca de syscalls para userland | CODEX | TODO |
 | Fuzzing das syscalls | CODEX | TODO |
@@ -92,3 +98,45 @@ Cada um atualiza só as suas tarefas (no mesmo PR em que as faz).
 | SMP (vários núcleos), locks por CPU | CLAUDE | TODO |
 | Sistema de ficheiros em disco | CODEX | TODO |
 | Mais drivers (AHCI/NVMe, rede) | CODEX | TODO |
+
+## Fase 10 — Gráficos base
+| Tarefa | Dono | Estado |
+|---|---|---|
+| Biblioteca gráfica em user space: píxeis, retângulos, linhas, blit | CODEX | TODO |
+| Fontes bitmap, depois PSF e TrueType simples | CODEX | TODO |
+| Double buffering | CODEX | TODO |
+| Framebuffer mapeado com write-combining (usa a API de PAT da Fase 3) | CODEX | TODO |
+| Capacidade `DISPLAY`: syscall para mapear o framebuffer só no processo que a tem; a consola do kernel larga o ecrã | CLAUDE | TODO |
+
+## Fase 11 — Input
+| Tarefa | Dono | Estado |
+|---|---|---|
+| Driver de rato PS/2 | CODEX | TODO |
+| Driver USB HID (teclado e rato) | CODEX | TODO |
+| Sistema de eventos de input unificado (`InputEvent`: teclado + rato) | CODEX | TODO |
+| Entrega dos eventos ao user space só ao processo com a capacidade `INPUT` (D-019) | CLAUDE | TODO |
+
+## Fase 12 — Memória partilhada e IPC rápido
+| Tarefa | Dono | Estado |
+|---|---|---|
+| Syscalls de buffers partilhados: criar, mapear, partilhar por handle, com direitos (READ/WRITE/MAP/TRANSFER) | CLAUDE | TODO |
+| Canais de mensagens (mensagens pequenas copiadas + transferência de handles) | CLAUDE | TODO |
+| DESEMPENHO: medir a latência de ida e volta de uma mensagem em ciclos | CLAUDE | TODO |
+| Fuzzing das syscalls de memória partilhada e canais | CODEX | TODO |
+
+## Fase 13 — Compositor / gestor de janelas (user space)
+| Tarefa | Dono | Estado |
+|---|---|---|
+| Protocolo compositor ↔ aplicações (mensagens, buffers, eventos) em `docs/INTERFACES.md` | CLAUDE | TODO |
+| Foco, encaminhamento do input e "secure attention key" (combinação de teclas que só o compositor vê) | CLAUDE | TODO |
+| Composição das janelas, cursor, cliques | CODEX | TODO |
+| Redesenhar só as zonas alteradas (dirty rectangles) | CODEX | TODO |
+| Revisão de segurança do compositor (isolamento entre janelas, ver SECURITY.md) | CLAUDE | TODO |
+
+## Fase 14 — Toolkit e aplicações
+| Tarefa | Dono | Estado |
+|---|---|---|
+| Toolkit: botões, caixas de texto, menus | CODEX | TODO |
+| Terminal gráfico | CODEX | TODO |
+| Explorador de ficheiros | CODEX | TODO |
+| Ambiente de trabalho com barra de tarefas e tema "kitty" | CODEX | TODO |
