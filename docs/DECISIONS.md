@@ -384,3 +384,15 @@ e **antes** do `sti`. Um driver pode alocar, reclamar o hardware e registar
 o seu IRQ sem correr o risco de receber a primeira interrupção a meio da
 inicialização. O kernel passou a terminar o arranque em idle com as
 interrupções ligadas (em vez de `cli; hlt`).
+
+### D-105 — PIT legado em modo periódico (2026-11-25, CODEX)
+
+O crate `kitty-pit` programa o canal 0 do PIT 8254 em modo 2 através de
+`PortBlock`. Os divisores válidos são 2–65 536. O valor máximo usa a
+codificação de 16 bits a zero prevista pelo hardware. Um tipo validado
+permite calcular o período antes de escrever nas portas e preservar
+a razão exata divisor/frequência nominal para contabilizar tempo.
+
+A programação faz-se com IRQ0 mascarado. Se uma escrita falhar mantém-se a
+linha mascarada até uma configuração completa. O driver fica disponível
+para integração quando houver um consumidor de ticks no kernel.

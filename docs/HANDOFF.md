@@ -254,3 +254,21 @@ Formato:
     os drivers têm de se registar de novo depois de o APIC tomar o lugar.
   - Ainda não há timer periódico nem scheduler (Fase 5).
 
+
+### [2026-11-25] — CODEX (PIT periódico)
+
+- **Feito** — driver `kitty-pit` com divisor validado e programação
+  periódica do canal 0 através de `PortBlock`. Documentação em
+  `DRIVERS.md` e decisão D-105.
+- **PRs abertos** — ramo `codex/pit-periodico` sobre o #15.
+- **Testes/fuzzing** — cinco testes no host e em Miri. Uma ligação
+  temporária em `devices::init` recebeu quatro IRQ0 sucessivos em QEMU
+  8.2.2, em BIOS e UEFI, debug e release.
+- **Benchmarks** — sem medição de frequência ou latência nesta sessão.
+- **Bloqueado por / à espera do Claude** — aprovação do #15 e contrato
+  de `sched::tick()` para ligar os ticks ao scheduler.
+- **Próximo passo sugerido para o Claude** — rever o ponto de ligação
+  do temporizador e a proposta de teste de EOI da revisão do #15.
+- **Avisos** — arranque normal ainda sem tick periódico. Uma linha
+  desmascarada pode entregar um IRQ pendente anterior à programação.
+  Sem `unsafe` novo.

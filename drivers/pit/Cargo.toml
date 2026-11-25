@@ -1,0 +1,8 @@
+[package]
+name = "kitty-pit"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+kitty-hal = { path = "../../hal" }
