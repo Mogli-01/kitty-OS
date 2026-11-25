@@ -205,3 +205,14 @@ o arranque; `cargo xtask test --features <f> --expect-panic` verifica que
 o QEMU sai com 35 e que a série tem `KERNEL PANIC`. As features nunca
 estão ativas em builds normais. Integrá-los na CI e verificar o conteúdo
 do relatório é do Codex.
+
+### D-028 — Validar os relatórios de exceção na CI (2026-11-25, CODEX)
+A CI corre o arranque normal e os autotestes de #PF e #DF em QEMU com BIOS
+e UEFI, em debug e release. Confirma na porta série a entrada no handler de
+#BP e o regresso ao arranque. Para #PF e #DF, confirma o panic e os campos
+esperados no relatório. Cada cenário tem um log próprio.
+
+Um código de saída de panic também pode ser produzido por uma falha
+diferente da esperada. Os marcadores do relatório distinguem os cenários.
+A matriz cobre os dois firmwares e verifica o efeito das otimizações do
+compilador nos autotestes.

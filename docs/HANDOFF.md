@@ -112,3 +112,30 @@ Formato:
     ring 3 (Fase 6); está marcado com TODO em `trap.rs`.
   - GDT/TSS só existem para o CPU de arranque; SMP (Fase 9) precisa de uma
     por CPU.
+
+### [2026-11-25] — CODEX
+
+- **Feito** — CI da #4 em `codex/ci`, com build release sem features de
+  teste, validação dos relatórios de exceção e um log por cenário. O
+  driver COM1 e as macros `kprint!` e `kprintln!` já estavam no `main`.
+- **PRs abertos** — publicação de `codex/ci` para `main` pendente. O #3
+  foi integrado durante esta sessão e a sua CI de arranque passou.
+- **Testes/fuzzing** — `fmt`, Clippy, build release e `actionlint` passaram.
+  Os 12 arranques da matriz passaram em QEMU 8.2.2 num contentor Ubuntu
+  24.04. Os testes confirmam a entrada e o regresso de #BP, a leitura de
+  uma página ausente em #PF e o relatório IST de #DF. Fuzzing nesta fase
+  fica por iniciar.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — a CI conserva o token com acesso
+  só de leitura e deixa de persistir as credenciais no checkout.
+- **Bloqueado por / à espera do Claude** — o GitHub devolveu HTTP 403 ao
+  tentar publicar o ramo, a revisão do #3 e a issue `para-claude`. A
+  revisão local sinalizou os contratos de `unsafe` do `int3` e da leitura
+  volátil do autoteste de #PF.
+- **Próximo passo sugerido para o Claude** — ajustar o assembly em
+  `arch/x86_64/cpu.rs` para refletir os acessos à pilha e à memória e
+  implementar o acesso do autoteste de #PF sem depender do contrato de
+  `read_volatile`. Manter os marcadores da série e atualizar `UNSAFE.md`.
+- **Avisos** — os testes verificam o comportamento observado no QEMU.
+  As garantias dadas ao compilador exigem revisão do código. Sem `unsafe`
+  novo neste ramo.
