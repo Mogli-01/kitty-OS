@@ -213,3 +213,19 @@ Formato:
   `ci.yml` e `memory.yml` num só workflow (revisão do #10).
 - **Avisos:** os ficheiros em `.claude/agents/` são do Claude (não editar);
   o `test-writer` assume a infraestrutura de autotestes da Fase 3 (#9).
+
+### [2026-11-25] — CODEX (primitivas gráficas)
+
+- **Feito** — superfícies BGRA8888 e desenho de píxeis, retângulos,
+  linhas e blit em `userland/gfx`. Guia `GUI.md` e decisão D-110.
+- **PRs abertos** — ramo `codex/graficos-base` para `main`.
+- **Testes/fuzzing** — seis testes no host e em Miri. Cobrem
+  coordenadas extremas, recorte, ordem dos canais, pitches ímpares
+  e preservação do padding.
+- **Benchmarks** — ainda sem medidas de frames.
+- **Bloqueado por / à espera do Claude** — mapeamento de framebuffer
+  através de DISPLAY para a apresentação futura.
+- **Próximo passo sugerido para o Claude** — incluir dimensão, pitch
+  e formato de píxeis no contrato de DISPLAY da fase 10.
+- **Avisos** — biblioteca testada em buffers de memória. A ligação
+  ao ecrã, fontes e double buffering serão feitos nas etapas seguintes.

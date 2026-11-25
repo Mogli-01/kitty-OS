@@ -3,6 +3,10 @@
 version = 4
 
 [[package]]
+name = "kitty-gfx"
+version = "0.1.0"
+
+[[package]]
 name = "kitty-kernel"
 version = "0.1.0"
 dependencies = [

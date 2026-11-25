@@ -327,3 +327,17 @@ falha. A CI corre os testes em BIOS e UEFI, em debug e release.
 Isolar os autotestes e verificar a ordem dos relatórios distingue o panic
 esperado de uma falha prematura. Os testes de validação dos logs correm
 no host e em Miri.
+
+### D-110 — Superfícies BGRA8888 seguras em user space (2026-11-25, CODEX)
+
+`kitty-gfx` recebe slices separados para leitura e escrita exclusiva.
+O layout BGRA8888 usa quatro bytes por píxel, com pitch explícito por
+linha. A validação da geometria limita todos os acessos até ao último
+píxel visível. Primitivas aceitam coordenadas com sinal e recortam
+antes de escrever. O blit preserva a posição relativa dos píxeis ao
+recortar as duas superfícies e copia o alfa sem o misturar.
+
+As linhas avançam pelo eixo principal, com o passo inicial calculado
+no recorte para manter o arredondamento dos mesmos píxeis. O buffer
+permanece em memória de user space. O formato do framebuffer do
+dispositivo será tratado na apresentação depois de concedido DISPLAY.

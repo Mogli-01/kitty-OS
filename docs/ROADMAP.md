@@ -107,7 +107,7 @@ preparado para a interface gráfica (Fases 10–14).
 ## Fase 10 — Gráficos base
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Biblioteca gráfica em user space: píxeis, retângulos, linhas, blit | CODEX | TODO |
+| Biblioteca gráfica em user space: píxeis, retângulos, linhas, blit | CODEX | Primitivas BGRA8888 em revisão no ramo `codex/graficos-base` |
 | Fontes bitmap, depois PSF e TrueType simples | CODEX | TODO |
 | Double buffering | CODEX | TODO |
 | Framebuffer mapeado com write-combining (usa a API de PAT da Fase 3) | CODEX | TODO |
