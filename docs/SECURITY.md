@@ -48,7 +48,9 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | W^X em todo o kernel com paginação própria | executar dados, alterar código | PLANEADA | 3 |
 | CR0.WP (ring 0 respeita páginas só de leitura) | o kernel escrever em `.text`/`.rodata` | PLANEADA | 3 |
 | Páginas de guarda em todas as pilhas | stack overflow silencioso | PLANEADA | 3 |
-| Frames libertados limpos a zero | fuga de dados entre processos | PLANEADA | 3 |
+| Frames libertados limpos a zero; frames entregues sempre a zeros | fuga de dados entre processos | ATIVA | 3 |
+| Lista livre do PMM fora de banda (D-028) | use-after-free corromper o alocador de frames | ATIVA | 3 |
+| Deteção de double free e overflow de referências no PMM | dois donos para a mesma memória | ATIVA | 3 |
 | Locks que desativam interrupções | deadlocks em handlers | PLANEADA | 4 |
 | SMEP | o kernel executar código de user | PLANEADA | 6 |
 | SMAP | o kernel ler/escrever memória de user sem querer | PLANEADA | 6 |

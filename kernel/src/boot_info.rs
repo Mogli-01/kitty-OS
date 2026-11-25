@@ -4,12 +4,64 @@
 //! Limine structures; it validates them and builds these types. Everything
 //! else in the kernel only ever sees validated data.
 
+pub use crate::arch::x86_64::boot::MemoryMap;
+
 /// Information collected from the bootloader at entry.
 pub struct BootInfo {
+    /// Offset of the higher-half direct map: physical address `p` is
+    /// readable at virtual address `p + hhdm_offset`. This is a kernel
+    /// address: never print it.
+    pub hhdm_offset: u64,
+    /// Physical memory map.
+    pub memory_map: MemoryMap,
+    /// Where the kernel image was loaded.
+    pub kernel_image: KernelImage,
     /// The first usable linear framebuffer, if any.
     pub framebuffer: Option<FrameBuffer>,
     /// Bootloader name and version, if reported.
     pub bootloader: Option<BootloaderInfo>,
+}
+
+/// Physical and virtual load address of the kernel image.
+#[derive(Clone, Copy)]
+pub struct KernelImage {
+    /// Physical address of the first byte of the image.
+    pub phys_base: u64,
+    /// Virtual address it is linked/mapped at.
+    pub virt_base: u64,
+}
+
+/// What a physical memory region is used for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MemoryKind {
+    /// Free RAM the kernel may allocate.
+    Usable,
+    /// RAM holding bootloader data (our boot stack, page tables, the memory
+    /// map itself). Becomes usable once nothing references it.
+    BootloaderReclaimable,
+    /// The kernel image and boot modules.
+    KernelAndModules,
+    /// ACPI tables; reusable after they have been parsed.
+    AcpiReclaimable,
+    /// ACPI non-volatile storage: never touch.
+    AcpiNvs,
+    /// The linear framebuffer.
+    Framebuffer,
+    /// Defective RAM.
+    Bad,
+    /// Anything else (firmware, MMIO holes, …).
+    Reserved,
+}
+
+/// One entry of the physical memory map.
+#[derive(Clone, Copy, Debug)]
+pub struct MemoryRegion {
+    /// Physical start address.
+    pub base: u64,
+    /// Length in bytes.
+    pub len: u64,
+    /// Usage of the region.
+    pub kind: MemoryKind,
 }
 
 /// Name and version string of the bootloader.

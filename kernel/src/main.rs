@@ -39,8 +39,8 @@ use boot_info::BootInfo;
 
 /// Architecture-independent kernel entry point, called by the arch layer once
 /// the bootloader hand-off has been validated.
-pub fn kmain(boot: BootInfo) -> ! {
-    console::init(boot.framebuffer);
+pub fn kmain(mut boot: BootInfo) -> ! {
+    console::init(boot.framebuffer.take());
 
     kprintln!("Hello from kitty-OS");
     if let Some(loader) = boot.bootloader {
@@ -54,12 +54,20 @@ pub fn kmain(boot: BootInfo) -> ! {
     arch::breakpoint();
     kprintln!("[cpu] breakpoint exception handled, execution resumed");
 
+    mm::init(&boot);
+    let stats = mm::pmm::stats();
+    kprintln!(
+        "[mm] physical memory: {} MiB managed, {} MiB free; frame allocator self-test passed",
+        stats.total_frames * 4 / 1024,
+        stats.free_frames * 4 / 1024
+    );
+
     #[cfg(feature = "selftest-page-fault")]
     arch::x86_64::selftest::page_fault();
     #[cfg(feature = "selftest-double-fault")]
     arch::x86_64::selftest::double_fault();
 
-    kprintln!("[boot] phase 2 complete, halting");
+    kprintln!("[boot] boot complete, halting");
 
     #[cfg(feature = "qemu-exit")]
     arch::qemu::exit(arch::qemu::ExitCode::Success);

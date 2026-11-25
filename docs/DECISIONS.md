@@ -205,3 +205,22 @@ o arranque; `cargo xtask test --features <f> --expect-panic` verifica que
 o QEMU sai com 35 e que a série tem `KERNEL PANIC`. As features nunca
 estão ativas em builds normais. Integrá-los na CI e verificar o conteúdo
 do relatório é do Codex.
+
+### D-028 — PMM: base de dados de frames com lista livre fora de banda (2026-11-25, CLAUDE)
+Cada frame físico de 4 KiB tem uma entrada `FrameInfo { refcount, next_free,
+dirty }` (12 bytes, ~0,3 % da RAM) guardada num bloco de RAM reservado no
+arranque. Alocar e libertar são O(1) (pilha de frames livres).
+**Porquê fora de banda:** muitos kernels guardam o ponteiro "próximo livre"
+*dentro* do frame livre. Um bug de use-after-free que escreva nesse frame
+corrompe o alocador e pode fazê-lo devolver um endereço escolhido pelo
+atacante. Aqui o link vive na base de dados, onde nenhum dono de frame chega.
+**Contagem de referências** (GUI-PREP): o mesmo frame pode estar mapeado em
+vários espaços de endereçamento; só volta à lista livre quando a última
+referência desaparece. `PhysFrame` é um tipo com dono (não `Copy`): o
+compilador impede libertar duas vezes a mesma referência, e o `Drop` liberta.
+**Zeros:** um frame é limpo quando a última referência sai, e os frames que
+vêm do bootloader são limpos na primeira alocação (arranque rápido). Todo o
+frame entregue está a zeros. Double free e overflow da contagem são bugs
+fatais (panic) em vez de corrupção silenciosa.
+**Limitações:** a memória "bootloader reclaimable" ainda não é reutilizada
+(tem a pilha de arranque e o memory map); índices de 32 bits limitam a 16 TiB.

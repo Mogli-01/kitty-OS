@@ -87,11 +87,25 @@ Textos estáveis na série que os testes podem verificar:
 
 ---
 
+### `mm::alloc_frame()` / `mm::PhysFrame` — INSTÁVEL
+Fornece: CLAUDE (`kernel/src/mm/pmm.rs`). Usa: núcleo; CODEX (drivers com
+DMA, através do VMM quando existir).
+```rust
+pub fn alloc_frame() -> Option<PhysFrame>;   // frame de 4 KiB, sempre a zeros
+impl PhysFrame {
+    pub fn addr(&self) -> PhysAddr;
+    pub fn share(&self) -> Result<PhysFrame, FrameError>; // +1 referência
+}
+impl Drop for PhysFrame { /* -1 referência; a 0: limpo e libertado */ }
+pub fn pmm::stats() -> PmmStats;              // total/free, sem endereços
+```
+`PhysFrame` não é `Copy`: cada valor é uma referência. Nunca guardar só o
+endereço e deixar o `PhysFrame` cair, senão o frame é libertado.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |
 |---|---|---|---|
-| `mm::alloc_frame() -> Option<PhysFrame>` / `mm::free_frame(PhysFrame)` (frame limpo a zero) | CLAUDE | CODEX (drivers com DMA) | 3 |
 | `mm::map_mmio(PhysAddr, len) -> Result<MmioRegion, MapError>` (uncached, NX) | CLAUDE | CODEX | 3 |
 | `console::register(&'static SpinLock<dyn Console>)` | CLAUDE | CODEX | 3 |
 | `arch::irq::register(vector, handler: fn(&InterruptFrame))` | CLAUDE | CODEX | 4 |
@@ -102,7 +116,6 @@ Textos estáveis na série que os testes podem verificar:
 | ABI das syscalls (números, registos, códigos de erro) | CLAUDE | CODEX (userland) | 6 |
 | `trait FileSystem` / `trait Inode` do VFS | CODEX | CLAUDE (syscalls) | 7 |
 | `enum CacheType { WriteBack, WriteCombining, Uncached }` nas APIs de mapeamento (`map_mmio`, mapeamentos de user) | CLAUDE | CODEX | 3 |
-| Contagem de referências de frames: `PhysFrame` partilhado só através do VMM (os drivers nunca libertam frames de outros) | CLAUDE | CODEX | 3 |
 | Filas de espera: `WaitQueue::wait()` / `wake_one()` / `wake_all()` | CLAUDE | CODEX (drivers que bloqueiam) | 5 |
 | Handles e direitos: `Handle`, `Rights { READ, WRITE, MAP, TRANSFER, … }`, `handle_close`, `handle_duplicate(h, rights_menores)` | CLAUDE | CODEX (userland) | 6 |
 | `struct InputEvent` unificado (teclado + rato: tipo, código, valor, timestamp) e `input::push(InputEvent)` chamada pelos drivers | CODEX (formato) + CLAUDE (entrega) | ambos | 11 |
