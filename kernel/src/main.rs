@@ -28,6 +28,7 @@ extern crate alloc;
 pub mod arch;
 pub mod boot_info;
 pub mod console;
+pub mod devices;
 #[allow(unsafe_code)]
 pub mod mm;
 mod panic;
@@ -94,6 +95,24 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         None => panic!("MMIO self-test failed"),
     }
 
+    assert!(arch::irq::selftest(), "interrupt dispatch self-test failed");
+    devices::init();
+    arch::enable_interrupts();
+    assert!(
+        sync::irq_spinlock::selftest(),
+        "IrqSpinLock self-test failed"
+    );
+    kprintln!(
+        "[irq] interrupts enabled (controller: {}); dispatch and IrqSpinLock self-tests passed",
+        arch::irq::controller_name()
+    );
+
+    #[cfg(feature = "selftest-irq-pit")]
+    {
+        assert!(arch::x86_64::selftest::irq_pit(), "PIT IRQ0 never arrived");
+        kprintln!("[irq] hardware IRQ0 (PIT) delivered through the 8259 PIC");
+    }
+
     #[cfg(feature = "selftest-page-fault")]
     arch::x86_64::selftest::page_fault();
     #[cfg(feature = "selftest-double-fault")]
@@ -109,11 +128,12 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     #[cfg(feature = "selftest-heap-overflow")]
     arch::x86_64::selftest::heap_overflow();
 
-    kprintln!("[boot] boot complete, halting");
+    kprintln!("[boot] boot complete, idling with interrupts enabled");
 
     #[cfg(feature = "qemu-exit")]
     arch::qemu::exit(arch::qemu::ExitCode::Success);
 
+    // Idle with interrupts enabled so drivers keep receiving IRQs.
     #[cfg(not(feature = "qemu-exit"))]
-    arch::halt_forever()
+    arch::idle_forever()
 }

@@ -23,14 +23,14 @@ use super::paging::{
 };
 use crate::arch::x86_64::{cpu, gdt, idt, stacks};
 use crate::boot_info::{BootInfo, MemoryKind, MemoryMap};
-use crate::sync::SpinLock;
+use crate::sync::IrqSpinLock;
 
 /// Start of the MMIO window (1 TiB, see the memory map in ARCHITECTURE.md).
 const MMIO_BASE: u64 = 0xFFFF_D000_0000_0000;
 const MMIO_END: u64 = MMIO_BASE + (1 << 40);
 
-static KERNEL_SPACE: SpinLock<Option<AddressSpace>> = SpinLock::new(None);
-static MEMORY_MAP: SpinLock<Option<MemoryMap>> = SpinLock::new(None);
+static KERNEL_SPACE: IrqSpinLock<Option<AddressSpace>> = IrqSpinLock::new(None);
+static MEMORY_MAP: IrqSpinLock<Option<MemoryMap>> = IrqSpinLock::new(None);
 static MMIO_NEXT: AtomicU64 = AtomicU64::new(MMIO_BASE);
 
 // Section boundaries from kernel/linker-x86_64.ld.

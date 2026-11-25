@@ -114,3 +114,40 @@ pub fn heap_overflow() {
     }
     core::hint::black_box(&buf);
 }
+
+/// Fires a real hardware interrupt: programs PIT channel 0 for a ~1 ms
+/// one-shot and waits for IRQ0 to arrive through the 8259 PIC. Proves the
+/// whole path: PIC remap/unmask, IDT gate, stub, dispatch, handler, EOI.
+/// Must run with interrupts enabled. Returns whether IRQ0 arrived.
+#[cfg(feature = "selftest-irq-pit")]
+pub fn irq_pit() -> bool {
+    use core::sync::atomic::{AtomicU32, Ordering};
+    use kitty_hal::PortBlock;
+
+    use super::irq::{self, Vector};
+    use super::legacy::{self, LegacyDevice};
+
+    static FIRED: AtomicU32 = AtomicU32::new(0);
+    fn on_irq0(_: Vector) {
+        FIRED.fetch_add(1, Ordering::Relaxed);
+    }
+
+    let Some(pit) = legacy::claim(LegacyDevice::Pit) else {
+        return false;
+    };
+    if irq::register_isa(0, on_irq0).is_err() {
+        return false;
+    }
+    // Mode/command: channel 0, low then high byte, mode 0 (interrupt on
+    // terminal count), binary. Count 1193 at 1.193182 MHz ≈ 1 ms.
+    let programmed = pit.write8(3, 0x30).is_some()
+        && pit.write8(0, 0xA9).is_some()
+        && pit.write8(0, 0x04).is_some();
+    let mut spins = 0u64;
+    while programmed && FIRED.load(Ordering::Relaxed) == 0 && spins < 500_000_000 {
+        core::hint::spin_loop();
+        spins += 1;
+    }
+    let _ = irq::unregister_isa(0);
+    FIRED.load(Ordering::Relaxed) > 0
+}

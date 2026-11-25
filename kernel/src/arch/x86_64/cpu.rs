@@ -2,26 +2,77 @@
 
 use core::arch::asm;
 
+// A note on asm options for cli/sti/hlt (same lesson as issue #7): none of
+// these blocks may use `nomem`. They start or end a region where interrupt
+// handlers can (or cannot) run, and handlers read and write Rust memory.
+// Without `nomem` each block is a compiler memory barrier, so the compiler
+// cannot move memory accesses into or out of a critical section.
+
 /// Masks maskable interrupts on the current CPU (`cli`).
 ///
 /// This is safe: disabling interrupts cannot break memory safety, it only
 /// delays interrupt delivery.
 #[inline]
 pub fn disable_interrupts() {
-    // SAFETY: `cli` only clears RFLAGS.IF. It touches no memory and no stack.
-    // We do not claim `preserves_flags` because it changes IF.
+    // SAFETY: `cli` only clears RFLAGS.IF; no stack use. Not `nomem` (see
+    // above) and not `preserves_flags` (it changes IF).
     unsafe {
-        asm!("cli", options(nomem, nostack));
+        asm!("cli", options(nostack));
     }
+}
+
+/// Unmasks maskable interrupts on the current CPU (`sti`).
+///
+/// Safe: every interrupt vector has a handler that saves and restores the
+/// full register state, and all kernel state shared with handlers is behind
+/// `IrqSpinLock` or atomics. Must only be used after `arch::init` (IDT
+/// loaded), which the boot order guarantees.
+#[inline]
+pub fn enable_interrupts() {
+    // SAFETY: see above. Not `nomem`: an interrupt can run right after this
+    // instruction and touch memory.
+    unsafe {
+        asm!("sti", options(nostack));
+    }
+}
+
+/// Whether maskable interrupts are currently enabled (RFLAGS.IF).
+#[inline]
+pub fn interrupts_enabled() -> bool {
+    let rflags: u64;
+    // SAFETY: `pushfq; pop` only copies RFLAGS through the stack slot it
+    // pushes itself; it reads no Rust memory.
+    unsafe {
+        asm!("pushfq", "pop {}", out(reg) rflags, options(nomem, preserves_flags));
+    }
+    rflags & (1 << 9) != 0
 }
 
 /// Stops the CPU until the next interrupt arrives (`hlt`).
 #[inline]
 pub fn halt() {
-    // SAFETY: `hlt` just idles the core until an interrupt (or NMI/SMI)
-    // arrives. It has no memory or flag side effects.
+    // SAFETY: `hlt` idles the core until an interrupt (or NMI/SMI) arrives.
+    // Not `nomem`: the handler that wakes us may change memory we read next.
     unsafe {
-        asm!("hlt", options(nomem, nostack, preserves_flags));
+        asm!("hlt", options(nostack, preserves_flags));
+    }
+}
+
+/// Enables interrupts and halts **atomically**: `sti` takes effect only
+/// after the next instruction, so no interrupt can slip in between and be
+/// "lost" before `hlt` (the classic lost-wakeup race of `sti(); hlt()`).
+#[inline]
+pub fn enable_interrupts_and_halt() {
+    // SAFETY: as for `enable_interrupts` and `halt`.
+    unsafe {
+        asm!("sti", "hlt", options(nostack));
+    }
+}
+
+/// Idles forever with interrupts enabled, serving IRQs.
+pub fn idle_forever() -> ! {
+    loop {
+        enable_interrupts_and_halt();
     }
 }
 
