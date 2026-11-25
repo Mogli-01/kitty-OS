@@ -1,7 +1,8 @@
 # fs/ — área do Codex
 
 VFS, initrd e, mais tarde, sistemas de ficheiros em disco (Fase 7 e 9).
-# Sistema de ficheiros
+
+## Initrd USTAR
 
 `initrd/` contém o leitor só de leitura do arquivo USTAR. Para criar um
 arquivo compatível com GNU tar, prepare uma pasta com ficheiros regulares
