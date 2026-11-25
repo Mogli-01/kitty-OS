@@ -1,9 +1,8 @@
 //! Kernel console: fans text out to every available output.
 //!
-//! Phase 1 outputs: the early COM1 serial port and a text console drawn on
-//! the Limine framebuffer. Both are fixed slots because there is no heap yet;
-//! Phase 3 will add dynamic registration of [`Console`] implementations from
-//! `drivers/` (see docs/INTERFACES.md).
+//! Built-in outputs: the early COM1 serial port and a text console drawn on
+//! the Limine framebuffer. Drivers add more with [`register`] (needs the
+//! heap; see docs/INTERFACES.md).
 //!
 //! Security note: never print kernel addresses through this console once user
 //! space exists — it would defeat KASLR (docs/SECURITY.md).
@@ -11,6 +10,8 @@
 mod font;
 mod framebuffer;
 
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 use core::fmt::{self, Write};
 
 use crate::arch::x86_64::serial::SerialPort;
@@ -35,6 +36,8 @@ impl Console for SerialPort {
 struct Consoles {
     serial: Option<SerialPort>,
     fb: Option<FbConsole>,
+    /// Consoles registered at runtime (drivers, Phase 4+).
+    extra: Vec<Box<dyn Console>>,
 }
 
 impl Write for Consoles {
@@ -45,6 +48,9 @@ impl Write for Consoles {
         if let Some(fb) = self.fb.as_mut() {
             fb.write_str(s);
         }
+        for c in self.extra.iter_mut() {
+            c.write_str(s);
+        }
         Ok(())
     }
 }
@@ -52,7 +58,15 @@ impl Write for Consoles {
 static CONSOLES: SpinLock<Consoles> = SpinLock::new(Consoles {
     serial: None,
     fb: None,
+    extra: Vec::new(),
 });
+
+/// Adds a console that will receive all kernel output from now on.
+/// Needs the heap (Phase 3+). Never pass a console that is visible to user
+/// space *and* not meant to show kernel logs.
+pub fn register(console: Box<dyn Console>) {
+    CONSOLES.lock().extra.push(console);
+}
 
 /// Brings up the serial port and, if present, the framebuffer console.
 pub fn init(framebuffer: Option<FrameBuffer>) {

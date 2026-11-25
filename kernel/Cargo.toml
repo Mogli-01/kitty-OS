@@ -27,6 +27,7 @@ selftest-stack-overflow = []
 selftest-write-text = []
 selftest-exec-data = []
 selftest-write-idt = []
+selftest-heap-overflow = []
 
 [dependencies]
 limine = "0.6.5"

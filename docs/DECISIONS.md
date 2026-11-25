@@ -279,3 +279,29 @@ acessos voláteis, com limites e alinhamento verificados.
 `IA32_PAT = 0x0007_0106_0007_0106`: índice 0 = WB, 1 = WC, 2 = UC-, 3 = UC
 (4–7 repetem). `CacheType` escolhe os bits PWT/PCD das entradas. É feito com
 `wbinvd` antes, imediatamente antes de carregar as tabelas novas.
+
+### D-035 — Heap do kernel: classes de tamanho + páginas com guarda (2026-11-25, CLAUDE)
+**Pequenas** (≤ 2048 bytes): 8 listas livres (16…2048 bytes); quando uma
+classe fica vazia recebe uma página nova cortada em pedaços iguais. O(1),
+pedaços naturalmente alinhados ao tamanho. **Grandes**: páginas mapeadas a
+pedido na região do heap (`0xFFFF_C000_0000_0000`, 1 TiB), seguidas de uma
+**página de guarda por mapear**; ao libertar, as páginas são desmapeadas e
+devolvidas ao PMM (que as limpa).
+**Endurecimento:** pedaços pequenos são limpos a zero ao libertar (toda a
+alocação já vem a zeros); o link da lista livre guardado no pedaço é
+**codificado** (`next ^ (pedaço >> 12) ^ segredo`, "safe linking") e
+validado ao tirar da lista — um use-after-free que o reescreva é detetado
+em vez de devolver um endereço escolhido pelo atacante; libertar o pedaço
+que já está à cabeça da lista (double free comum) é detetado.
+**Limitações conhecidas:** o segredo vem do TSC (fraco) até haver RNG na
+Fase 8; o espaço virtual das alocações grandes não é reutilizado (1 TiB
+chega por agora); o heap usa `SpinLock` sem desligar interrupções, por isso
+**não se pode alocar em handlers de interrupção** até à Fase 4.
+Ordem de locks: heap → espaço de endereçamento do kernel → PMM.
+
+### D-036 — `xtask test --expect <texto>` (2026-11-25, CLAUDE)
+Em release, o LLVM pode eliminar pares alloc/dealloc e outros testes; um
+autoteste de falha que entrasse em panic por outra razão passava por
+engano. Com `--expect` o teste exige o texto do relatório (ex.:
+`"protection violation on write"`). Os autotestes do núcleo devem ser
+sempre corridos com `--expect`.
