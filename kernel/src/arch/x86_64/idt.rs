@@ -69,13 +69,24 @@ impl Gate {
     }
 }
 
-struct Idt(UnsafeCell<[Gate; IDT_ENTRIES]>);
+/// 256 gates × 16 bytes = exactly one 4 KiB page, page-aligned so it can be
+/// mapped read-only after loading: an attacker with a kernel write primitive
+/// can then no longer redirect exceptions by overwriting the IDT.
+#[repr(C, align(4096))]
+struct IdtPage([Gate; IDT_ENTRIES]);
+
+struct Idt(UnsafeCell<IdtPage>);
 
 // SAFETY: written once by the caller that wins `INITIALIZED`, before `lidt`;
 // afterwards only the CPU reads it.
 unsafe impl Sync for Idt {}
 
-static IDT: Idt = Idt(UnsafeCell::new([Gate::MISSING; IDT_ENTRIES]));
+static IDT: Idt = Idt(UnsafeCell::new(IdtPage([Gate::MISSING; IDT_ENTRIES])));
+
+/// Address of the IDT page, to be mapped read-only.
+pub fn table_page() -> u64 {
+    IDT.0.get().addr() as u64
+}
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// Vectors that must always run on a known-good stack.
@@ -103,7 +114,7 @@ pub fn init() {
         }
     }
 
-    let idt_ptr = IDT.0.get();
+    let idt_ptr = IDT.0.get().cast::<[Gate; IDT_ENTRIES]>();
     // SAFETY: we won `INITIALIZED`, so nothing else writes the IDT, and the
     // CPU is not using it yet. The pointer is to a live, aligned static.
     unsafe {

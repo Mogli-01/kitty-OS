@@ -39,3 +39,53 @@ pub fn double_fault() {
         );
     }
 }
+
+/// Recurses until the stack runs into its guard page. The push into the
+/// unmapped guard page faults; delivering that #PF needs the same stack, so
+/// the CPU raises a double fault, handled on IST1. Without the guard page
+/// the recursion would silently overwrite memory below the stack.
+/// Expect `Double Fault (#DF)`.
+#[cfg(feature = "selftest-stack-overflow")]
+pub fn stack_overflow() {
+    #[allow(unconditional_recursion)]
+    fn recurse(depth: u64) -> u64 {
+        // A big local buffer per frame so the overflow happens quickly;
+        // `black_box` stops the compiler from turning this into a loop.
+        let buf = core::hint::black_box([depth; 64]);
+        recurse(depth + 1) + buf[(depth % 64) as usize]
+    }
+    core::hint::black_box(recurse(0));
+}
+
+/// Writes to the kernel's own code. With W^X + CR0.WP this must fault:
+/// expect `Page Fault (#PF)` and "protection violation on write".
+#[cfg(feature = "selftest-write-text")]
+pub fn write_text() {
+    let target = write_text as fn() as usize;
+    let ptr = core::ptr::with_exposed_provenance_mut::<u8>(target);
+    // SAFETY: deliberately invalid write into .text to test W^X; the #PF
+    // handler panics, nothing returns here.
+    unsafe { ptr.write_volatile(0xCC) };
+}
+
+/// Jumps into a data buffer containing `ret`. With NX this must fault on
+/// the instruction fetch: expect "protection violation on instruction fetch".
+#[cfg(feature = "selftest-exec-data")]
+pub fn exec_data() {
+    static mut CODE: [u8; 1] = [0xC3]; // `ret`
+    let addr = (&raw mut CODE).addr();
+    // SAFETY: deliberately calls into a non-executable page to test NX; the
+    // #PF handler panics, so the call never "returns".
+    let f: extern "C" fn() = unsafe { core::mem::transmute(addr) };
+    f();
+}
+
+/// Writes to the IDT, which is mapped read-only after boot: expect
+/// "protection violation on write".
+#[cfg(feature = "selftest-write-idt")]
+pub fn write_idt() {
+    let ptr = core::ptr::with_exposed_provenance_mut::<u64>(super::idt::table_page() as usize);
+    // SAFETY: deliberately invalid write to test that the IDT page is
+    // read-only; the #PF handler panics.
+    unsafe { ptr.write_volatile(0) };
+}
