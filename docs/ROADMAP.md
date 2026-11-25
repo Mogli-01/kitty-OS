@@ -45,7 +45,8 @@ preparado para a interface gráfica (Fases 10–14).
 | Registo dinâmico de consolas (`console::register`) | CLAUDE | TODO |
 | GUI-PREP: PMM com contagem de referências por frame (frames partilhados entre espaços de endereçamento; limpo a zero só quando a última referência sai) | CLAUDE | FEITO |
 | GUI-PREP: tipos de cache no VMM via PAT (WB, WC, UC) — `map_mmio(…, CacheType::WriteCombining)` | CLAUDE | FEITO |
-| Testes e fuzzing do allocator | CODEX | TODO |
+| Testes QEMU do PMM, W^X, NX, WP, páginas de guarda, IDT e MMIO | CODEX | FEITO |
+| Testes e fuzzing do allocator no host | CODEX | TODO |
 
 ## Fase 4 — Interrupções de hardware
 | Tarefa | Dono | Estado |

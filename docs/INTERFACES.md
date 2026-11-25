@@ -93,6 +93,13 @@ Autotestes de falhas (todos com `--expect-panic`): `selftest-page-fault`,
 `selftest-write-text` e `selftest-write-idt` (#PF de escrita),
 `selftest-exec-data` (#PF de instruction fetch).
 
+`cargo xtask test-memory [--bios] [--release]` corre o arranque normal e
+uma compilação separada para cada autoteste da Fase 3. Antes das falhas,
+confirma `frame allocator self-test passed`, a auditoria W^X, o marcador
+`[mm] running on the kernel stack (guard page below it)` e o autoteste MMIO.
+Guarda a série de cada execução em `build/memory-tests/<firmware>-<perfil>/`.
+`test` e `test-memory` dão erro se o log não puder ser gravado.
+
 ---
 
 ### `mm::alloc_frame()` / `mm::PhysFrame` — INSTÁVEL

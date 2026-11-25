@@ -6,6 +6,7 @@
 //!   iso   [--release]            build a hybrid BIOS/UEFI ISO (needs xorriso)
 //!   run   [--release] [--bios]   boot in QEMU (UEFI from build/esp, or BIOS from the ISO)
 //!   test  [--release] [--bios]   boot headless, check serial output and exit code
+//!   test-memory [--release] [--bios]   check the Phase 3 memory protections in QEMU
 //!
 //! Extra options:
 //!   --features <a,b>   extra kernel cargo features (e.g. selftest-page-fault)
@@ -23,6 +24,8 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
+
+mod memory_tests;
 
 /// Limine binary release we boot with. Pinned to an exact commit of the
 /// official `v11.x-binary` branch so a compromised or changed branch cannot
@@ -84,10 +87,12 @@ fn main() -> ExitCode {
             .map(|_| ()),
         "run" => run(&opts),
         "test" => test(&opts),
+        "test-memory" => memory_tests::run(&opts),
         _ => {
             eprintln!(
-                "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios]                  [--features a,b] [--expect-panic]"
+                "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--expect-panic]"
             );
+            eprintln!("       cargo xtask test-memory [--release] [--bios]");
             return ExitCode::FAILURE;
         }
     };
@@ -382,6 +387,10 @@ fn run(opts: &Opts) -> Result<()> {
 }
 
 fn test(opts: &Opts) -> Result<()> {
+    boot_test(opts, &build_dir().join("serial-test.log")).map(|_| ())
+}
+
+fn boot_test(opts: &Opts, log: &Path) -> Result<String> {
     let kernel = build_kernel(opts, true)?;
     let mut cmd = qemu_command(opts, &kernel, true)?;
     let mode = if opts.bios { "BIOS/ISO" } else { "UEFI" };
@@ -417,12 +426,11 @@ fn test(opts: &Opts) -> Result<()> {
         }
     };
     let serial = String::from_utf8_lossy(&reader.join().unwrap_or_default()).into_owned();
-    let log = build_dir().join("serial-test.log");
-    let _ = fs::write(&log, &serial);
     println!(
         "----- serial output -----\n{}\n-------------------------",
         serial.trim_end()
     );
+    fs::write(log, &serial).map_err(|e| format!("writing {}: {e}", log.display()))?;
 
     let Some(status) = status else {
         return Err(format!("timed out after {}s", TEST_TIMEOUT.as_secs()));
@@ -442,5 +450,5 @@ fn test(opts: &Opts) -> Result<()> {
         ));
     }
     println!("xtask: boot test passed ({mode})");
-    Ok(())
+    Ok(serial)
 }

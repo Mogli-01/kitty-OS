@@ -279,3 +279,14 @@ acessos voláteis, com limites e alinhamento verificados.
 `IA32_PAT = 0x0007_0106_0007_0106`: índice 0 = WB, 1 = WC, 2 = UC-, 3 = UC
 (4–7 repetem). `CacheType` escolhe os bits PWT/PCD das entradas. É feito com
 `wbinvd` antes, imediatamente antes de carregar as tabelas novas.
+
+### D-101 — Testes QEMU das proteções de memória (2026-11-25, CODEX)
+`cargo xtask test-memory` reutiliza o teste de arranque e ativa uma única
+feature de falha por execução. Cada execução guarda a porta série num
+ficheiro próprio. Os testes exigem que o arranque passe pelo PMM, pela
+auditoria W^X, pela pilha guardada e pelo MMIO antes de confirmarem o
+relatório da falha. A CI corre os testes em BIOS e UEFI, em debug e release.
+
+Isolar os autotestes e verificar os relatórios distingue o panic esperado
+de uma falha prematura. Os testes de validação dos logs correm no host e
+em Miri.

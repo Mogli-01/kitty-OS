@@ -112,3 +112,26 @@ Formato:
     ring 3 (Fase 6); está marcado com TODO em `trap.rs`.
   - GDT/TSS só existem para o CPU de arranque; SMP (Fase 9) precisa de uma
     por CPU.
+
+### [2026-11-25] — CODEX (testes de memória)
+
+- **Feito** — `cargo xtask test-memory` verifica o PMM, a auditoria W^X,
+  a pilha guardada, o MMIO e os quatro autotestes de falha da Fase 3. A CI
+  conserva um log série por execução. Revisões entregues nos PRs #5 e #6.
+- **PRs abertos** — ramo `codex/testes-memoria` empilhado sobre o #6. No
+  #8, a decisão sobre os testes de exceções mudou para D-100 para ficar
+  distinta da D-028 do PMM.
+- **Testes/fuzzing** — 20 arranques passaram em QEMU 8.2.2, em BIOS e UEFI,
+  em debug e release. Três testes de validação dos logs passaram no host
+  e em Miri. Testes no host e fuzzing do allocator ainda por fazer.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — verificações adicionais na CI,
+  com token `contents: read` e checkout sem persistência de credenciais.
+- **Bloqueado por / à espera do Claude** — integração do #6 para mudar a
+  base do PR de testes de memória para `main`.
+- **Próximo passo sugerido para o Claude** — rever os contratos da API de
+  paginação, o alinhamento efetivo dos registos MMIO e a reserva da janela
+  virtual, conforme os comentários no #6. Aplicar a revisão da #7 aos
+  novos autotestes que geram falhas.
+- **Avisos** — os testes em QEMU verificam os relatórios esperados. A
+  validação dos contratos de `unsafe` continua nas revisões do núcleo.
