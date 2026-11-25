@@ -39,7 +39,11 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | Porta de saída do QEMU só em builds de teste | escrita em porta indevida em hardware real | ATIVA | 1 |
 | Limine e GitHub Actions fixados por commit | ataques à cadeia de fornecimento | ATIVA | 1 |
 | CI com `permissions: contents: read` | abuso do token da CI | ATIVA | 1 |
-| Pilhas IST para double fault / NMI / #MC | triple fault por pilha corrompida | PLANEADA | 2 |
+| Pilhas IST para double fault / NMI / #MC | triple fault por pilha corrompida | ATIVA (sem página de guarda até à Fase 3) | 2 |
+| IDT: DPL 0 em todos os vetores, interrupt gates, vetores sem handler não presentes (D-026) | user space disparar interrupções com `int n` | ATIVA | 2 |
+| TSS sem bitmap de I/O (`iomap_base` = fim da TSS) | user space usar `in`/`out` | ATIVA | 2 |
+| Relatórios de crash com endereços só na série (D-023) | fuga de endereços do kernel pelo ecrã | ATIVA | 2 |
+| GDT/IDT só de leitura depois do arranque | sobrescrever a IDT para desviar exceções | PLANEADA | 3 |
 | NX (EFER.NXE) nas nossas tabelas de páginas | executar dados | PLANEADA (hoje via Limine) | 3 |
 | W^X em todo o kernel com paginação própria | executar dados, alterar código | PLANEADA | 3 |
 | CR0.WP (ring 0 respeita páginas só de leitura) | o kernel escrever em `.text`/`.rodata` | PLANEADA | 3 |

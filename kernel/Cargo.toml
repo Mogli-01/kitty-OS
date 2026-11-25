@@ -19,6 +19,10 @@ bench = false
 # Only for automated tests: lets the kernel power off QEMU through the
 # isa-debug-exit device. Never enabled in normal builds.
 qemu-exit = []
+# Boot self-tests that deliberately crash the kernel, to check the exception
+# reports. Only for automated tests (expect QEMU exit code 35).
+selftest-page-fault = []
+selftest-double-fault = []
 
 [dependencies]
 limine = "0.6.5"

@@ -14,8 +14,9 @@ O projeto é desenvolvido em conjunto por dois assistentes de IA, **Claude**
 comunicam através deste repositório, com revisão e aprovação humana em
 todos os PRs. Ver [CONTRIBUTING.md](CONTRIBUTING.md).
 
-**Estado:** Fase 1 — arranca via Limine (BIOS e UEFI) e escreve
-`Hello from kitty-OS` na porta série e no ecrã. Plano completo em
+**Estado:** Fase 2 — arranca via Limine (BIOS e UEFI), escreve
+`Hello from kitty-OS` na porta série e no ecrã, e tem GDT/TSS/IDT próprias:
+qualquer exceção do CPU dá um relatório em vez de reiniciar a máquina. Plano completo em
 [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Requisitos

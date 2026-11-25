@@ -46,7 +46,20 @@ pub fn kmain(boot: BootInfo) -> ! {
     if let Some(loader) = boot.bootloader {
         kprintln!("[boot] loaded by {} {}", loader.name, loader.version);
     }
-    kprintln!("[boot] phase 1 complete, halting");
+
+    arch::init();
+    kprintln!("[cpu] GDT, TSS (IST stacks) and IDT loaded");
+
+    // Self-test: #BP must reach our handler and come back.
+    arch::breakpoint();
+    kprintln!("[cpu] breakpoint exception handled, execution resumed");
+
+    #[cfg(feature = "selftest-page-fault")]
+    arch::x86_64::selftest::page_fault();
+    #[cfg(feature = "selftest-double-fault")]
+    arch::x86_64::selftest::double_fault();
+
+    kprintln!("[boot] phase 2 complete, halting");
 
     #[cfg(feature = "qemu-exit")]
     arch::qemu::exit(arch::qemu::ExitCode::Success);

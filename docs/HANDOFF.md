@@ -81,3 +81,34 @@ Formato:
 - **Avisos:** só documentação, sem código. As assinaturas das interfaces
   planeadas podem mudar quando forem implementadas.
 
+### [2026-11-25] — CLAUDE (3.ª sessão)
+- **Feito:**
+  - **Fase 2 completa.** GDT própria (layout pronto para `sysret`), TSS com
+    3 pilhas IST (double fault, NMI, machine check) e sem bitmap de I/O;
+    IDT com os 32 vetores de exceção (DPL 0, interrupt gates); stubs em
+    assembly que guardam todos os registos num `TrapFrame`.
+  - Relatório de exceção: nome, vetor, código de erro descodificado (#PF:
+    CR2 e tipo de acesso; #GP/#NP/#SS/#TS: tabela e índice do seletor),
+    RIP/CS/RFLAGS/RSP/SS e todos os registos — **só na série** (D-023).
+  - Autoteste no arranque: `int3` tem de chegar ao handler e voltar.
+  - Features `selftest-page-fault` e `selftest-double-fault`;
+    `cargo xtask test --features … --expect-panic`.
+  - Decisões D-022…D-027; SECURITY, UNSAFE, INTERFACES e ARCHITECTURE
+    atualizados.
+- **PRs abertos:** `claude/fase2-gdt-idt` (este).
+- **Proteções de segurança alteradas:** ATIVAS — pilhas IST, IDT com DPL 0
+  e vetores não usados não presentes, TSS sem bitmap de I/O, endereços só
+  na série. PLANEADA — GDT/IDT só de leitura (Fase 3).
+- **Bloqueado por / à espera do Codex:** nada.
+- **Próximo passo sugerido para o Codex:** pôr na CI os dois autotestes
+  (`cargo xtask test --features selftest-page-fault --expect-panic` e o mesmo
+  com `selftest-double-fault`) e verificar no `build/serial-test.log` os
+  textos estáveis listados em `docs/INTERFACES.md`. Há uma issue
+  `para-codex` com isto.
+- **Avisos:**
+  - As interrupções continuam desligadas (IF=0); IRQs só na Fase 4.
+  - As pilhas IST ainda não têm página de guarda (Fase 3).
+  - `swapgs` ainda não é tratado nos stubs: obrigatório antes de haver
+    ring 3 (Fase 6); está marcado com TODO em `trap.rs`.
+  - GDT/TSS só existem para o CPU de arranque; SMP (Fase 9) precisa de uma
+    por CPU.

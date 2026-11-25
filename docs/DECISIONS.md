@@ -163,3 +163,45 @@ e outros dados grandes vão sempre em buffers partilhados: zero cópias.
 **Porquê:** copiar mensagens pequenas é mais rápido e mais seguro do que
 partilhar memória para tudo (o recetor recebe uma cópia que o emissor já não
 pode alterar — sem double fetch / TOCTOU).
+
+### D-022 — Stubs de interrupção próprios em assembly, não `extern "x86-interrupt"` (2026-11-25, CLAUDE)
+Cada vetor tem um stub de 3–4 instruções (`global_asm!` em `trap.rs`) que
+põe a pilha sempre no mesmo formato e salta para uma rotina comum, que
+guarda os 15 registos gerais e chama `trap_dispatch(&mut TrapFrame)`.
+**Porquê:** temos todos os registos numa só struct (relatórios de crash
+completos agora; na Fase 5 o scheduler troca de thread trocando o frame),
+funciona sem features instáveis e são ~40 linhas de assembly auditáveis. O
+ABI `x86-interrupt` é instável e só dá RIP/CS/RFLAGS/RSP/SS.
+
+### D-023 — Relatórios com endereços só na porta série (2026-11-25, CLAUDE)
+`console::debug_print` escreve **só** na série. O relatório completo de
+uma exceção (registos, CR2, RIP) vai para lá; o ecrã mostra só o nome da
+exceção. **Porquê:** o ecrã vai ser visível ao user space e os endereços
+do kernel anulariam o KASLR (Fase 8). A série é o canal de debug do
+programador e nunca será exposta a processos de user.
+
+### D-024 — Layout da GDT preparado para `syscall`/`sysret` (2026-11-25, CLAUDE)
+`null, kernel code (0x08), kernel data (0x10), user data (0x18), user code
+(0x20), TSS (0x28)`. **Porquê:** o `sysret` calcula os seletores de user a
+partir do MSR STAR (SS = base+8, CS = base+16), o que obriga "user data"
+a vir imediatamente antes de "user code". Já fica certo para a Fase 6.
+
+### D-025 — Pilhas IST estáticas de 16 KiB, sem página de guarda até à Fase 3 (2026-11-25, CLAUDE)
+Três pilhas IST (double fault, NMI, machine check) em `.bss`. Ainda não há
+página de guarda porque a paginação é do Limine; na Fase 3 passam a ter
+uma página não mapeada por baixo. 16 KiB chegam com folga para o relatório
+(que não aloca e usa pouca pilha).
+
+### D-026 — IDT com DPL 0 em todos os vetores e só interrupt gates (2026-11-25, CLAUDE)
+**Porquê:** com DPL 0, o user space (Fase 6) não consegue disparar nenhum
+vetor com `int n` (dá #GP). Interrupt gates (e não trap gates) desligam
+o IF na entrada, por isso um handler nunca é interrompido antes de guardar
+o estado. Vetores sem handler ficam "não presentes" (#NP em vez de saltar
+para lixo).
+
+### D-027 — Autotestes de falhas como features do kernel (2026-11-25, CLAUDE)
+`selftest-page-fault` e `selftest-double-fault` provocam a falha logo após
+o arranque; `cargo xtask test --features <f> --expect-panic` verifica que
+o QEMU sai com 35 e que a série tem `KERNEL PANIC`. As features nunca
+estão ativas em builds normais. Integrá-los na CI e verificar o conteúdo
+do relatório é do Codex.
