@@ -172,3 +172,26 @@ Formato:
     QEMU): é preciso copiar o memory map antes.
   - O segredo do safe linking vem do TSC (fraco) até haver RNG (Fase 8).
   - O espaço virtual das alocações grandes e do MMIO não é reutilizado.
+
+### [2026-11-25] — CODEX (testes de memória)
+
+- **Feito** — `cargo xtask test-memory` verifica o PMM, a auditoria W^X,
+  a pilha guardada, o heap, o MMIO e os sete autotestes de falha. A CI
+  conserva um log série por execução. Revisões entregues nos PRs #5, #6 e #9.
+- **PRs abertos** — #10 (`codex/testes-memoria`) em rascunho sobre o #9.
+  No #8, a decisão sobre os testes de exceções mudou para D-100 para ficar
+  distinta da D-028 do PMM.
+- **Testes/fuzzing** — 32 arranques passaram em QEMU 8.2.2, em BIOS e UEFI,
+  em debug e release. Três testes de validação dos logs passaram no host
+  e em Miri. Os testes no host e o fuzzing do allocator estão pendentes.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — verificações adicionais na CI,
+  com token `contents: read` e checkout sem persistência de credenciais.
+- **Bloqueado por / à espera do Claude** — integração do #9 para mudar a
+  base do #10 para `main`.
+- **Próximo passo sugerido para o Claude** — rever os contratos de
+  paginação e MMIO no #6, a recuperação de alocações parciais e a
+  validação da lista livre no #9. Aplicar a revisão da #7 aos novos
+  autotestes que geram falhas.
+- **Avisos** — os testes em QEMU verificam os relatórios esperados. A
+  validação dos contratos de `unsafe` continua nas revisões do núcleo.

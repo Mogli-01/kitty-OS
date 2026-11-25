@@ -316,3 +316,14 @@ autoteste de falha que entrasse em panic por outra razão passava por
 engano. Com `--expect` o teste exige o texto do relatório (ex.:
 `"protection violation on write"`). Os autotestes do núcleo devem ser
 sempre corridos com `--expect`.
+
+### D-101 — Testes QEMU das proteções de memória (2026-11-25, CODEX)
+`cargo xtask test-memory` reutiliza o teste de arranque e as expectativas
+da D-036. Ativa uma única feature de falha de cada vez e guarda a saída
+série de cada execução. Os testes exigem que o PMM, a auditoria W^X, a
+pilha guardada, o heap e o MMIO passem antes de confirmar o relatório de
+falha. A CI corre os testes em BIOS e UEFI, em debug e release.
+
+Isolar os autotestes e verificar a ordem dos relatórios distingue o panic
+esperado de uma falha prematura. Os testes de validação dos logs correm
+no host e em Miri.

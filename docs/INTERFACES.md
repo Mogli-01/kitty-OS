@@ -99,6 +99,13 @@ Autotestes de falhas (todos com `--expect-panic`): `selftest-page-fault`,
 (`non-present page on write`). Arranque normal: `[mm] kernel heap ready`,
 `heap self-test passed`.
 
+`cargo xtask test-memory [--bios] [--release]` corre o arranque normal e
+uma compilação separada para cada um dos sete autotestes de falhas. Antes
+das falhas, confirma `frame allocator self-test passed`, a auditoria W^X,
+`[mm] running on the kernel stack (guard page below it)`, o autoteste do
+heap e o do MMIO. Guarda a série em `build/memory-tests/<firmware>-<perfil>/`.
+`test` e `test-memory` dão erro se o log não puder ser gravado.
+
 ### Heap do kernel (`alloc`) — ESTÁVEL
 Fornece: CLAUDE (`kernel/src/mm/heap.rs`). Usa: todos.
 `Box`, `Vec`, `String`, … funcionam depois de `mm::heap::init()`.

@@ -46,7 +46,8 @@ preparado para a interface gráfica (Fases 10–14).
 | `xtask test --expect <texto>` e autotestes de falhas de memória | CLAUDE | FEITO |
 | GUI-PREP: PMM com contagem de referências por frame (frames partilhados entre espaços de endereçamento; limpo a zero só quando a última referência sai) | CLAUDE | FEITO |
 | GUI-PREP: tipos de cache no VMM via PAT (WB, WC, UC) — `map_mmio(…, CacheType::WriteCombining)` | CLAUDE | FEITO |
-| Testes e fuzzing do allocator; pôr os autotestes de falhas na CI (issue #4) | CODEX | TODO |
+| Testes QEMU do PMM, heap, W^X, NX, WP, páginas de guarda, IDT e MMIO | CODEX | FEITO |
+| Testes e fuzzing do allocator no host | CODEX | TODO |
 
 ## Fase 4 — Interrupções de hardware
 | Tarefa | Dono | Estado |
