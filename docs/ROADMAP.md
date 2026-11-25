@@ -23,7 +23,7 @@ preparado para a interface gráfica (Fases 10–14).
 | Consola de texto no framebuffer | CLAUDE | FEITO |
 | Panic handler com localização | CLAUDE | FEITO |
 | Teste de arranque no QEMU (isa-debug-exit) | CLAUDE → CODEX | FEITO (mínimo) |
-| Testes de integração mais completos (ex.: teste de panic) | CODEX | TODO |
+| Teste de integração de panic no QEMU (código de saída e série) | CODEX | FEITO (CI da Fase 2) |
 
 ## Fase 2 — CPU: GDT, TSS, IDT, exceções
 | Tarefa | Dono | Estado |
@@ -31,21 +31,24 @@ preparado para a interface gráfica (Fases 10–14).
 | GDT própria + TSS com pilhas IST (double fault, NMI, machine check) | CLAUDE | FEITO |
 | IDT + handlers de exceções com relatório útil (registos, código de erro) | CLAUDE | FEITO |
 | Autotestes no kernel (`selftest-page-fault`, `selftest-double-fault`) + `xtask --features/--expect-panic` | CLAUDE | FEITO |
-| Testes na CI: provocar #PF e double fault e verificar o relatório | CODEX | TODO |
+| Testes no QEMU: #BP, #PF e #DF com verificação do relatório (UEFI/BIOS, debug/release) | CODEX | FEITO |
 
 ## Fase 3 — Memória
 | Tarefa | Dono | Estado |
 |---|---|---|
-| PMM (bitmap/lista livre a partir do memory map do Limine) | CLAUDE | TODO |
-| Paginação própria (tabelas de 4 níveis), mapear kernel e HHDM | CLAUDE | TODO |
-| Heap do kernel (`#[global_allocator]`) | CLAUDE | TODO |
-| SEGURANÇA: NX (EFER.NXE), W^X em todo o kernel, CR0.WP | CLAUDE | TODO |
-| SEGURANÇA: páginas de guarda em todas as pilhas | CLAUDE | TODO |
-| SEGURANÇA: frames libertados limpos a zero | CLAUDE | TODO |
-| Registo dinâmico de consolas (`console::register`) | CLAUDE | TODO |
-| GUI-PREP: PMM com contagem de referências por frame (frames partilhados entre espaços de endereçamento; limpo a zero só quando a última referência sai) | CLAUDE | TODO |
-| GUI-PREP: tipos de cache no VMM via PAT (WB, WC, UC) — `map_mmio(…, CacheType::WriteCombining)` | CLAUDE | TODO |
-| Testes e fuzzing do allocator | CODEX | TODO |
+| PMM (base de dados de frames + lista livre fora de banda, a partir do memory map do Limine) | CLAUDE | FEITO |
+| Paginação própria (tabelas de 4 níveis), mapear kernel e HHDM | CLAUDE | FEITO |
+| Heap do kernel (`#[global_allocator]`): classes de tamanho + páginas com guarda | CLAUDE | FEITO |
+| SEGURANÇA: NX (EFER.NXE), W^X em todo o kernel, CR0.WP | CLAUDE | FEITO |
+| SEGURANÇA: GDT/IDT só de leitura, alias do kernel no HHDM só de leitura, auditoria W^X no arranque | CLAUDE | FEITO |
+| SEGURANÇA: páginas de guarda em todas as pilhas | CLAUDE | FEITO |
+| SEGURANÇA: frames libertados limpos a zero | CLAUDE | FEITO |
+| Registo dinâmico de consolas (`console::register`) | CLAUDE | FEITO |
+| `xtask test --expect <texto>` e autotestes de falhas de memória | CLAUDE | FEITO |
+| GUI-PREP: PMM com contagem de referências por frame (frames partilhados entre espaços de endereçamento; limpo a zero só quando a última referência sai) | CLAUDE | FEITO |
+| GUI-PREP: tipos de cache no VMM via PAT (WB, WC, UC) — `map_mmio(…, CacheType::WriteCombining)` | CLAUDE | FEITO |
+| Testes QEMU do PMM, heap, W^X, NX, WP, páginas de guarda, IDT e MMIO | CODEX | FEITO |
+| Testes e fuzzing do allocator no host | CODEX | TODO |
 
 ## Fase 4 — Interrupções de hardware
 | Tarefa | Dono | Estado |

@@ -22,6 +22,8 @@
 #![deny(clippy::multiple_unsafe_ops_per_block)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
+extern crate alloc;
+
 #[allow(unsafe_code)]
 pub mod arch;
 pub mod boot_info;
@@ -39,8 +41,8 @@ use boot_info::BootInfo;
 
 /// Architecture-independent kernel entry point, called by the arch layer once
 /// the bootloader hand-off has been validated.
-pub fn kmain(boot: BootInfo) -> ! {
-    console::init(boot.framebuffer);
+pub fn kmain(mut boot: BootInfo) -> ! {
+    console::init(boot.framebuffer.take());
 
     kprintln!("Hello from kitty-OS");
     if let Some(loader) = boot.bootloader {
@@ -54,12 +56,60 @@ pub fn kmain(boot: BootInfo) -> ! {
     arch::breakpoint();
     kprintln!("[cpu] breakpoint exception handled, execution resumed");
 
+    let vmm = mm::init(&boot);
+    let stats = mm::pmm::stats();
+    kprintln!(
+        "[mm] physical memory: {} MiB managed, {} MiB free; frame allocator self-test passed",
+        stats.total_frames * 4 / 1024,
+        stats.free_frames * 4 / 1024
+    );
+    kprintln!(
+        "[mm] own page tables active: {} kernel pages, {} MiB direct map, NX + WP on",
+        vmm.image_pages,
+        vmm.hhdm_bytes / (1024 * 1024)
+    );
+    kprintln!(
+        "[mm] W^X audit: {} mappings, {} writable+executable, {} user pages in kernel half",
+        vmm.audit.mappings,
+        vmm.audit.write_and_exec,
+        vmm.audit.user_in_kernel
+    );
+
+    // Leave the bootloader's stack for our own, which has a guard page.
+    arch::x86_64::stacks::run_on_main_stack(kmain_on_kernel_stack)
+}
+
+/// Second half of boot, running on the guarded kernel stack.
+extern "C" fn kmain_on_kernel_stack() -> ! {
+    kprintln!("[mm] running on the kernel stack (guard page below it)");
+    mm::heap::init();
+    mm::heap::selftest();
+    kprintln!(
+        "[mm] kernel heap ready ({} pages mapped); heap self-test passed",
+        mm::heap::stats().pages
+    );
+
+    match mm::vmm::mmio_selftest() {
+        Some(v) => kprintln!("[mm] MMIO self-test passed (local APIC version {:#x})", v),
+        None => panic!("MMIO self-test failed"),
+    }
+
     #[cfg(feature = "selftest-page-fault")]
     arch::x86_64::selftest::page_fault();
     #[cfg(feature = "selftest-double-fault")]
     arch::x86_64::selftest::double_fault();
+    #[cfg(feature = "selftest-stack-overflow")]
+    arch::x86_64::selftest::stack_overflow();
+    #[cfg(feature = "selftest-write-text")]
+    arch::x86_64::selftest::write_text();
+    #[cfg(feature = "selftest-exec-data")]
+    arch::x86_64::selftest::exec_data();
+    #[cfg(feature = "selftest-write-idt")]
+    arch::x86_64::selftest::write_idt();
+    #[cfg(feature = "selftest-heap-overflow")]
+    arch::x86_64::selftest::heap_overflow();
 
-    kprintln!("[boot] phase 2 complete, halting");
+    kprintln!("[boot] boot complete, halting");
 
     #[cfg(feature = "qemu-exit")]
     arch::qemu::exit(arch::qemu::ExitCode::Success);

@@ -21,35 +21,75 @@ jobs:
     steps:
       # Actions pinned by commit SHA (supply-chain safety). v5.1.0
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup toolchain install
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace -- -D warnings
-      - run: cargo clippy -p kitty-kernel --features qemu-exit -- -D warnings
-      - run: cargo clippy --workspace --release -- -D warnings
+      - run: cargo clippy --workspace --locked -- -D warnings
+      - run: cargo clippy -p kitty-kernel --locked --all-features -- -D warnings
+      - run: cargo clippy --workspace --locked --release -- -D warnings
+      - name: Build release without test features
+        run: cargo build --workspace --locked --release
 
   boot:
-    name: boot test in QEMU
+    name: QEMU (${{ matrix.firmware }}, ${{ matrix.profile }})
     needs: lint
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        firmware: [uefi, bios]
+        profile: [debug, release]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
       - name: Install QEMU, OVMF and xorriso
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf xorriso
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup toolchain install
-      - name: Boot test (UEFI, debug)
-        run: cargo xtask test
-      - name: Boot test (BIOS ISO, debug)
-        run: cargo xtask test --bios
-      - name: Boot test (UEFI, release)
-        run: cargo xtask test --release
-      - name: Upload serial log
+      - name: Check breakpoint, page fault and double fault
+        shell: bash
+        env:
+          FIRMWARE: ${{ matrix.firmware }}
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          flags=()
+          if [[ "$FIRMWARE" == bios ]]; then flags+=(--bios); fi
+          if [[ "$PROFILE" == release ]]; then flags+=(--release); fi
+          mkdir -p build/serial-logs
+
+          run_case() {
+            local scenario=$1 status=0
+            shift
+            # xtask always writes to the same path. Keep any log from this run.
+            rm -f build/serial-test.log
+            cargo xtask test "${flags[@]}" "$@" || status=$?
+            if [[ -f build/serial-test.log ]]; then
+              mv build/serial-test.log "build/serial-logs/$scenario.log"
+            fi
+            return "$status"
+          }
+
+          run_case boot
+          grep -F -- '[cpu] breakpoint at rip=' build/serial-logs/boot.log
+          grep -F -- '[cpu] breakpoint exception handled, execution resumed' build/serial-logs/boot.log
+
+          run_case page-fault --features selftest-page-fault --expect-panic
+          grep -F -- '=== Page Fault (#PF) (vector 14)' build/serial-logs/page-fault.log
+          grep -F -- 'non-present page on read in kernel mode' build/serial-logs/page-fault.log
+
+          run_case double-fault --features selftest-double-fault --expect-panic
+          grep -F -- '=== Double Fault (#DF) (vector 8)' build/serial-logs/double-fault.log
+          grep -F -- '(running on the IST double-fault stack)' build/serial-logs/double-fault.log
+      - name: Upload serial logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: serial-log
-          path: build/serial-test.log
+          name: serial-logs-${{ matrix.firmware }}-${{ matrix.profile }}
+          path: build/serial-logs/*.log
           if-no-files-found: ignore

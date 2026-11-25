@@ -1,8 +1,13 @@
 //! Deliberate crashes used by automated tests to check that exceptions
 //! produce a report instead of a reset. Compiled only with the matching
 //! `selftest-*` feature; never present in normal kernels.
+//!
+//! Every faulting access is a single CPU instruction in `asm!`, without
+//! `nomem`/`nostack`: the fault handler writes Rust memory (the console and
+//! its lock) and pushes on the stack before it panics. Plain Rust accesses
+//! (`read_volatile` on an unmapped address, calling a data pointer) would
+//! promise the compiler things that are not true here (issue #7).
 
-#[cfg(feature = "selftest-double-fault")]
 use core::arch::asm;
 
 /// A canonical lower-half address that is never mapped while the kernel has
@@ -14,11 +19,12 @@ const UNMAPPED: usize = 0x0000_0000_dead_b000;
 /// `cr2=0x00000000deadb000`, "non-present page on read in kernel mode".
 #[cfg(feature = "selftest-page-fault")]
 pub fn page_fault() {
-    let ptr = core::ptr::without_provenance::<u64>(UNMAPPED);
-    // SAFETY: deliberately invalid read to test the #PF handler, which never
-    // returns from a kernel page fault (it panics). Volatile so the compiler
-    // cannot remove or reorder it.
-    let _ = unsafe { ptr.read_volatile() };
+    // SAFETY: deliberately reads an unmapped address to test the #PF
+    // handler, which reports and panics: control never comes back. The block
+    // may access memory and the stack (the handler does both).
+    unsafe {
+        asm!("mov {tmp}, qword ptr [{addr}]", addr = in(reg) UNMAPPED, tmp = out(reg) _);
+    }
 }
 
 /// Makes the stack pointer non-canonical and triggers `int3`. Delivering #BP
@@ -38,4 +44,73 @@ pub fn double_fault() {
             options(noreturn),
         );
     }
+}
+
+/// Recurses until the stack runs into its guard page. The push into the
+/// unmapped guard page faults; delivering that #PF needs the same stack, so
+/// the CPU raises a double fault, handled on IST1. Without the guard page
+/// the recursion would silently overwrite memory below the stack.
+/// Expect `Double Fault (#DF)`.
+#[cfg(feature = "selftest-stack-overflow")]
+pub fn stack_overflow() {
+    #[allow(unconditional_recursion)]
+    fn recurse(depth: u64) -> u64 {
+        // A big local buffer per frame so the overflow happens quickly;
+        // `black_box` stops the compiler from turning this into a loop.
+        let buf = core::hint::black_box([depth; 64]);
+        recurse(depth + 1) + buf[(depth % 64) as usize]
+    }
+    core::hint::black_box(recurse(0));
+}
+
+/// Writes to the kernel's own code. With W^X + CR0.WP this must fault:
+/// expect `Page Fault (#PF)` and "protection violation on write".
+#[cfg(feature = "selftest-write-text")]
+pub fn write_text() {
+    let target = write_text as fn() as usize;
+    // SAFETY: deliberately writes into .text to test W^X + CR0.WP; the #PF
+    // handler reports and panics, control never comes back.
+    unsafe {
+        asm!("mov byte ptr [{addr}], 0xCC", addr = in(reg) target);
+    }
+}
+
+/// Jumps into a data buffer containing `ret`. With NX this must fault on
+/// the instruction fetch: expect "protection violation on instruction fetch".
+#[cfg(feature = "selftest-exec-data")]
+pub fn exec_data() {
+    static mut CODE: [u8; 1] = [0xC3]; // `ret`
+    let addr = (&raw mut CODE).addr();
+    // SAFETY: deliberately jumps into a non-executable data page to test NX;
+    // the instruction fetch faults and the #PF handler panics, so nothing
+    // returns. `clobber_abi("C")` covers the call in case it ever did.
+    unsafe {
+        asm!("call {addr}", addr = in(reg) addr, clobber_abi("C"));
+    }
+}
+
+/// Writes to the IDT, which is mapped read-only after boot: expect
+/// "protection violation on write".
+#[cfg(feature = "selftest-write-idt")]
+pub fn write_idt() {
+    let addr = super::idt::table_page();
+    // SAFETY: deliberately writes to the read-only IDT page; the #PF handler
+    // reports and panics, control never comes back.
+    unsafe {
+        asm!("mov qword ptr [{addr}], {zero}", addr = in(reg) addr, zero = in(reg) 0u64);
+    }
+}
+
+/// Writes one byte past the end of a large heap allocation. The page after
+/// it is an unmapped guard page: expect "non-present page on write".
+#[cfg(feature = "selftest-heap-overflow")]
+pub fn heap_overflow() {
+    let mut buf = alloc::vec![0u8; 8192];
+    let end = buf.as_mut_ptr().wrapping_add(buf.len()).addr();
+    // SAFETY: deliberately writes one byte past the buffer, into the heap
+    // guard page; the #PF handler reports and panics.
+    unsafe {
+        asm!("mov byte ptr [{addr}], 1", addr = in(reg) end);
+    }
+    core::hint::black_box(&buf);
 }

@@ -14,9 +14,9 @@ O projeto é desenvolvido em conjunto por dois assistentes de IA, **Claude**
 comunicam através deste repositório, com revisão e aprovação humana em
 todos os PRs. Ver [CONTRIBUTING.md](CONTRIBUTING.md).
 
-**Estado:** Fase 2 — arranca via Limine (BIOS e UEFI), escreve
-`Hello from kitty-OS` na porta série e no ecrã, e tem GDT/TSS/IDT próprias:
-qualquer exceção do CPU dá um relatório em vez de reiniciar a máquina. Plano completo em
+**Estado:** Fase 3 — arranca via Limine (BIOS e UEFI), tem GDT/TSS/IDT
+próprias, gestor de memória física, tabelas de páginas próprias com W^X,
+NX e páginas de guarda, e um heap do kernel endurecido. Plano completo em
 [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Requisitos
