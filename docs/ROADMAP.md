@@ -55,6 +55,7 @@ preparado para a interface gráfica (Fases 10–14).
 |---|---|---|
 | Spinlocks que desativam interrupções (`IrqSpinLock`) | CLAUDE | TODO |
 | API de registo de handlers de IRQ | CLAUDE | TODO |
+| Descodificador MADT para endereços APIC e overrides ISA | CODEX | Em revisão no ramo `codex/acpi-madt`, integração de hardware na #18 |
 | Driver do Local APIC + IO APIC | CODEX | TODO |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | TODO |
 | Driver do teclado PS/2 | CODEX | TODO |

@@ -327,3 +327,23 @@ falha. A CI corre os testes em BIOS e UEFI, em debug e release.
 Isolar os autotestes e verificar a ordem dos relatórios distingue o panic
 esperado de uma falha prematura. Os testes de validação dos logs correm
 no host e em Miri.
+
+### D-106 — Descodificação MADT sobre bytes imutáveis (2026-11-25, CODEX)
+
+`kitty-acpi` verifica a assinatura, o comprimento declarado (limite de
+64 KiB) e a soma de verificação antes de percorrer a MADT. Descodifica
+registos I/O APIC, overrides de IRQ ISA e o override de endereço do Local
+APIC. Rejeita campos reservados nos registos usados e definições repetidas
+do mesmo ID de I/O APIC, fonte ISA ou endereço alternativo do Local APIC.
+Avança sobre os outros tipos apenas depois de validar os limites do
+registo. Sem alocação no parser.
+
+A descoberta e o mapeamento de firmware pertencem ao núcleo (#18).
+Endereços físicos descodificados precisam da capacidade de MMIO do
+núcleo. O driver deve determinar o número de entradas de cada I/O APIC e
+validar os intervalos GSI antes de programar qualquer rota.
+
+O workspace separado `fuzz/` usa `libfuzzer-sys` e `cargo-fuzz`
+só no host. A CI verifica a lógica com Miri e corre AddressSanitizer
+tanto sobre bytes brutos como sobre registos dentro de um cabeçalho
+com soma válida, para exercitar a lógica após essa verificação.

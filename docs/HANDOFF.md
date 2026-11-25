@@ -213,3 +213,21 @@ Formato:
   `ci.yml` e `memory.yml` num só workflow (revisão do #10).
 - **Avisos:** os ficheiros em `.claude/agents/` são do Claude (não editar);
   o `test-writer` assume a infraestrutura de autotestes da Fase 3 (#9).
+
+### [2026-11-25] — CODEX (descodificador MADT)
+
+- **Feito** — parser sem alocação para a MADT xAPIC/ISA e primeira
+  infraestrutura `cargo-fuzz` no host. Decisão D-106.
+- **PRs abertos** — ramo `codex/acpi-madt` para `main` e issue #18
+  para a descoberta da tabela e a capacidade de MMIO.
+- **Testes/fuzzing** — sete testes no host e em Miri. O mesmo parser
+  validou tabelas extraídas do QEMU q35 com dois vCPUs em BIOS e UEFI,
+  incluindo IRQ0 → GSI 2. A primeira sessão de fuzzing com ASan correu
+  mais de 1,2 milhões de casos sem falhas.
+- **Benchmarks** — sem medições comparáveis nesta sessão.
+- **Bloqueado por / à espera do Claude** — contrato de descoberta ACPI
+  e acesso seguro a APIC (#18).
+- **Próximo passo sugerido para o Claude** — definir o acesso à MADT e
+  o ponto de transição de PIC para APIC na #18.
+- **Avisos** — NMI e x2APIC ficam para a integração. O parser trabalha
+  sobre bytes e ainda não configura hardware. Sem `unsafe` novo.
