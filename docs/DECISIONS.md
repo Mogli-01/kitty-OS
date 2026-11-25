@@ -347,3 +347,21 @@ O workspace separado `fuzz/` usa `libfuzzer-sys` e `cargo-fuzz`
 só no host. A CI verifica a lógica com Miri e corre AddressSanitizer
 tanto sobre bytes brutos como sobre registos dentro de um cabeçalho
 com soma válida, para exercitar a lógica após essa verificação.
+
+### D-108 — Formato USTAR só de leitura para o initrd (2026-11-25, CODEX)
+
+O initrd usa registos de 512 bytes, cabeçalhos USTAR com soma de
+verificação e campos de tamanho em octal. O parser aceita ficheiros
+regulares, incluindo o tipo 7 com a semântica de ficheiro regular,
+e diretórios. Os dados de um ficheiro são emprestados ao consumidor com
+o comprimento exato. Os metadados de proprietário e modo ficam fora
+da interpretação do formato inicial.
+
+Todos os cabeçalhos passam pela validação antes de devolver o arquivo.
+A política do initrd exige dois blocos a zero e padding final a zero.
+Caminhos UTF-8 podem começar com `./`. O resultado canónico exclui
+componentes vazias, `.` interiores e `..`. Tipos especiais, links e
+cabeçalhos de extensão são recusados. A montagem no VFS valida conflitos
+entre nomes. O acesso às páginas do módulo é tratado na #22.
+
+[POSIX.1-2024, formato USTAR](https://pubs.opengroup.org/onlinepubs/9799919799/utilities/pax.html#tag_20_94_13_06)

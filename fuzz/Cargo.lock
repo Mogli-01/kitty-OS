@@ -62,8 +62,13 @@ name = "kitty-fuzz"
 version = "0.0.0"
 dependencies = [
  "kitty-acpi",
+ "kitty-initrd",
  "libfuzzer-sys",
 ]
+
+[[package]]
+name = "kitty-initrd"
+version = "0.1.0"
 
 [[package]]
 name = "libc"

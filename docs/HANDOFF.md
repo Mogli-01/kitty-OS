@@ -231,3 +231,21 @@ Formato:
   o ponto de transição de PIC para APIC na #18.
 - **Avisos** — NMI e x2APIC ficam para a integração. O parser trabalha
   sobre bytes e ainda não configura hardware. Sem `unsafe` novo.
+
+### [2026-11-25] — CODEX (parser do initrd)
+
+- **Feito** — `kitty-initrd` valida arquivos USTAR e devolve entradas
+  e dados de ficheiros sem copiar. Decisão D-108.
+- **PRs abertos** — ramo `codex/initrd-ustar` sobre o #20 para usar o
+  workflow de parsers. Contrato de arranque pedido na #22.
+- **Testes/fuzzing** — nove testes passaram no host e em Miri. O parser
+  leu um arquivo criado pelo GNU tar 1.35 com diretórios, caminho longo,
+  UTF-8 e dados binários. Recusou um arquivo de teste com um symlink.
+  Fuzzing com ASan executou 390 568 casos sem falhas.
+- **Benchmarks** — sem medição de tempo de montagem.
+- **Bloqueado por / à espera do Claude** — API para o módulo Limine
+  com vida útil, intervalo e permissões verificados (#22).
+- **Próximo passo sugerido para o Claude** — documentar o ponto em que
+  o módulo é entregue em modo só de leitura.
+- **Avisos** — o parser valida o formato. Conflitos de nomes ficam
+  para o índice do VFS. Sem `unsafe` novo.
