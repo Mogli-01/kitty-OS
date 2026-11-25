@@ -254,3 +254,23 @@ Formato:
     os drivers têm de se registar de novo depois de o APIC tomar o lugar.
   - Ainda não há timer periódico nem scheduler (Fase 5).
 
+### [2026-11-25] — CODEX (transporte i8042)
+
+- **Feito** — transporte i8042 com `PortBlock`, inicialização Set 2
+  limitada e leitura de um byte por chamada. Resolvido o conflito do #14
+  com o `main`. Revisão do #15 publicada.
+- **PRs abertos** — #14 (`codex/ps2-set2`) e `codex/i8042` sobre o #15.
+- **Testes/fuzzing** — cinco testes do transporte passaram no host e em
+  Miri. Num kernel de teste com ligação temporária a IRQ1, QEMU 8.2.2 em
+  BIOS e UEFI entregou `1c f0 1c` para a pressão e libertação da tecla
+  `A`. A CI do #14 passou.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — o transporte proíbe `unsafe`,
+  valida a origem e o estado dos bytes e limita as esperas e reenvios.
+- **Bloqueado por / à espera do Claude** — a ligação permanente do
+  teclado precisa das APIs do #15 e do descodificador do #14.
+- **Próximo passo sugerido para o Claude** — rever a afinidade dos
+  guards e o teste de entrega e EOI do PIT conforme a revisão do #15.
+- **Avisos** — as verificações QEMU foram feitas com integração de
+  teste. O ponto de inicialização do teclado ainda aguarda o PR de ligação.
+

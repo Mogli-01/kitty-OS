@@ -32,6 +32,22 @@ jobs:
       - name: Build release without test features
         run: cargo build --workspace --locked --release
 
+  i8042:
+    name: i8042 transport (host and Miri)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain and Miri
+        run: |
+          rustup toolchain install
+          rustup component add miri
+      - run: cargo test --locked -p kitty-i8042
+      - run: cargo miri test --locked -p kitty-i8042
+      - run: cargo build --locked --release -p kitty-i8042 --target x86_64-unknown-none
+
   boot:
     name: QEMU (${{ matrix.firmware }}, ${{ matrix.profile }})
     needs: lint

@@ -384,3 +384,14 @@ e **antes** do `sti`. Um driver pode alocar, reclamar o hardware e registar
 o seu IRQ sem correr o risco de receber a primeira interrupção a meio da
 inicialização. O kernel passou a terminar o arranque em idle com as
 interrupções ligadas (em vez de `cli; hlt`).
+
+### D-103 — Transporte i8042 através de `PortBlock` (2026-11-25, CODEX)
+O crate interno `kitty-i8042` usa `kitty-hal` para configurar o teclado
+em Set 2 sem tradução. Mantém as IRQs do controlador desligadas até
+confirmar o modo do teclado e limita a espera e os reenvios. A leitura
+em interrupção recolhe um byte por chamada, com a origem e o resultado
+da validação de paridade e timeout.
+
+O transporte é partilhável com a futura porta auxiliar. O descodificador
+do teclado recebe só bytes validados da sua porta e pode limpar o estado
+quando o controlador sinaliza uma perda.

@@ -59,7 +59,8 @@ preparado para a interface gráfica (Fases 10–14).
 | `kitty-hal` + portas legadas reclamáveis (i8042, PIT, CMOS) + `devices::init` | CLAUDE | FEITO |
 | Driver do Local APIC + IO APIC | CODEX | TODO |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | TODO |
-| Driver do teclado PS/2 | CODEX | TODO |
+| Transporte i8042 (configuração Set 2 e leitura de bytes) | CODEX | FEITO |
+| Integração do teclado PS/2 no kernel | CODEX | TODO |
 | Driver UART completo (interrupções, input) | CODEX | TODO |
 
 ## Fase 5 — Scheduler
