@@ -6,6 +6,7 @@
 use core::ops::Range;
 
 mod buffering;
+pub mod font;
 pub use buffering::DoubleBuffer;
 
 const PIXEL_BYTES: usize = 4;

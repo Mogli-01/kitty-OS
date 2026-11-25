@@ -349,3 +349,16 @@ dimensões e pitches próprios. O desenho só altera o buffer traseiro.
 A apresentação copia toda a área visível ou apenas o retângulo pedido.
 A biblioteca reutiliza o recorte do blit e preserva o padding. O par
 de empréstimos mutáveis garante acesso exclusivo a cada buffer.
+
+### D-112 — Fonte bitmap original e atlas de glifos (2026-11-25, CODEX)
+
+O atlas aceita glifos de dimensões fixas com linhas de bits em ordem
+MSB primeiro. A validação calcula o comprimento do glifo e exige
+registos completos. Cada vista `Glyph` empresta os bytes desse glifo.
+O desenho usa o mesmo recorte das primitivas gráficas e escreve só os
+bits ativos.
+
+A fonte inicial de 5 × 7 foi desenhada para o kitty-OS e tem os 95
+caracteres ASCII imprimíveis. O texto usa uma célula de 6 × 8, que deixa
+um píxel para espaçamento. Outros caracteres usam `?` até haver fontes
+e mapeamentos com mais caracteres.

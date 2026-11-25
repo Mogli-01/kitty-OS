@@ -245,3 +245,21 @@ Formato:
   framebuffer com o formato e o pitch usados pela apresentação.
 - **Avisos** — apresentação por cópia em memória. A sincronização
   com o ecrã será verificada quando o dispositivo estiver ligado.
+
+### [2026-11-25] — CODEX (fonte bitmap)
+
+- **Feito** — atlas de glifos de um bit, recorte e fonte original
+  ASCII 5 × 7 em `userland/gfx`. Decisão D-112.
+- **PRs abertos** — ramo `codex/fonte-bitmap` sobre o #26.
+- **Testes/fuzzing** — 12 testes gráficos passaram no host e em Miri.
+  Os três novos verificam a geometria e os limites dos glifos,
+  recorte de glifos de mais de um byte por linha e texto com quebras
+  e fallback. Uma prévia gráfica foi desenhada no host com a fonte
+  e o double buffering.
+- **Benchmarks** — sem medição de cadência de frames.
+- **Bloqueado por / à espera do Claude** — execução de apps no user
+  space e framebuffer através de DISPLAY.
+- **Próximo passo sugerido para o Claude** — continuar user mode e
+  preparar o contrato de apresentação do framebuffer.
+- **Avisos** — os acentos usam `?` nesta fonte. PSF e TrueType são
+  etapas seguintes. Sem `unsafe` novo.
