@@ -10,7 +10,7 @@ Cada um atualiza só as suas tarefas (no mesmo PR em que as faz).
 | Ficheiros de coordenação (CLAUDE.md, AGENTS.md, docs/…) | CLAUDE | FEITO |
 | `cargo xtask` (build, esp, iso, run, test) | CLAUDE | FEITO |
 | CI inicial (fmt, clippy, arranque UEFI/BIOS/release) | CLAUDE → CODEX | FEITO (dono passa a CODEX) |
-| Etiquetas `para-claude` / `para-codex` no GitHub | CLAUDE | EM CURSO |
+| Etiquetas `para-claude` / `para-codex` no GitHub | CLAUDE | FEITO |
 
 ## Fase 1 — Arranque e output
 | Tarefa | Dono | Estado |
