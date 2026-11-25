@@ -31,15 +31,15 @@ use core::cell::UnsafeCell;
 use core::mem::size_of;
 use core::sync::atomic::{AtomicBool, Ordering};
 
+use super::stacks;
+
 /// Kernel code segment selector.
 pub const KERNEL_CS: u16 = 0x08;
 /// Kernel data/stack segment selector.
 pub const KERNEL_DS: u16 = 0x10;
 /// User data/stack segment selector (RPL 3).
-#[expect(dead_code, reason = "used by syscall/sysret setup in Phase 6")]
 pub const USER_DS: u16 = 0x18 | 3;
 /// User code segment selector (RPL 3).
-#[expect(dead_code, reason = "used by syscall/sysret setup in Phase 6")]
 pub const USER_CS: u16 = 0x20 | 3;
 /// TSS selector.
 pub const TSS_SEL: u16 = 0x28;
@@ -52,16 +52,17 @@ pub const IST_NMI: u8 = 2;
 /// IST slot for machine check, same reasoning as NMI.
 pub const IST_MACHINE_CHECK: u8 = 3;
 
-/// Size of each IST stack.
-const IST_STACK_SIZE: usize = 16 * 1024;
-const IST_COUNT: usize = 3;
-
 // Descriptor encodings. Access byte: P (present), DPL, S (code/data), type.
 // Flags nibble: G (4 KiB granularity), L (64-bit code) or DB (32-bit data).
-const KERNEL_CODE: u64 = 0x00AF_9A00_0000_FFFF; // P, DPL0, exec/read, L=1
-const KERNEL_DATA: u64 = 0x00CF_9200_0000_FFFF; // P, DPL0, read/write
-const USER_DATA: u64 = 0x00CF_F200_0000_FFFF; // P, DPL3, read/write
-const USER_CODE: u64 = 0x00AF_FA00_0000_FFFF; // P, DPL3, exec/read, L=1
+//
+// The "accessed" bit (bit 40) is set in advance on purpose: the CPU writes
+// it into the GDT the first time a segment is loaded. Pre-setting it means
+// the CPU never needs to write the GDT, so the GDT page can be mapped
+// read-only (Phase 3) without loads of SS/DS faulting.
+const KERNEL_CODE: u64 = 0x00AF_9B00_0000_FFFF; // P, DPL0, exec/read, A, L=1
+const KERNEL_DATA: u64 = 0x00CF_9300_0000_FFFF; // P, DPL0, read/write, A
+const USER_DATA: u64 = 0x00CF_F300_0000_FFFF; // P, DPL3, read/write, A
+const USER_CODE: u64 = 0x00AF_FB00_0000_FFFF; // P, DPL3, exec/read, A, L=1
 
 /// 64-bit Task State Segment (Intel SDM Vol. 3, 8.7).
 #[repr(C, packed(4))]
@@ -82,16 +83,18 @@ struct Tss {
 const TSS_SIZE: usize = size_of::<Tss>();
 const _: () = assert!(TSS_SIZE == 104);
 
-#[repr(C, align(16))]
-struct IstStacks([[u8; IST_STACK_SIZE]; IST_COUNT]);
+/// The GDT gets a 4 KiB page of its own so that the page can be mapped
+/// read-only once it is loaded (after `ltr` has set the TSS busy bit, the
+/// CPU never writes it again).
+#[repr(C, align(4096))]
+struct GdtPage([u64; 7]);
 
 /// Memory the CPU reads (and, for the TSS busy bit, *writes*) behind the
 /// compiler's back. `UnsafeCell` tells Rust it may change, so it is never
 /// treated as immutable data.
 struct CpuTables {
-    gdt: UnsafeCell<[u64; 7]>,
+    gdt: UnsafeCell<GdtPage>,
     tss: UnsafeCell<Tss>,
-    ist_stacks: UnsafeCell<IstStacks>,
 }
 
 // SAFETY: the tables are written exactly once, by the single caller that
@@ -100,7 +103,7 @@ struct CpuTables {
 unsafe impl Sync for CpuTables {}
 
 static TABLES: CpuTables = CpuTables {
-    gdt: UnsafeCell::new([0; 7]),
+    gdt: UnsafeCell::new(GdtPage([0; 7])),
     tss: UnsafeCell::new(Tss {
         _reserved0: 0,
         rsp: [0; 3],
@@ -110,7 +113,6 @@ static TABLES: CpuTables = CpuTables {
         _reserved3: 0,
         iomap_base: TSS_SIZE as u16,
     }),
-    ist_stacks: UnsafeCell::new(IstStacks([[0; IST_STACK_SIZE]; IST_COUNT])),
 };
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
@@ -120,6 +122,11 @@ static INITIALIZED: AtomicBool = AtomicBool::new(false);
 pub(super) struct DescriptorTablePointer {
     pub limit: u16,
     pub base: u64,
+}
+
+/// Address of the (page-aligned) GDT page, to be mapped read-only.
+pub fn table_page() -> u64 {
+    TABLES.gdt.get().addr() as u64
 }
 
 /// Builds the 16-byte TSS system descriptor (type 0x9 = available 64-bit TSS).
@@ -143,16 +150,13 @@ pub fn init() {
         return;
     }
 
-    let stacks = TABLES.ist_stacks.get().cast::<[u8; IST_STACK_SIZE]>();
     let tss_ptr = TABLES.tss.get();
-    let gdt_ptr = TABLES.gdt.get();
+    let gdt_ptr = TABLES.gdt.get().cast::<[u64; 7]>();
 
+    // IST stacks live in `stacks.rs`, each with an unmapped guard page.
     let mut ist = [0u64; 7];
-    for (slot, top) in ist.iter_mut().take(IST_COUNT).enumerate() {
-        // Stacks grow down: the IST entry is the *end* of each array.
-        // `wrapping_add` keeps this pointer arithmetic safe; the result stays
-        // inside (one past the end of) the `IstStacks` allocation.
-        *top = stacks.wrapping_add(slot + 1).addr() as u64;
+    for (slot, top) in ist.iter_mut().take(stacks::IST_COUNT).enumerate() {
+        *top = stacks::ist_top(slot).unwrap_or(0);
     }
 
     // SAFETY: we won the INITIALIZED flag, so no other code accesses the TSS

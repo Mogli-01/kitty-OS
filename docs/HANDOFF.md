@@ -113,13 +113,113 @@ Formato:
   - GDT/TSS só existem para o CPU de arranque; SMP (Fase 9) precisa de uma
     por CPU.
 
+### [2026-11-25] — CODEX
+
+- **Feito** — CI da #4 em `codex/ci`, com build release sem features de
+  teste, validação dos relatórios de exceção e um log por cenário. O
+  driver COM1 e as macros `kprint!` e `kprintln!` já estavam no `main`.
+- **PRs abertos** — CI da #4 em `codex/ci` para `main`. O #3 foi
+  integrado com a CI de arranque verde e recebeu a revisão do Codex.
+- **Testes/fuzzing** — `fmt`, Clippy, build release e `actionlint` passaram.
+  Os 12 arranques da matriz passaram em QEMU 8.2.2 num contentor Ubuntu
+  24.04. Os testes confirmam a entrada e o regresso de #BP, a leitura de
+  uma página ausente em #PF e o relatório IST de #DF. Fuzzing nesta fase
+  fica por iniciar.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — a CI conserva o token com acesso
+  só de leitura e deixa de persistir as credenciais no checkout.
+- **Bloqueado por / à espera do Claude** — a #7 (`para-claude`) regista
+  os ajustes aos contratos de `unsafe` do `int3` e do autoteste de #PF.
+- **Próximo passo sugerido para o Claude** — ajustar o assembly em
+  `arch/x86_64/cpu.rs` para refletir os acessos à pilha e à memória e
+  implementar o acesso do autoteste de #PF sem depender do contrato de
+  `read_volatile`. Manter os marcadores da série e atualizar `UNSAFE.md`.
+- **Avisos** — os testes verificam o comportamento observado no QEMU.
+  As garantias dadas ao compilador exigem revisão do código. Sem `unsafe`
+  novo neste ramo.
+
+### [2026-11-25] — CLAUDE (4.ª sessão)
+- **Feito (Fase 3 completa, em 3 PRs empilhados):**
+  - **3a (#5) PMM:** base de dados de frames com lista livre fora de banda,
+    contagem de referências, frames limpos a zero, deteção de double free.
+  - **3b (#6) paginação própria:** CR3 nosso, W^X por secção garantido pela
+    API e auditado no arranque, NX/WP/PGE/PAT, HHDM com 2 MiB e alias do
+    kernel só de leitura, páginas de guarda em todas as pilhas, GDT/IDT só
+    de leitura, `map_mmio` + `MmioRegion`.
+  - **3c (este) heap:** `#[global_allocator]` com classes de tamanho
+    (links codificados, zeros ao libertar) e alocações grandes com página de
+    guarda; `console::register(Box<dyn Console>)`; `xtask test --expect`.
+  - 7 autotestes de falhas, todos verificados em debug e release com
+    `--expect` (razão do panic): page-fault, double-fault, stack-overflow,
+    write-text, exec-data, write-idt, heap-overflow.
+- **PRs abertos:** #5 (base `main`), #6 (base #5), este (base #6). Fazer
+  merge por esta ordem e mudar a base de cada um para `main`.
+- **Proteções de segurança alteradas:** ATIVAS — NX, W^X em todo o kernel,
+  CR0.WP, GDT/IDT só de leitura, páginas de guarda (pilhas e heap), frames
+  e heap limpos a zero, lista livre do PMM fora de banda, safe linking no
+  heap, `map_mmio` recusa RAM. Ver `docs/SECURITY.md`.
+- **Bloqueado por / à espera do Codex:** nada.
+- **Próximo passo sugerido para o Codex:**
+  1. Issue #4: pôr na CI os 7 autotestes, **sempre com `--expect`** (lista
+     e textos em `docs/INTERFACES.md`). Sem `--expect`, em release um teste
+     pode passar por engano (ver D-036).
+  2. Começar os drivers da Fase 4 (APIC, timer, teclado) usando
+     `map_mmio`/`MmioRegion` e `Port`.
+- **Avisos:**
+  - **Não alocar no heap dentro de handlers de interrupção** até eu fazer o
+    `IrqSpinLock` (Fase 4).
+  - A memória "bootloader reclaimable" ainda não é reutilizada (~50 MiB no
+    QEMU): é preciso copiar o memory map antes.
+  - O segredo do safe linking vem do TSC (fraco) até haver RNG (Fase 8).
+  - O espaço virtual das alocações grandes e do MMIO não é reutilizado.
+
+### [2026-11-25] — CODEX (testes de memória)
+
+- **Feito** — `cargo xtask test-memory` verifica o PMM, a auditoria W^X,
+  a pilha guardada, o heap, o MMIO e os sete autotestes de falha. A CI
+  conserva um log série por execução. Revisões entregues nos PRs #5, #6 e #9.
+- **PRs abertos** — #10 (`codex/testes-memoria`) em rascunho sobre o #9.
+  No #8, a decisão sobre os testes de exceções mudou para D-100 para ficar
+  distinta da D-028 do PMM.
+- **Testes/fuzzing** — 32 arranques passaram em QEMU 8.2.2, em BIOS e UEFI,
+  em debug e release. Três testes de validação dos logs passaram no host
+  e em Miri. Os testes no host e o fuzzing do allocator estão pendentes.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — verificações adicionais na CI,
+  com token `contents: read` e checkout sem persistência de credenciais.
+- **Bloqueado por / à espera do Claude** — integração do #9 para mudar a
+  base do #10 para `main`.
+- **Próximo passo sugerido para o Claude** — rever os contratos de
+  paginação e MMIO no #6, a recuperação de alocações parciais e a
+  validação da lista livre no #9. Aplicar a revisão da #7 aos novos
+  autotestes que geram falhas.
+- **Avisos** — os testes em QEMU verificam os relatórios esperados. A
+  validação dos contratos de `unsafe` continua nas revisões do núcleo.
+
+### [2026-11-25] — CLAUDE (5.ª sessão)
+- **Feito:** subagentes do Claude Code em `.claude/agents/`:
+  `security-reviewer` (revê o diff antes de cada PR, só reporta),
+  `test-writer` (testes só para a área do Claude) e `explorer` (resumo do
+  estado no início de cada sessão). Regras de uso em `CLAUDE.md` (no máximo
+  2 em paralelo, só para tarefas independentes).
+- **PRs:** revi o #8 e o #10 do Codex (prontos, sem bloqueios). Com
+  aprovação do Rodrigo no chat, entraram no `main` por esta ordem: #8 → #5
+  → #6 → #9 → #10 → este (#12). Fechadas: #4, #7, #11.
+- **Proteções de segurança alteradas:** nenhuma no kernel. Processo: cada PR
+  do Claude passa a ter uma revisão de segurança automática antes de abrir.
+- **Bloqueado por / à espera do Codex:** nada.
+- **Próximo passo sugerido para o Codex:** drivers da Fase 4 (APIC, timer,
+  teclado) com `map_mmio`/`MmioRegion` e `Port`. Opcional: juntar
+  `ci.yml` e `memory.yml` num só workflow (revisão do #10).
+- **Avisos:** os ficheiros em `.claude/agents/` são do Claude (não editar);
+  o `test-writer` assume a infraestrutura de autotestes da Fase 3 (#9).
+
 ### [2026-11-25] — CODEX (teclado PS/2)
 
 - **Feito** — descodificador Set 2 em `drivers/ps2`, com eventos de teclas
   físicas e documentação da ligação ao i8042. Revisão do #12 entregue.
-  O #10 inclui a correção da #7 no ramo do #9, cobre a #11 e passou na CI.
-- **PRs abertos** — descodificador em `codex/ps2-set2` para `main`. O #10
-  continua em rascunho sobre o #9. O #8 aguarda aprovação humana.
+  Os PRs #8 e #10 de CI entraram no main, incluindo a cobertura da #11.
+- **PRs abertos** — #14 (`codex/ps2-set2`) para `main`.
 - **Testes/fuzzing** — oito testes de descodificação passaram no host e em
   Miri. A cobertura inclui todos os 2 816 pares de estado e byte possíveis,
   com recuperação após erro. O crate compilou para `x86_64-unknown-none`.
@@ -127,8 +227,8 @@ Formato:
 - **Proteções de segurança alteradas** — o descodificador trabalha com
   estado de tamanho fixo, valida a sequência Pause e descarta códigos
   desconhecidos. O crate proíbe `unsafe`.
-- **Bloqueado por / à espera do Claude** — contrato IRQ1 e ponto de
-  inicialização do teclado no núcleo, pedidos na #13.
+- **Bloqueado por / à espera do Claude** — o #15 responde à #13 com
+  o contrato IRQ1 e o ponto de inicialização dos drivers.
 - **Próximo passo sugerido para o Claude** — responder à #13 e rever as
   permissões de shell dos subagentes de leitura conforme a revisão do #12.
 - **Avisos** — o descodificador espera Set 2 sem tradução. O transporte

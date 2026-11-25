@@ -13,11 +13,16 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use limine::BaseRevision;
 use limine::framebuffer::FRAMEBUFFER_RGB;
-use limine::request::{BootloaderInfoRequest, FramebufferRequest};
+use limine::memmap::{self, Entry};
+use limine::request::{
+    BootloaderInfoRequest, ExecutableAddressRequest, FramebufferRequest, HhdmRequest, MemmapRequest,
+};
 use limine::{RequestsEndMarker, RequestsStartMarker};
 
 use super::{cpu, serial::SerialPort};
-use crate::boot_info::{BootInfo, BootloaderInfo, ChannelMask, FrameBuffer};
+use crate::boot_info::{
+    BootInfo, BootloaderInfo, ChannelMask, FrameBuffer, KernelImage, MemoryKind, MemoryRegion,
+};
 
 /// Protocol base revision we are written against. See docs/DECISIONS.md
 /// (D-006): we ask for a fixed, well-known revision instead of "the newest the
@@ -44,6 +49,18 @@ static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
 static BOOTLOADER_INFO_REQUEST: BootloaderInfoRequest = BootloaderInfoRequest::new();
 
 #[used]
+#[unsafe(link_section = ".requests")]
+static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
+
+#[used]
+#[unsafe(link_section = ".requests")]
+static MEMMAP_REQUEST: MemmapRequest = MemmapRequest::new();
+
+#[used]
+#[unsafe(link_section = ".requests")]
+static EXECUTABLE_ADDRESS_REQUEST: ExecutableAddressRequest = ExecutableAddressRequest::new();
+
+#[used]
 #[unsafe(link_section = ".requests_end_marker")]
 static REQUESTS_END: RequestsEndMarker = RequestsEndMarker::new();
 
@@ -62,7 +79,27 @@ extern "C" fn kernel_entry() -> ! {
         cpu::halt_forever();
     }
 
+    // Without these three the kernel cannot manage memory at all.
+    let (Some(hhdm), Some(memmap), Some(image)) = (
+        HHDM_REQUEST.response(),
+        MEMMAP_REQUEST.response(),
+        EXECUTABLE_ADDRESS_REQUEST.response(),
+    ) else {
+        if let Some(mut s) = SerialPort::init_com1() {
+            let _ = writeln!(s, "kitty-OS: bootloader did not provide HHDM/memory map");
+        }
+        cpu::halt_forever();
+    };
+
     let info = BootInfo {
+        hhdm_offset: hhdm.offset,
+        memory_map: MemoryMap {
+            entries: memmap.entries(),
+        },
+        kernel_image: KernelImage {
+            phys_base: image.physical_base,
+            virt_base: image.virtual_base,
+        },
         framebuffer: take_framebuffer(),
         bootloader: BOOTLOADER_INFO_REQUEST.response().map(|r| BootloaderInfo {
             name: r.name(),
@@ -119,4 +156,32 @@ fn take_framebuffer() -> Option<FrameBuffer> {
         mask(fb.green_mask_shift, fb.green_mask_size),
         mask(fb.blue_mask_shift, fb.blue_mask_size),
     )
+}
+
+/// The bootloader memory map. Lives in bootloader-reclaimable memory, which
+/// the kernel never reuses in Phase 3, so the slice stays valid.
+#[derive(Clone, Copy)]
+pub struct MemoryMap {
+    entries: &'static [&'static Entry],
+}
+
+impl MemoryMap {
+    /// Iterates over the regions, in the bootloader's order (sorted by
+    /// address, non-overlapping per the Limine specification).
+    pub fn iter(&self) -> impl Iterator<Item = MemoryRegion> + '_ {
+        self.entries.iter().map(|e| MemoryRegion {
+            base: e.base,
+            len: e.length,
+            kind: match e.type_ {
+                memmap::MEMMAP_USABLE => MemoryKind::Usable,
+                memmap::MEMMAP_BOOTLOADER_RECLAIMABLE => MemoryKind::BootloaderReclaimable,
+                memmap::MEMMAP_EXECUTABLE_AND_MODULES => MemoryKind::KernelAndModules,
+                memmap::MEMMAP_ACPI_RECLAIMABLE => MemoryKind::AcpiReclaimable,
+                memmap::MEMMAP_ACPI_NVS => MemoryKind::AcpiNvs,
+                memmap::MEMMAP_FRAMEBUFFER => MemoryKind::Framebuffer,
+                memmap::MEMMAP_BAD_MEMORY => MemoryKind::Bad,
+                _ => MemoryKind::Reserved,
+            },
+        })
+    }
 }

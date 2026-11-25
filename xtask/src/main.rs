@@ -6,11 +6,14 @@
 //!   iso   [--release]            build a hybrid BIOS/UEFI ISO (needs xorriso)
 //!   run   [--release] [--bios]   boot in QEMU (UEFI from build/esp, or BIOS from the ISO)
 //!   test  [--release] [--bios]   boot headless, check serial output and exit code
+//!   test-memory [--release] [--bios]   check the Phase 3 memory protections in QEMU
 //!
 //! Extra options:
 //!   --features <a,b>   extra kernel cargo features (e.g. selftest-page-fault)
 //!   --expect-panic     (test) pass only if the kernel panics: QEMU exit code
 //!                      35 and "KERNEL PANIC" on the serial port
+//!   --expect <text>    (test) the serial output must also contain <text>
+//!                      (repeatable)
 //!
 //! Environment overrides: KITTY_QEMU (qemu binary), KITTY_OVMF (UEFI code
 //! firmware), KITTY_XORRISO (xorriso binary).
@@ -23,6 +26,8 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
+
+mod memory_tests;
 
 /// Limine binary release we boot with. Pinned to an exact commit of the
 /// official `v11.x-binary` branch so a compromised or changed branch cannot
@@ -47,6 +52,7 @@ struct Opts {
     bios: bool,
     features: Vec<String>,
     expect_panic: bool,
+    expect: Vec<String>,
 }
 
 fn main() -> ExitCode {
@@ -58,6 +64,13 @@ fn main() -> ExitCode {
             "--release" => opts.release = true,
             "--bios" => opts.bios = true,
             "--expect-panic" => opts.expect_panic = true,
+            "--expect" => match args.next() {
+                Some(text) => opts.expect.push(text),
+                None => {
+                    eprintln!("xtask: --expect needs a value");
+                    return ExitCode::FAILURE;
+                }
+            },
             "--features" => match args.next() {
                 Some(list) => opts
                     .features
@@ -84,10 +97,12 @@ fn main() -> ExitCode {
             .map(|_| ()),
         "run" => run(&opts),
         "test" => test(&opts),
+        "test-memory" => memory_tests::run(&opts),
         _ => {
             eprintln!(
-                "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios]                  [--features a,b] [--expect-panic]"
+                "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--expect-panic] [--expect text]"
             );
+            eprintln!("       cargo xtask test-memory [--release] [--bios]");
             return ExitCode::FAILURE;
         }
     };
@@ -382,6 +397,10 @@ fn run(opts: &Opts) -> Result<()> {
 }
 
 fn test(opts: &Opts) -> Result<()> {
+    boot_test(opts, &build_dir().join("serial-test.log")).map(|_| ())
+}
+
+fn boot_test(opts: &Opts, log: &Path) -> Result<String> {
     let kernel = build_kernel(opts, true)?;
     let mut cmd = qemu_command(opts, &kernel, true)?;
     let mode = if opts.bios { "BIOS/ISO" } else { "UEFI" };
@@ -417,18 +436,22 @@ fn test(opts: &Opts) -> Result<()> {
         }
     };
     let serial = String::from_utf8_lossy(&reader.join().unwrap_or_default()).into_owned();
-    let log = build_dir().join("serial-test.log");
-    let _ = fs::write(&log, &serial);
     println!(
         "----- serial output -----\n{}\n-------------------------",
         serial.trim_end()
     );
+    fs::write(log, &serial).map_err(|e| format!("writing {}: {e}", log.display()))?;
 
     let Some(status) = status else {
         return Err(format!("timed out after {}s", TEST_TIMEOUT.as_secs()));
     };
     if !serial.contains(BOOT_MESSAGE) {
         return Err(format!("serial output does not contain {BOOT_MESSAGE:?}"));
+    }
+    for text in &opts.expect {
+        if !serial.contains(text.as_str()) {
+            return Err(format!("serial output does not contain {text:?}"));
+        }
     }
     if opts.expect_panic {
         if status.code() != Some(QEMU_FAILURE) || !serial.contains(PANIC_MESSAGE) {
@@ -442,5 +465,5 @@ fn test(opts: &Opts) -> Result<()> {
         ));
     }
     println!("xtask: boot test passed ({mode})");
-    Ok(())
+    Ok(serial)
 }

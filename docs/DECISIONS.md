@@ -108,6 +108,17 @@ kernel arranca. Criei a versão inicial (`.github/workflows/ci.yml`:
 fmt, clippy, teste de arranque UEFI/BIOS/release). A partir daqui é do
 Codex. As actions estão fixadas por SHA de commit.
 
+### D-100 — Validar os relatórios de exceção na CI (2026-11-25, CODEX)
+A CI corre o arranque normal e os autotestes de #PF e #DF em QEMU com BIOS
+e UEFI, em debug e release. Confirma na porta série a entrada no handler de
+#BP e o regresso ao arranque. Para #PF e #DF, confirma o panic e os campos
+esperados no relatório. Cada cenário tem um log próprio.
+
+Um código de saída de panic também pode ser produzido por uma falha
+diferente da esperada. Os marcadores do relatório distinguem os cenários.
+A matriz cobre os dois firmwares e verifica o efeito das otimizações do
+compilador nos autotestes.
+
 ### D-016 — `xtask` só com a biblioteca padrão (2026-11-25, CLAUDE)
 A política de dependências aplica-se também ao `xtask`: sem `clap`,
 `anyhow`, etc. O parsing de argumentos é manual e simples.
@@ -216,3 +227,114 @@ o arranque; `cargo xtask test --features <f> --expect-panic` verifica que
 o QEMU sai com 35 e que a série tem `KERNEL PANIC`. As features nunca
 estão ativas em builds normais. Integrá-los na CI e verificar o conteúdo
 do relatório é do Codex.
+
+### D-028 — PMM: base de dados de frames com lista livre fora de banda (2026-11-25, CLAUDE)
+Cada frame físico de 4 KiB tem uma entrada `FrameInfo { refcount, next_free,
+dirty }` (12 bytes, ~0,3 % da RAM) guardada num bloco de RAM reservado no
+arranque. Alocar e libertar são O(1) (pilha de frames livres).
+**Porquê fora de banda:** muitos kernels guardam o ponteiro "próximo livre"
+*dentro* do frame livre. Um bug de use-after-free que escreva nesse frame
+corrompe o alocador e pode fazê-lo devolver um endereço escolhido pelo
+atacante. Aqui o link vive na base de dados, onde nenhum dono de frame chega.
+**Contagem de referências** (GUI-PREP): o mesmo frame pode estar mapeado em
+vários espaços de endereçamento; só volta à lista livre quando a última
+referência desaparece. `PhysFrame` é um tipo com dono (não `Copy`): o
+compilador impede libertar duas vezes a mesma referência, e o `Drop` liberta.
+**Zeros:** um frame é limpo quando a última referência sai, e os frames que
+vêm do bootloader são limpos na primeira alocação (arranque rápido). Todo o
+frame entregue está a zeros. Double free e overflow da contagem são bugs
+fatais (panic) em vez de corrupção silenciosa.
+**Limitações:** a memória "bootloader reclaimable" ainda não é reutilizada
+(tem a pilha de arranque e o memory map); índices de 32 bits limitam a 16 TiB.
+
+### D-029 — Tabelas de páginas próprias, construídas a partir das do Limine (2026-11-25, CLAUDE)
+O kernel cria o seu PML4 e muda o CR3 no arranque. Os endereços físicos de
+cada página do kernel são lidos **das tabelas do Limine** (e não calculados
+com uma fórmula), por isso não dependemos de como o Limine dispôs a imagem
+na RAM. Antes de carregar o CR3 verificamos que o código e a pilha em uso
+estão mapeados (senão seria um triple fault sem diagnóstico).
+- As 256 entradas da metade do kernel no PML4 são **pré-alocadas** (1 MiB):
+  na Fase 6 cada processo copia estas entradas e vê automaticamente tudo o
+  que o kernel mapear depois.
+- O HHDM usa **páginas de 2 MiB** sempre que possível (~512× menos entradas
+  e menos falhas de TLB) e todas as entradas do kernel são **globais**
+  (CR4.PGE): sobrevivem às trocas de CR3.
+- Permissões do HHDM por tipo de região: RAM e ACPI RW+NX; a imagem do
+  kernel **só de leitura** (senão o `.text` podia ser reescrito pelo alias
+  do HHDM, contornando o W^X); o framebuffer em write-combining; regiões
+  "reserved"/"bad" não são mapeadas.
+
+### D-030 — Páginas de guarda: memória em `.bss` que fica por mapear (2026-11-25, CLAUDE)
+A pilha principal (64 KiB) e as 3 pilhas IST (16 KiB) vivem em `.bss`,
+cada uma com uma página de 4 KiB por baixo que **não** é mapeada nas nossas
+tabelas. Um stack overflow bate na página de guarda → #PF → (a entrega do
+#PF também falha) → double fault na pilha IST. Assim não é preciso reescrever
+a TSS depois do arranque (evita escritas não atómicas a entradas IST que um
+NMI podia ler a meio). Depois de mudar o CR3, o kernel salta para a pilha
+principal com `run_on_main_stack` e abandona a pilha do Limine.
+
+### D-031 — GDT e IDT em páginas próprias, só de leitura (2026-11-25, CLAUDE)
+A GDT e a IDT ocupam cada uma uma página alinhada e são mapeadas só de
+leitura. Um atacante com uma primitiva de escrita no kernel já não consegue
+desviar exceções reescrevendo a IDT. **Detalhe:** o CPU escreve o bit
+"accessed" de um descritor na primeira vez que o segmento é carregado; esse
+bit é pré-ativado em todos os descritores para o CPU nunca precisar de
+escrever na GDT. A TSS continua RW (o RSP0 muda a cada troca de thread na
+Fase 6).
+
+### D-032 — W^X garantido na construção e auditado no arranque (2026-11-25, CLAUDE)
+`MapFlags` com `writable && executable` é recusado por `map_4k`/`map_2m`
+(`MapError::WriteAndExecute`), mapear por cima de um mapeamento existente é
+um erro, e o bit "user" é recusado na metade do kernel. Depois de construir
+as tabelas, uma auditoria percorre toda a metade do kernel e **o arranque
+pára** se encontrar alguma página W+X ou acessível ao user.
+
+### D-033 — `map_mmio` é unsafe e recusa RAM (2026-11-25, CLAUDE)
+Mesmo raciocínio do `Port::new` (D-010): o perigo está em *que* dispositivo
+se mapeia (DMA). `map_mmio` mapeia numa janela própria (1 TiB a partir de
+`0xFFFF_D000_0000_0000`), nunca executável, e **recusa intervalos que
+coincidam com RAM ou firmware** do memory map (um alias MMIO de RAM
+contornaria todas as outras proteções). O `MmioRegion` devolvido só faz
+acessos voláteis, com limites e alinhamento verificados.
+
+### D-034 — PAT programado no arranque (2026-11-25, CLAUDE)
+`IA32_PAT = 0x0007_0106_0007_0106`: índice 0 = WB, 1 = WC, 2 = UC-, 3 = UC
+(4–7 repetem). `CacheType` escolhe os bits PWT/PCD das entradas. É feito com
+`wbinvd` antes, imediatamente antes de carregar as tabelas novas.
+
+### D-035 — Heap do kernel: classes de tamanho + páginas com guarda (2026-11-25, CLAUDE)
+**Pequenas** (≤ 2048 bytes): 8 listas livres (16…2048 bytes); quando uma
+classe fica vazia recebe uma página nova cortada em pedaços iguais. O(1),
+pedaços naturalmente alinhados ao tamanho. **Grandes**: páginas mapeadas a
+pedido na região do heap (`0xFFFF_C000_0000_0000`, 1 TiB), seguidas de uma
+**página de guarda por mapear**; ao libertar, as páginas são desmapeadas e
+devolvidas ao PMM (que as limpa).
+**Endurecimento:** pedaços pequenos são limpos a zero ao libertar (toda a
+alocação já vem a zeros); o link da lista livre guardado no pedaço é
+**codificado** (`next ^ (pedaço >> 12) ^ segredo`, "safe linking") e
+validado ao tirar da lista — um use-after-free que o reescreva é detetado
+em vez de devolver um endereço escolhido pelo atacante; libertar o pedaço
+que já está à cabeça da lista (double free comum) é detetado.
+**Limitações conhecidas:** o segredo vem do TSC (fraco) até haver RNG na
+Fase 8; o espaço virtual das alocações grandes não é reutilizado (1 TiB
+chega por agora); o heap usa `SpinLock` sem desligar interrupções, por isso
+**não se pode alocar em handlers de interrupção** até à Fase 4.
+Ordem de locks: heap → espaço de endereçamento do kernel → PMM.
+
+### D-036 — `xtask test --expect <texto>` (2026-11-25, CLAUDE)
+Em release, o LLVM pode eliminar pares alloc/dealloc e outros testes; um
+autoteste de falha que entrasse em panic por outra razão passava por
+engano. Com `--expect` o teste exige o texto do relatório (ex.:
+`"protection violation on write"`). Os autotestes do núcleo devem ser
+sempre corridos com `--expect`.
+
+### D-101 — Testes QEMU das proteções de memória (2026-11-25, CODEX)
+`cargo xtask test-memory` reutiliza o teste de arranque e as expectativas
+da D-036. Ativa uma única feature de falha de cada vez e guarda a saída
+série de cada execução. Os testes exigem que o PMM, a auditoria W^X, a
+pilha guardada, o heap e o MMIO passem antes de confirmar o relatório de
+falha. A CI corre os testes em BIOS e UEFI, em debug e release.
+
+Isolar os autotestes e verificar a ordem dos relatórios distingue o panic
+esperado de uma falha prematura. Os testes de validação dos logs correm
+no host e em Miri.

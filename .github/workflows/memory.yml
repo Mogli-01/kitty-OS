@@ -1,0 +1,65 @@
+name: Memory protections
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  serial-validation:
+    name: Serial log validation on the host and Miri
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain and Miri
+        run: |
+          rustup toolchain install
+          rustup component add miri
+      - run: cargo test --locked -p xtask
+      - run: cargo miri test --locked -p xtask
+
+  qemu:
+    name: Memory protections (${{ matrix.firmware }}, ${{ matrix.profile }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        firmware: [uefi, bios]
+        profile: [debug, release]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install QEMU, OVMF and xorriso
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf xorriso
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - name: Check allocator, page protections and MMIO
+        shell: bash
+        env:
+          FIRMWARE: ${{ matrix.firmware }}
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          flags=()
+          if [[ "$FIRMWARE" == bios ]]; then flags+=(--bios); fi
+          if [[ "$PROFILE" == release ]]; then flags+=(--release); fi
+          cargo xtask test-memory "${flags[@]}"
+      - name: Upload serial logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: memory-tests-${{ matrix.firmware }}-${{ matrix.profile }}
+          path: build/memory-tests/${{ matrix.firmware }}-${{ matrix.profile }}/*.log
+          if-no-files-found: ignore
