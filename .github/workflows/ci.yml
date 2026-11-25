@@ -1,0 +1,55 @@
+# Initial CI created by Claude in the bootstrap PR. From now on this file is
+# owned by Codex (see AGENTS.md); Claude asks for changes via "para-codex".
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: CI only needs to read the repository.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-24.04
+    steps:
+      # Actions pinned by commit SHA (supply-chain safety). v5.1.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo clippy -p kitty-kernel --features qemu-exit -- -D warnings
+      - run: cargo clippy --workspace --release -- -D warnings
+
+  boot:
+    name: boot test in QEMU
+    needs: lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Install QEMU, OVMF and xorriso
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf xorriso
+      - name: Install pinned toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - name: Boot test (UEFI, debug)
+        run: cargo xtask test
+      - name: Boot test (BIOS ISO, debug)
+        run: cargo xtask test --bios
+      - name: Boot test (UEFI, release)
+        run: cargo xtask test --release
+      - name: Upload serial log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: serial-log
+          path: build/serial-test.log
+          if-no-files-found: ignore

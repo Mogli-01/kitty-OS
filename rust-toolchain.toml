@@ -1,0 +1,7 @@
+# Pinned nightly: the kernel needs unstable features (per-package-target,
+# ptr_metadata used by the `limine` crate). Bump deliberately, in its own PR.
+[toolchain]
+channel = "nightly-2026-11-20"
+components = ["rust-src", "llvm-tools", "rustfmt", "clippy"]
+targets = ["x86_64-unknown-none"]
+profile = "minimal"

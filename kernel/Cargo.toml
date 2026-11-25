@@ -1,0 +1,24 @@
+# `per-package-target` lets `cargo build`/`cargo clippy` at the workspace root
+# always build the kernel for bare metal while xtask builds for the host.
+cargo-features = ["per-package-target"]
+
+[package]
+name = "kitty-kernel"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+forced-target = "x86_64-unknown-none"
+
+[[bin]]
+name = "kitty-kernel"
+path = "src/main.rs"
+test = false
+bench = false
+
+[features]
+# Only for automated tests: lets the kernel power off QEMU through the
+# isa-debug-exit device. Never enabled in normal builds.
+qemu-exit = []
+
+[dependencies]
+limine = "0.6.5"
