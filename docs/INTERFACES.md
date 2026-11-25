@@ -80,6 +80,7 @@ Opções (Fase 2):
   35 e `KERNEL PANIC` na série).
 
 Textos estáveis na série que os testes podem verificar:
+`[cpu] breakpoint at rip=` (prefixo emitido pelo handler de #BP),
 `[cpu] breakpoint exception handled, execution resumed`,
 `*** CPU EXCEPTION: <nome>`, `=== <nome> (vector N)`,
 `non-present page on read in kernel mode`,

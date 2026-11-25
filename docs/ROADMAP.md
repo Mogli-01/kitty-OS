@@ -22,7 +22,7 @@ preparado para a interface gráfica (Fases 10–14).
 | Consola de texto no framebuffer | CLAUDE | FEITO |
 | Panic handler com localização | CLAUDE | FEITO |
 | Teste de arranque no QEMU (isa-debug-exit) | CLAUDE → CODEX | FEITO (mínimo) |
-| Testes de integração mais completos (ex.: teste de panic) | CODEX | TODO |
+| Teste de integração de panic no QEMU (código de saída e série) | CODEX | FEITO (CI da Fase 2) |
 
 ## Fase 2 — CPU: GDT, TSS, IDT, exceções
 | Tarefa | Dono | Estado |
@@ -30,7 +30,7 @@ preparado para a interface gráfica (Fases 10–14).
 | GDT própria + TSS com pilhas IST (double fault, NMI, machine check) | CLAUDE | FEITO |
 | IDT + handlers de exceções com relatório útil (registos, código de erro) | CLAUDE | FEITO |
 | Autotestes no kernel (`selftest-page-fault`, `selftest-double-fault`) + `xtask --features/--expect-panic` | CLAUDE | FEITO |
-| Testes na CI: provocar #PF e double fault e verificar o relatório | CODEX | TODO |
+| Testes no QEMU: #BP, #PF e #DF com verificação do relatório (UEFI/BIOS, debug/release) | CODEX | FEITO |
 
 ## Fase 3 — Memória
 | Tarefa | Dono | Estado |
