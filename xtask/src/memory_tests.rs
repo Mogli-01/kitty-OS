@@ -6,15 +6,18 @@ use std::path::Path;
 use super::{Opts, PANIC_MESSAGE, Result, boot_test, build_dir};
 
 const PAGE_FAULT: &str = "=== Page Fault (#PF) (vector 14)";
+const DOUBLE_FAULT: &[&str] = &[
+    "=== Double Fault (#DF) (vector 8)",
+    "(running on the IST double-fault stack)",
+];
 const WRITE_PROTECTION: &[&str] = &[PAGE_FAULT, "protection violation on write in kernel mode"];
 const FAULTS: &[(&str, &[&str])] = &[
     (
-        "selftest-stack-overflow",
-        &[
-            "=== Double Fault (#DF) (vector 8)",
-            "(running on the IST double-fault stack)",
-        ],
+        "selftest-page-fault",
+        &[PAGE_FAULT, "non-present page on read in kernel mode"],
     ),
+    ("selftest-double-fault", DOUBLE_FAULT),
+    ("selftest-stack-overflow", DOUBLE_FAULT),
     ("selftest-write-text", WRITE_PROTECTION),
     (
         "selftest-exec-data",
@@ -24,11 +27,15 @@ const FAULTS: &[(&str, &[&str])] = &[
         ],
     ),
     ("selftest-write-idt", WRITE_PROTECTION),
+    (
+        "selftest-heap-overflow",
+        &[PAGE_FAULT, "non-present page on write in kernel mode"],
+    ),
 ];
 
 pub(super) fn run(opts: &Opts) -> Result<()> {
-    if opts.expect_panic || !opts.features.is_empty() {
-        return Err("test-memory selects the features and panic expectations for each case".into());
+    if opts.expect_panic || !opts.expect.is_empty() || !opts.features.is_empty() {
+        return Err("test-memory selects the features and expectations for each case".into());
     }
 
     let firmware = if opts.bios { "bios" } else { "uefi" };
@@ -45,6 +52,7 @@ pub(super) fn run(opts: &Opts) -> Result<()> {
             release: opts.release,
             features: vec![feature.into()],
             expect_panic: true,
+            expect: report.iter().map(|marker| (*marker).to_owned()).collect(),
         };
         run_case(feature, &fault_opts, &logs, report)?;
     }
@@ -84,6 +92,7 @@ fn check_serial(serial: &str, report: &[&str]) -> Result<()> {
     // Find the fault only after the kernel reached the guarded stack and completed MMIO checks.
     let boot_markers = [
         "[mm] running on the kernel stack (guard page below it)",
+        "heap self-test passed",
         "[mm] MMIO self-test passed",
     ];
     for marker in boot_markers.into_iter().chain(report.iter().copied()) {
@@ -105,6 +114,7 @@ mod tests {
 [mm] physical memory: 253 MiB managed, 252 MiB free; frame allocator self-test passed
 [mm] W^X audit: 1553 mappings, 0 writable+executable, 0 user pages in kernel half
 [mm] running on the kernel stack (guard page below it)
+[mm] kernel heap ready (12 pages mapped); heap self-test passed
 [mm] MMIO self-test passed (local APIC version 0x14)\n";
     const WRITE_FAULT: &str = "\
 === Page Fault (#PF) (vector 14) error_code=0x3

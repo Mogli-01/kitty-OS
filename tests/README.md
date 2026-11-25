@@ -5,15 +5,15 @@ o código de saída do dispositivo `isa-debug-exit`.
 
 ```sh
 cargo xtask test                     # arranque normal
-cargo xtask test-memory              # PMM, paginação e MMIO em UEFI/debug
+cargo xtask test-memory              # PMM, heap, paginação e MMIO em UEFI/debug
 cargo xtask test-memory --bios --release
 cargo test --locked -p xtask          # validação dos relatórios no host
 cargo miri test --locked -p xtask     # requer rustup component add miri
 ```
 
-Os testes de memória confirmam que o PMM passa o autoteste de partilha e
-limpeza de frames, que a auditoria das tabelas passa, que o kernel chega à
-pilha guardada e que o teste de MMIO passa. Depois confirmam as falhas que
-o kernel já exercita: a pilha de emergência IST trata o overflow da pilha,
-as páginas de código e da IDT recusam escritas e o bit NX impede executar
-dados. Os logs ficam em `build/memory-tests/<firmware>-<perfil>/`.
+Os testes de memória confirmam os autotestes do PMM, heap e MMIO, a auditoria
+das tabelas e a mudança para a pilha guardada. Depois verificam os relatórios
+dos sete autotestes de falha do kernel. A pilha IST recebe o double fault,
+as páginas de código e da IDT recusam escritas, o bit NX impede executar
+dados e a página de guarda após uma alocação grande apanha a escrita fora
+do buffer. Os logs ficam em `build/memory-tests/<firmware>-<perfil>/`.

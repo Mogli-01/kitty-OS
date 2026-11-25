@@ -54,6 +54,8 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | Frames libertados limpos a zero; frames entregues sempre a zeros | fuga de dados entre processos | ATIVA | 3 |
 | Lista livre do PMM fora de banda (D-028) | use-after-free corromper o alocador de frames | ATIVA | 3 |
 | Deteção de double free e overflow de referências no PMM | dois donos para a mesma memória | ATIVA | 3 |
+| Heap: pedaços limpos ao libertar, links codificados e validados, deteção de double free (D-035) | fuga de dados antigos; use-after-free a corromper o alocador | ATIVA | 3 |
+| Heap: página de guarda depois de cada alocação grande | overflow de um buffer grande a corromper outro | ATIVA | 3 |
 | Locks que desativam interrupções | deadlocks em handlers | PLANEADA | 4 |
 | SMEP | o kernel executar código de user | PLANEADA | 6 |
 | SMAP | o kernel ler/escrever memória de user sem querer | PLANEADA | 6 |

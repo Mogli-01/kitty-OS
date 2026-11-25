@@ -12,6 +12,8 @@
 //!   --features <a,b>   extra kernel cargo features (e.g. selftest-page-fault)
 //!   --expect-panic     (test) pass only if the kernel panics: QEMU exit code
 //!                      35 and "KERNEL PANIC" on the serial port
+//!   --expect <text>    (test) the serial output must also contain <text>
+//!                      (repeatable)
 //!
 //! Environment overrides: KITTY_QEMU (qemu binary), KITTY_OVMF (UEFI code
 //! firmware), KITTY_XORRISO (xorriso binary).
@@ -50,6 +52,7 @@ struct Opts {
     bios: bool,
     features: Vec<String>,
     expect_panic: bool,
+    expect: Vec<String>,
 }
 
 fn main() -> ExitCode {
@@ -61,6 +64,13 @@ fn main() -> ExitCode {
             "--release" => opts.release = true,
             "--bios" => opts.bios = true,
             "--expect-panic" => opts.expect_panic = true,
+            "--expect" => match args.next() {
+                Some(text) => opts.expect.push(text),
+                None => {
+                    eprintln!("xtask: --expect needs a value");
+                    return ExitCode::FAILURE;
+                }
+            },
             "--features" => match args.next() {
                 Some(list) => opts
                     .features
@@ -90,7 +100,7 @@ fn main() -> ExitCode {
         "test-memory" => memory_tests::run(&opts),
         _ => {
             eprintln!(
-                "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--expect-panic]"
+                "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--expect-panic] [--expect text]"
             );
             eprintln!("       cargo xtask test-memory [--release] [--bios]");
             return ExitCode::FAILURE;
@@ -437,6 +447,11 @@ fn boot_test(opts: &Opts, log: &Path) -> Result<String> {
     };
     if !serial.contains(BOOT_MESSAGE) {
         return Err(format!("serial output does not contain {BOOT_MESSAGE:?}"));
+    }
+    for text in &opts.expect {
+        if !serial.contains(text.as_str()) {
+            return Err(format!("serial output does not contain {text:?}"));
+        }
     }
     if opts.expect_panic {
         if status.code() != Some(QEMU_FAILURE) || !serial.contains(PANIC_MESSAGE) {

@@ -27,8 +27,9 @@ pub trait Console: Send {
     fn write_str(&mut self, s: &str);
 }
 ```
-Hoje só existem as duas consolas fixas do núcleo. O registo dinâmico
-(`console::register`) chega na Fase 3, quando houver heap.
+Registo: `console::register(Box<dyn Console>)` (precisa do heap, já
+disponível depois de `mm::heap::init`). A consola registada passa a receber
+todo o output do kernel.
 
 ### `sync::SpinLock<T>` — INSTÁVEL
 Fornece: CLAUDE (`kernel/src/sync/`). Usa: todos.
@@ -78,6 +79,8 @@ Opções (Fase 2):
   `selftest-double-fault`).
 - `--expect-panic` — o teste passa só se o kernel entrar em panic (código
   35 e `KERNEL PANIC` na série).
+- `--expect <texto>` — a série tem de conter também `<texto>` (repetível).
+  **Usar sempre com os autotestes de falhas**, para verificar a razão.
 
 Textos estáveis na série que os testes podem verificar:
 `[cpu] breakpoint exception handled, execution resumed`,
@@ -91,14 +94,22 @@ Textos estáveis na série que os testes podem verificar:
 Autotestes de falhas (todos com `--expect-panic`): `selftest-page-fault`,
 `selftest-double-fault`, `selftest-stack-overflow` (double fault),
 `selftest-write-text` e `selftest-write-idt` (#PF de escrita),
-`selftest-exec-data` (#PF de instruction fetch).
+`selftest-exec-data` (#PF de instruction fetch), `selftest-heap-overflow`
+(`non-present page on write`). Arranque normal: `[mm] kernel heap ready`,
+`heap self-test passed`.
 
 `cargo xtask test-memory [--bios] [--release]` corre o arranque normal e
-uma compilação separada para cada autoteste da Fase 3. Antes das falhas,
-confirma `frame allocator self-test passed`, a auditoria W^X, o marcador
-`[mm] running on the kernel stack (guard page below it)` e o autoteste MMIO.
-Guarda a série de cada execução em `build/memory-tests/<firmware>-<perfil>/`.
+uma compilação separada para cada um dos sete autotestes de falhas. Antes
+das falhas, confirma `frame allocator self-test passed`, a auditoria W^X,
+`[mm] running on the kernel stack (guard page below it)`, o autoteste do
+heap e o do MMIO. Guarda a série em `build/memory-tests/<firmware>-<perfil>/`.
 `test` e `test-memory` dão erro se o log não puder ser gravado.
+
+### Heap do kernel (`alloc`) — ESTÁVEL
+Fornece: CLAUDE (`kernel/src/mm/heap.rs`). Usa: todos.
+`Box`, `Vec`, `String`, … funcionam depois de `mm::heap::init()`.
+Alocações vêm sempre a zeros. **Não alocar em handlers de interrupção** até
+à Fase 4 (o lock ainda não desliga interrupções).
 
 ---
 
@@ -143,7 +154,6 @@ Fornece: CLAUDE. Uso interno do núcleo (pilhas de threads, heap).
 
 | Interface | Fornece | Usa | Fase |
 |---|---|---|---|
-| `console::register(&'static SpinLock<dyn Console>)` | CLAUDE | CODEX | 3 |
 | `arch::irq::register(vector, handler: fn(&InterruptFrame))` | CLAUDE | CODEX | 4 |
 | `sync::IrqSpinLock<T>` | CLAUDE | todos | 4 |
 | `sched::tick()` — chamada pelo driver do timer a cada interrupção | CLAUDE | CODEX | 4/5 |

@@ -89,3 +89,15 @@ pub fn write_idt() {
     // read-only; the #PF handler panics.
     unsafe { ptr.write_volatile(0) };
 }
+
+/// Writes one byte past the end of a large heap allocation. The page after
+/// it is an unmapped guard page: expect "non-present page on write".
+#[cfg(feature = "selftest-heap-overflow")]
+pub fn heap_overflow() {
+    let mut buf = alloc::vec![0u8; 8192];
+    let end = buf.as_mut_ptr().wrapping_add(buf.len());
+    // SAFETY: deliberately out of bounds to test the heap guard page; the
+    // #PF handler panics, nothing returns here.
+    unsafe { end.write_volatile(1) };
+    core::hint::black_box(&buf);
+}

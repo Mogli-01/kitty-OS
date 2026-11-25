@@ -22,6 +22,8 @@
 #![deny(clippy::multiple_unsafe_ops_per_block)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
+extern crate alloc;
+
 #[allow(unsafe_code)]
 pub mod arch;
 pub mod boot_info;
@@ -80,6 +82,13 @@ pub fn kmain(mut boot: BootInfo) -> ! {
 /// Second half of boot, running on the guarded kernel stack.
 extern "C" fn kmain_on_kernel_stack() -> ! {
     kprintln!("[mm] running on the kernel stack (guard page below it)");
+    mm::heap::init();
+    mm::heap::selftest();
+    kprintln!(
+        "[mm] kernel heap ready ({} pages mapped); heap self-test passed",
+        mm::heap::stats().pages
+    );
+
     match mm::vmm::mmio_selftest() {
         Some(v) => kprintln!("[mm] MMIO self-test passed (local APIC version {:#x})", v),
         None => panic!("MMIO self-test failed"),
@@ -97,6 +106,8 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     arch::x86_64::selftest::exec_data();
     #[cfg(feature = "selftest-write-idt")]
     arch::x86_64::selftest::write_idt();
+    #[cfg(feature = "selftest-heap-overflow")]
+    arch::x86_64::selftest::heap_overflow();
 
     kprintln!("[boot] boot complete, halting");
 
