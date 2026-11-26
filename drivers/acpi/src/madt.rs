@@ -8,9 +8,16 @@ const MAX_TABLE_LEN: usize = 64 * 1024;
 const PC_AT_COMPAT: u32 = 1;
 const ISA_LINES: usize = 16;
 const APIC_PAGE_SIZE: u64 = 4096;
+const LOCAL_APIC_TYPE: u8 = 0;
 const IO_APIC_TYPE: u8 = 1;
 const ISA_OVERRIDE_TYPE: u8 = 2;
+const IO_APIC_NMI_TYPE: u8 = 3;
+const LOCAL_NMI_TYPE: u8 = 4;
 const LOCAL_ADDRESS_OVERRIDE_TYPE: u8 = 5;
+const X2APIC_NMI_TYPE: u8 = 10;
+const PROCESSOR_ENABLED: u32 = 1;
+const PROCESSOR_ONLINE_CAPABLE: u32 = 1 << 1;
+const ALL_PROCESSORS: u8 = 0xff;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -23,9 +30,14 @@ pub enum Error {
     BadAddress,
     BadFlags,
     BadIsaSource,
+    BadLocalApicId,
     DuplicateIoApicId,
     DuplicateIsaSource,
+    DuplicateLocalProcessor,
     DuplicateLocalAddressOverride,
+    MissingLocalProcessor,
+    ConflictingLocalNmi { lint: u8 },
+    UnsupportedNmiSource,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -50,6 +62,12 @@ pub enum TriggerMode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct IsaRoute {
     pub gsi: u32,
+    pub polarity: Polarity,
+    pub trigger: TriggerMode,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LocalNmi {
     pub polarity: Polarity,
     pub trigger: TriggerMode,
 }
@@ -89,11 +107,26 @@ impl<'a> Madt<'a> {
         let entries = &table[HEADER_LEN..];
         let mut local_override = None;
         let mut overrides = [None; ISA_LINES];
-        let mut ids = [false; 256];
+        let mut io_apic_ids = [false; 256];
+        let mut local_apic_ids = [false; 256];
+        let mut processor_uids = [false; 256];
         for entry in records(entries) {
             match entry? {
+                Record::LocalApic {
+                    id,
+                    uid,
+                    enabled: true,
+                } => {
+                    let id_seen = &mut local_apic_ids[usize::from(id)];
+                    let uid_seen = &mut processor_uids[usize::from(uid)];
+                    if *id_seen || *uid_seen {
+                        return Err(Error::DuplicateLocalProcessor);
+                    }
+                    *id_seen = true;
+                    *uid_seen = true;
+                }
                 Record::IoApic(apic) => {
-                    let seen = &mut ids[usize::from(apic.id)];
+                    let seen = &mut io_apic_ids[usize::from(apic.id)];
                     if core::mem::replace(seen, true) {
                         return Err(Error::DuplicateIoApicId);
                     }
@@ -111,7 +144,10 @@ impl<'a> Madt<'a> {
                         return Err(Error::DuplicateLocalAddressOverride);
                     }
                 }
-                Record::Other => {}
+                Record::LocalApic { enabled: false, .. }
+                | Record::LocalNmi { .. }
+                | Record::UnsupportedNmi
+                | Record::Other => {}
             }
         }
         let local_apic_address = local_override.unwrap_or(u64::from(local_address));
@@ -150,12 +186,51 @@ impl<'a> Madt<'a> {
     pub fn isa_override(&self, irq: u8) -> Option<IsaRoute> {
         self.overrides.get(usize::from(irq)).copied().flatten()
     }
+
+    /// Resolves the NMI settings for an enabled xAPIC ID, in LINT0, LINT1
+    /// order. An I/O APIC or x2APIC NMI needs a platform policy before the
+    /// interrupt controller can be replaced.
+    pub fn local_nmis(&self, apic_id: u8) -> Result<[Option<LocalNmi>; 2], Error> {
+        let uid = records(self.records)
+            .find_map(|entry| match entry {
+                Ok(Record::LocalApic {
+                    id,
+                    uid,
+                    enabled: true,
+                }) if id == apic_id => Some(uid),
+                _ => None,
+            })
+            .ok_or(Error::MissingLocalProcessor)?;
+
+        let mut pins = [None; 2];
+        for entry in records(self.records) {
+            match entry? {
+                Record::LocalNmi {
+                    uid: target,
+                    lint,
+                    config,
+                } if target == ALL_PROCESSORS || target == uid => {
+                    let slot = &mut pins[usize::from(lint)];
+                    if slot.is_some_and(|old| old != config) {
+                        return Err(Error::ConflictingLocalNmi { lint });
+                    }
+                    *slot = Some(config);
+                }
+                Record::UnsupportedNmi => return Err(Error::UnsupportedNmiSource),
+                _ => {}
+            }
+        }
+        Ok(pins)
+    }
 }
 
 enum Record {
+    LocalApic { id: u8, uid: u8, enabled: bool },
     IoApic(IoApic),
     IsaOverride { irq: u8, route: IsaRoute },
+    LocalNmi { uid: u8, lint: u8, config: LocalNmi },
     LocalAddressOverride(u64),
+    UnsupportedNmi,
     Other,
 }
 
@@ -178,6 +253,21 @@ fn records(mut bytes: &[u8]) -> impl Iterator<Item = Result<Record, Error>> + '_
 
 fn decode_record(kind: u8, payload: &[u8]) -> Result<Record, Error> {
     match (kind, payload) {
+        (LOCAL_APIC_TYPE, [uid, id, a, b, c, d]) => {
+            let flags = u32::from_le_bytes([*a, *b, *c, *d]);
+            if !matches!(flags, 0 | PROCESSOR_ENABLED | PROCESSOR_ONLINE_CAPABLE) {
+                return Err(Error::BadFlags);
+            }
+            let enabled = flags == PROCESSOR_ENABLED;
+            if enabled && *id == 0xff {
+                return Err(Error::BadLocalApicId);
+            }
+            Ok(Record::LocalApic {
+                id: *id,
+                uid: *uid,
+                enabled,
+            })
+        }
         (IO_APIC_TYPE, [id, 0, a, b, c, d, e, f, g, h]) => {
             let address = u32::from_le_bytes([*a, *b, *c, *d]);
             if !is_apic_address(u64::from(address)) {
@@ -191,17 +281,38 @@ fn decode_record(kind: u8, payload: &[u8]) -> Result<Record, Error> {
         }
         (ISA_OVERRIDE_TYPE, [0, irq, a, b, c, d, low, high]) => {
             let gsi = u32::from_le_bytes([*a, *b, *c, *d]);
-            let route = decode_isa_route(gsi, u16::from_le_bytes([*low, *high]))?;
-            Ok(Record::IsaOverride { irq: *irq, route })
+            let (polarity, trigger) = decode_inti_flags(u16::from_le_bytes([*low, *high]))?;
+            Ok(Record::IsaOverride {
+                irq: *irq,
+                route: IsaRoute {
+                    gsi,
+                    polarity,
+                    trigger,
+                },
+            })
+        }
+        (LOCAL_NMI_TYPE, [uid, low, high, lint @ (0 | 1)]) => {
+            let (polarity, trigger) = decode_inti_flags(u16::from_le_bytes([*low, *high]))?;
+            Ok(Record::LocalNmi {
+                uid: *uid,
+                lint: *lint,
+                config: LocalNmi { polarity, trigger },
+            })
         }
         (LOCAL_ADDRESS_OVERRIDE_TYPE, [0, 0, a, b, c, d, e, f, g, h]) => {
             Ok(Record::LocalAddressOverride(u64::from_le_bytes([
                 *a, *b, *c, *d, *e, *f, *g, *h,
             ])))
         }
-        (IO_APIC_TYPE | ISA_OVERRIDE_TYPE | LOCAL_ADDRESS_OVERRIDE_TYPE, _) => {
-            Err(Error::BadRecord { kind })
-        }
+        (IO_APIC_NMI_TYPE | X2APIC_NMI_TYPE, _) => Ok(Record::UnsupportedNmi),
+        (
+            LOCAL_APIC_TYPE
+            | IO_APIC_TYPE
+            | ISA_OVERRIDE_TYPE
+            | LOCAL_NMI_TYPE
+            | LOCAL_ADDRESS_OVERRIDE_TYPE,
+            _,
+        ) => Err(Error::BadRecord { kind }),
         _ => Ok(Record::Other),
     }
 }
@@ -210,9 +321,10 @@ fn is_apic_address(address: u64) -> bool {
     address != 0 && address.is_multiple_of(APIC_PAGE_SIZE) && address <= u64::MAX - APIC_PAGE_SIZE
 }
 
-fn decode_isa_route(gsi: u32, flags: u16) -> Result<IsaRoute, Error> {
+fn decode_inti_flags(flags: u16) -> Result<(Polarity, TriggerMode), Error> {
     // Bits 0–1 are polarity, 2–3 trigger mode. Encoding 2 is reserved in
-    // each field. The bus-conforming encoding (0) uses ISA defaults.
+    // each field. Use active-high, edge-triggered defaults for conforming
+    // ISA interrupts and xAPIC LINT NMIs.
     if flags & !0x0f != 0 {
         return Err(Error::BadFlags);
     }
@@ -226,11 +338,7 @@ fn decode_isa_route(gsi: u32, flags: u16) -> Result<IsaRoute, Error> {
         3 => TriggerMode::Level,
         _ => return Err(Error::BadFlags),
     };
-    Ok(IsaRoute {
-        gsi,
-        polarity,
-        trigger,
-    })
+    Ok((polarity, trigger))
 }
 
 #[cfg(test)]

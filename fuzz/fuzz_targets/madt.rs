@@ -1,6 +1,6 @@
 #![no_main]
 
-use kitty_acpi::madt::Madt;
+use kitty_acpi::madt::{Error, Madt};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|input: &[u8]| {
@@ -31,5 +31,11 @@ fn exercise(input: &[u8]) {
             assert!(io_apic.address.is_multiple_of(4096));
         }
         assert!(madt.isa_override(16).is_none());
+        assert_eq!(madt.local_nmis(0xff), Err(Error::MissingLocalProcessor));
+        for id in [0, input.last().copied().unwrap_or(0)] {
+            if let Err(Error::ConflictingLocalNmi { lint }) = madt.local_nmis(id) {
+                assert!(lint <= 1);
+            }
+        }
     }
 }
