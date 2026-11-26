@@ -96,7 +96,8 @@ Autotestes de falhas (todos com `--expect-panic`): `selftest-page-fault`,
 `selftest-double-fault`, `selftest-stack-overflow` (double fault),
 `selftest-write-text` e `selftest-write-idt` (#PF de escrita),
 `selftest-exec-data` (#PF de instruction fetch), `selftest-irq-pit` (**sem**
-`--expect-panic`: `--expect "hardware IRQ0 (PIT) delivered"`),
+`--expect-panic`: `--expect "hardware IRQ0 (PIT) delivered twice"`; duas
+interrupções depois da baseline provam que o EOI funciona),
 `selftest-heap-overflow`
 (`non-present page on write`). Arranque normal: `[mm] kernel heap ready`,
 `heap self-test passed`,
@@ -245,7 +246,9 @@ pub fn init() {
 Fornece: CLAUDE (`kernel/src/sync/irq_spinlock.rs`). Usa: todos.
 Mesma API que `SpinLock` (`new`, `lock`, `try_lock`); desliga as
 interrupções enquanto o guard existe e repõe o estado anterior ao libertar.
-Usar para tudo o que um handler de interrupção possa tocar. **Regra:**
+Usar para tudo o que um handler de interrupção possa tocar. Os guards
+(`SpinLockGuard`, `IrqSpinLockGuard`) são `!Send` e só são `Sync` se
+`T: Sync`. **Regra:**
 guards aninhados libertam-se por ordem inversa (LIFO); um `drop` fora de
 ordem pode religar as interrupções com outro lock ainda preso.
 
