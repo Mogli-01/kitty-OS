@@ -318,7 +318,12 @@ Formato:
     assembly, scheduler round-robin preemptivo, pilhas de thread com página
     de guarda, contador de preempção nos `SpinLock`, medição em ciclos.
     Decisões D-044 (`unsafe` em `sched/`) e D-045.
-- **PRs abertos:** `claude/fase5-scheduler` (este).
+  - **`WaitQueue`** (PR seguinte, `claude/fase5-waitqueue`, base #39):
+    estado `Blocked`, `wait_until`/`wake_one`/`wake_all` sem wake-ups
+    perdidos (D-046), utilizável a partir de handlers de IRQ; autoteste
+    produtor/consumidor no arranque.
+- **PRs abertos:** #39 (`claude/fase5-scheduler`); `claude/fase5-waitqueue`
+  (base #39).
 - **Proteções de segurança alteradas:** ATIVAS — pilhas de thread com
   guarda e limpas ao libertar; sem preempção com spinlock preso; troca só
   depois do EOI.
@@ -330,7 +335,7 @@ Formato:
   "Scheduler"). Pôr `selftest-preempt` e `selftest-thread-stack-overflow`
   na CI (o primeiro sem `--expect-panic`).
 - **Avisos:**
-  - Ainda não há `WaitQueue` (próximo passo do Claude): threads que
-    esperam fazem `yield_now()` em ciclo.
+  - Para esperar sem gastar CPU: `sched::WaitQueue` (ex.: o teclado pode
+    acordar leitores a partir do handler do IRQ1).
   - Um só CPU (o lock do scheduler é largado antes da troca).
   - Os ciclos do autoteste vêm do QEMU TCG: não são de hardware real.

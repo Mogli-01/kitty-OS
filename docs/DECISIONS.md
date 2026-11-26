@@ -500,3 +500,15 @@ está em `docs/UNSAFE.md`.
   (`yield_now`), que mostra os ciclos (TSC) por yield+troca. No QEMU TCG
   os "ciclos" não são de hardware real: o número serve para comparar
   versões, não como valor absoluto.
+
+### D-046 — Filas de espera (`WaitQueue`) sem wake-ups perdidos (2026-11-26, CLAUDE)
+`WaitQueue::wait_until(|| condição)` verifica a condição, regista a thread
+e bloqueia-a (estado `Blocked`, fora da fila de prontas) **com as
+interrupções desligadas**. Num só CPU nada corre entre esses passos, por
+isso quem acorda ou corre antes da verificação (a condição já é verdadeira)
+ou depois do registo (a thread é acordada): nunca se perde um wake-up. A
+condição é sempre verificada de novo depois de acordar (wake-ups espúrios
+não fazem mal). `wake_one`/`wake_all` podem ser chamados de handlers de
+interrupção e ignoram entradas obsoletas. Se nenhuma outra thread puder
+correr, o waiter dorme com `sti; hlt` em vez de girar. SMP (Fase 9): a
+verificação e o registo passam a ser feitos sob o lock da fila.

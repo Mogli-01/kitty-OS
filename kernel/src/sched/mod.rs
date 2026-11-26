@@ -14,12 +14,19 @@
 //! while interrupts stay disabled, which is enough on one CPU. Phase 9
 //! (SMP) needs per-CPU run queues and a lock held across the switch.
 //!
+//! Waiting: [`wait::WaitQueue`] blocks a thread until another thread or an
+//! interrupt handler wakes it (no busy waiting).
+//!
 //! `unsafe` is allowed here (D-044): switching stacks and turning the entry
 //! address back into a function pointer cannot be done in safe Rust.
 
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, VecDeque};
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+pub mod wait;
+
+pub use wait::WaitQueue;
 
 use crate::arch::x86_64::{context, cpu};
 use crate::mm::paging::MapError;
@@ -35,7 +42,20 @@ pub struct ThreadId(pub u64);
 enum State {
     Running,
     Ready,
+    /// Waiting on a `WaitQueue`; not in the ready queue until woken.
+    Blocked,
     Dead,
+}
+
+/// What happens to the current thread when `schedule` switches away.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Leave {
+    /// Back to the end of the ready queue (yield, preemption).
+    Requeue,
+    /// Blocked until `wake` (wait queues).
+    Block,
+    /// Exits; its stack is freed later.
+    Die,
 }
 
 struct Thread {
@@ -130,7 +150,7 @@ pub fn spawn(name: &'static str, entry: fn()) -> Result<ThreadId, SpawnError> {
 
 /// Gives the CPU to the next ready thread, if any.
 pub fn yield_now() {
-    schedule(false);
+    schedule(Leave::Requeue);
 }
 
 /// Called by the timer interrupt handler (Codex's timer driver): requests a
@@ -144,7 +164,7 @@ pub fn tick() {
 /// spinlock is held (otherwise the request stays pending).
 pub(crate) fn preempt_if_requested() {
     if preempt::enabled() && NEED_RESCHED.swap(false, Ordering::AcqRel) {
-        schedule(false);
+        schedule(Leave::Requeue);
     }
 }
 
@@ -156,6 +176,15 @@ pub fn switches() -> u64 {
 /// Identifier of the running thread.
 pub fn current() -> ThreadId {
     SCHED.lock().as_ref().map_or(ThreadId(0), |s| s.current)
+}
+
+/// Whether thread `id` is currently blocked (for tests and diagnostics).
+pub fn is_blocked(id: ThreadId) -> bool {
+    SCHED
+        .lock()
+        .as_ref()
+        .and_then(|s| s.threads.get(&id))
+        .is_some_and(|t| t.state == State::Blocked)
 }
 
 /// Number of threads that exist (running, ready or not yet reaped).
@@ -182,13 +211,43 @@ pub extern "C" fn thread_start(entry: fn()) -> ! {
 /// Panics if no other thread is ready (the boot/idle thread must never
 /// exit): stopping silently with interrupts off would hide the bug.
 pub fn exit() -> ! {
-    schedule(true);
+    schedule(Leave::Die);
     panic!("sched: the last runnable thread exited");
 }
 
-/// Picks the next thread and switches to it. `dying`: the current thread
-/// exits instead of being re-queued.
-fn schedule(dying: bool) {
+/// Blocks the current thread until [`wake`] is called for it. Returns
+/// `false` without blocking if no other thread is ready to run (the caller
+/// should then idle with interrupts on and retry: see `WaitQueue`).
+///
+/// Must be called with interrupts disabled, right after registering the
+/// thread on a wait queue: on one CPU nothing can then run (and wake it)
+/// between the registration and the switch, so no wake-up is lost.
+pub(crate) fn block_current() -> bool {
+    schedule(Leave::Block)
+}
+
+/// Makes a blocked thread ready again. Returns whether it was blocked
+/// (waking a running, ready or dead thread does nothing). Safe to call from
+/// interrupt handlers.
+pub(crate) fn wake(id: ThreadId) -> bool {
+    let mut guard = SCHED.lock();
+    let Some(s) = guard.as_mut() else {
+        return false;
+    };
+    match s.threads.get_mut(&id) {
+        Some(t) if t.state == State::Blocked => {
+            t.state = State::Ready;
+            s.ready.push_back(id);
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Picks the next thread and switches to it; `how` says what happens to the
+/// current one. Returns whether a switch happened (`false` when nothing
+/// else is ready).
+fn schedule(how: Leave) -> bool {
     // A cooperative switch with a lock held would carry that lock (and the
     // global "no preemption" state) into another thread: forbid it. The
     // preemption path already checks this before calling us.
@@ -207,19 +266,19 @@ fn schedule(dying: bool) {
         let Some(s) = guard.as_mut() else {
             drop(guard);
             restore(were_enabled);
-            return;
+            return false;
         };
         let reap = core::mem::take(&mut s.dead);
         let Some(next) = s.ready.pop_front() else {
             drop(guard);
             drop(reap);
             restore(were_enabled);
-            return;
+            return false;
         };
         let cur = s.current;
         s.current = next;
 
-        let save: *mut u64 = if dying {
+        let save: *mut u64 = if how == Leave::Die {
             match s.threads.remove(&cur) {
                 Some(mut t) => {
                     t.state = State::Dead;
@@ -232,10 +291,16 @@ fn schedule(dying: bool) {
                 None => core::ptr::null_mut(),
             }
         } else {
-            s.ready.push_back(cur);
+            if how == Leave::Requeue {
+                s.ready.push_back(cur);
+            }
             match s.threads.get_mut(&cur) {
                 Some(t) => {
-                    t.state = State::Ready;
+                    t.state = if how == Leave::Block {
+                        State::Blocked
+                    } else {
+                        State::Ready
+                    };
                     &raw mut t.rsp
                 }
                 None => core::ptr::null_mut(),
@@ -271,6 +336,7 @@ fn schedule(dying: bool) {
 
     // Resumed: some other thread switched back to us.
     restore(were_enabled);
+    true
 }
 
 fn restore(were_enabled: bool) {

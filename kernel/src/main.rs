@@ -194,6 +194,9 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         None => panic!("scheduler self-test failed"),
     }
 
+    assert!(sched::wait::selftest(), "wait queue self-test failed");
+    kprintln!("[sched] wait queue self-test passed: waiter blocked, woken, value seen");
+
     #[cfg(feature = "selftest-preempt")]
     {
         assert!(

@@ -71,7 +71,7 @@ preparado para a interface gráfica (Fases 10–14).
 | Prioridades no scheduler | CLAUDE | TODO |
 | DESEMPENHO: medir a troca de contexto em ciclos (rdtsc) | CLAUDE | FEITO (autoteste no arranque) |
 | SEGURANÇA: pilhas de thread com página de guarda, limpas ao libertar; sem preempção com spinlock preso | CLAUDE | FEITO |
-| GUI-PREP: filas de espera (bloquear/acordar threads) — base do IPC e dos eventos de input | CLAUDE | TODO |
+| GUI-PREP: filas de espera (bloquear/acordar threads) — base do IPC e dos eventos de input | CLAUDE | FEITO |
 | Benchmarks automáticos (troca de contexto, syscalls) | CODEX | TODO |
 
 ## Fase 6 — User mode

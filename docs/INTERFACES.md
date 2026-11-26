@@ -354,11 +354,28 @@ pub fn sched::switches() -> u64;
 - **Não preempta** enquanto houver um `SpinLock` simples preso; por isso,
   num laço longo, não seguras um `SpinLock` (usa `IrqSpinLock` com secções
   curtas, ou liberta o lock).
-- Ainda não há bloqueio/espera (`WaitQueue` vem a seguir): uma thread que
-  espera faz `yield_now()` em ciclo.
+- Para esperar por algo **sem gastar CPU**, usar `sched::WaitQueue` (abaixo).
 - Marcadores: `[sched] cooperative self-test passed`, e com a feature
   `selftest-preempt` `[sched] preemption self-test passed`;
   `selftest-thread-stack-overflow` → double fault na IST.
+
+### `sched::WaitQueue` (Fase 5) — INSTÁVEL
+Fornece: CLAUDE (`kernel/src/sched/wait.rs`). Usa: CODEX (drivers com
+leituras bloqueantes, input), núcleo (IPC, Fase 12).
+```rust
+pub const fn WaitQueue::new() -> WaitQueue;            // pode ser `static`
+pub fn wait_until(&self, ready: impl FnMut() -> bool); // bloqueia até ready()
+pub fn wake_one(&self) -> bool;                        // também em handlers de IRQ
+pub fn wake_all(&self) -> usize;                       // também em handlers de IRQ
+```
+- Padrão: o produtor **publica primeiro** (ex.: põe o byte num buffer
+  protegido por `IrqSpinLock`, ou num atómico) e **depois** chama
+  `wake_one`. O consumidor chama `wait_until(|| há_dados())`.
+- `ready` tem de ser barato e não pode bloquear nem tomar um `SpinLock`
+  simples (pode ler atómicos ou tomar um `IrqSpinLock` curto).
+- Não há wake-ups perdidos (D-046); um wake-up espúrio só faz a condição ser
+  verificada de novo.
+- Marcador: `[sched] wait queue self-test passed`.
 
 ## Planeadas (assinaturas propostas, podem mudar)
 
@@ -367,7 +384,6 @@ pub fn sched::switches() -> u64;
 | `UserPtr<T>`, `copy_from_user`, `copy_to_user` | CLAUDE | CODEX (VFS) | 6 |
 | ABI das syscalls (números, registos, códigos de erro) | CLAUDE | CODEX (userland) | 6 |
 | `trait FileSystem` / `trait Inode` do VFS | CODEX | CLAUDE (syscalls) | 7 |
-| Filas de espera: `WaitQueue::wait()` / `wake_one()` / `wake_all()` | CLAUDE | CODEX (drivers que bloqueiam) | 5 |
 | Handles e direitos: `Handle`, `Rights { READ, WRITE, MAP, TRANSFER, … }`, `handle_close`, `handle_duplicate(h, rights_menores)` | CLAUDE | CODEX (userland) | 6 |
 | `struct InputEvent` unificado (teclado + rato: tipo, código, valor, timestamp) e `input::push(InputEvent)` chamada pelos drivers | CODEX (formato) + CLAUDE (entrega) | ambos | 11 |
 | Syscalls de memória partilhada: `shm_create(size) -> Handle`, `shm_map(h, CacheType) -> UserPtr`, `shm_unmap` | CLAUDE | CODEX | 12 |
