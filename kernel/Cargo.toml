@@ -28,6 +28,10 @@ selftest-write-text = []
 selftest-exec-data = []
 selftest-write-idt = []
 selftest-heap-overflow = []
+# Fires a real hardware interrupt (PIT IRQ0 through the 8259 PIC) and
+# checks it reaches its handler. Does not panic: expect exit code 33.
+selftest-irq-pit = []
 
 [dependencies]
 limine = "0.6.5"
+kitty-hal = { path = "../hal" }
