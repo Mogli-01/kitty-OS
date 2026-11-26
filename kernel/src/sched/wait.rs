@@ -86,7 +86,8 @@ impl WaitQueue {
     }
 
     /// Wakes the longest-waiting thread. Returns whether a thread was woken.
-    /// Usable from interrupt handlers.
+    /// Usable from interrupt handlers (no allocation: `pop_front` keeps the
+    /// buffer, and the scheduler reserved room in its ready queue).
     pub fn wake_one(&self) -> bool {
         loop {
             let Some(id) = self.waiters.lock().pop_front() else {
@@ -100,10 +101,18 @@ impl WaitQueue {
     }
 
     /// Wakes every waiting thread. Returns how many were woken. Usable from
-    /// interrupt handlers.
+    /// interrupt handlers: entries are popped one at a time, so the queue
+    /// keeps its buffer (nothing is freed or allocated here), and the queue
+    /// lock is released before each `wake` (lock order: queue, then SCHED,
+    /// never nested).
     pub fn wake_all(&self) -> usize {
-        let waiters = core::mem::take(&mut *self.waiters.lock());
-        waiters.into_iter().filter(|&id| super::wake(id)).count()
+        let mut woken = 0;
+        while let Some(id) = self.waiters.lock().pop_front() {
+            if super::wake(id) {
+                woken += 1;
+            }
+        }
+        woken
     }
 
     /// Number of threads registered on the queue.

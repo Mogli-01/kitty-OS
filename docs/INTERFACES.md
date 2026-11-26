@@ -347,7 +347,7 @@ pub fn sched::current() -> ThreadId;
 pub fn sched::switches() -> u64;
 ```
 - **Timer (Codex):** o handler do IRQ do timer só tem de chamar
-  `sched::tick()`. Não troca de thread dentro do handler: o núcleo fá-lo no
+  `sched::tick()` (não aloca nem toma locks). Não troca de thread dentro do handler: o núcleo fá-lo no
   fim do dispatch, depois do EOI. Frequência sugerida: 100–1000 Hz.
 - Cada thread tem 32 KiB de pilha com página de guarda; um overflow dá
   double fault com relatório (não corrompe outra thread).
@@ -368,6 +368,10 @@ pub fn wait_until(&self, ready: impl FnMut() -> bool); // bloqueia até ready()
 pub fn wake_one(&self) -> bool;                        // também em handlers de IRQ
 pub fn wake_all(&self) -> usize;                       // também em handlers de IRQ
 ```
+- `wake_one`/`wake_all` **não usam o heap** (a fila mantém o buffer; o
+  scheduler reserva espaço na fila de prontas no `spawn`), por isso são
+  seguros em handlers de IRQ. O `wait_until` (só em contexto de thread)
+  pode alocar ao registar-se.
 - Padrão: o produtor **publica primeiro** (ex.: põe o byte num buffer
   protegido por `IrqSpinLock`, ou num atómico) e **depois** chama
   `wake_one`. O consumidor chama `wait_until(|| há_dados())`.
