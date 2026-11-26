@@ -500,3 +500,23 @@ está em `docs/UNSAFE.md`.
   (`yield_now`), que mostra os ciclos (TSC) por yield+troca. No QEMU TCG
   os "ciclos" não são de hardware real: o número serve para comparar
   versões, não como valor absoluto.
+
+### D-105 — PIT legado em modo periódico (2026-11-25, CODEX)
+
+O crate `kitty-pit` programa o canal 0 do PIT 8254 em modo 2 através de
+`PortBlock`. Os divisores válidos são 2–65 536. O valor máximo usa a
+codificação de 16 bits a zero prevista pelo hardware. Um tipo validado
+permite calcular o período antes de escrever nas portas e preservar
+a razão exata divisor/frequência nominal para contabilizar tempo.
+
+A programação faz-se com IRQ0 mascarado. Se uma escrita falhar mantém-se a
+linha mascarada até uma configuração completa. O driver fica disponível
+para integração quando houver um consumidor de ticks no kernel.
+
+### D-120 — Parar o PIT antes da transferência do IRQ0 (2026-11-26, CODEX)
+
+`Pit::stop` escreve o controlo do canal 0 em modo 0 e deixa-o à espera
+de um novo contador. Antes da paragem, o núcleo mascara IRQ0 e trata
+interrupções que o PIC já tenha registado. A CI verifica a cadeia de
+entrega através do autoteste do #15, que exige dois IRQ0 depois de
+programar o modo periódico.
