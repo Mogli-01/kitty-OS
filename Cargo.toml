@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["drivers/acpi", "fs/initrd", "kernel", "xtask"]
+members = ["drivers/acpi", "fs/initrd", "hal", "kernel", "xtask"]
 
 [workspace.package]
 version = "0.1.0"

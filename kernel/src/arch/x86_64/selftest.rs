@@ -114,3 +114,60 @@ pub fn heap_overflow() {
     }
     core::hint::black_box(&buf);
 }
+
+/// Fires real hardware interrupts: programs PIT channel 0 as a ~1 kHz rate
+/// generator, then requires **two** IRQ0s through the 8259 PIC after a
+/// baseline taken once the PIT is programmed and the line registered.
+///
+/// Why two (review of PR #15): the PIC is edge-triggered and will not
+/// deliver IRQ0 again while its in-service bit is set, so the second
+/// interrupt can only arrive if the core sent EOI for the first. The
+/// baseline discards any interrupt latched before our programming (e.g.
+/// from the firmware's PIT setup). Must run with interrupts enabled.
+/// Returns whether both interrupts arrived.
+#[cfg(feature = "selftest-irq-pit")]
+pub fn irq_pit() -> bool {
+    use core::sync::atomic::{AtomicU32, Ordering};
+    use kitty_hal::PortBlock;
+
+    use super::irq::{self, Vector};
+    use super::legacy::{self, LegacyDevice};
+
+    static FIRED: AtomicU32 = AtomicU32::new(0);
+    fn on_irq0(_: Vector) {
+        FIRED.fetch_add(1, Ordering::Release);
+    }
+
+    let Some(pit) = legacy::claim(LegacyDevice::Pit) else {
+        return false;
+    };
+    // 1. Program the PIT while IRQ0 is still masked. Mode/command: channel
+    //    0, low then high byte, mode 2 (rate generator), binary.
+    //    Count 1193 at 1.193182 MHz ≈ 1 ms period.
+    let programmed = pit.write8(3, 0x34).is_some()
+        && pit.write8(0, 0xA9).is_some()
+        && pit.write8(0, 0x04).is_some();
+    if !programmed {
+        return false;
+    }
+    // 2. Register (unmasks the line), then take the baseline: anything
+    //    counted up to here may have been latched before we programmed it.
+    if irq::register_isa(0, on_irq0).is_err() {
+        return false;
+    }
+    let baseline = FIRED.load(Ordering::Acquire);
+    // 3. Two more interrupts: the second proves EOI released the PIC.
+    let mut spins = 0u64;
+    while FIRED.load(Ordering::Acquire) < baseline + 2 && spins < 500_000_000 {
+        core::hint::spin_loop();
+        spins += 1;
+    }
+    let delivered = FIRED.load(Ordering::Acquire) >= baseline + 2;
+    // 4. Mask the line again and stop the timer: writing only the mode-0
+    //    control word sets OUT low and the counter does not start until a
+    //    count is written, so no further edge (and no stale IRQ0 latched in
+    //    the PIC's IRR for the next owner of line 0) is produced.
+    let _ = irq::unregister_isa(0);
+    let _ = pit.write8(3, 0x30);
+    delivered
+}
