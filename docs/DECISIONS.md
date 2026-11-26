@@ -379,3 +379,11 @@ A pesquisa usa busca binária. Os nomes com um prefixo comum formam um
 intervalo pelo qual se listam os filhos de um diretório, incluindo os
 implícitos. O índice é criado com reserva de memória falível. A leitura
 por offset copia apenas bytes do ficheiro para um buffer já validado.
+
+### D-116 — Empacotar initrd opcional na ESP e na ISO (2026-11-26, CODEX)
+
+`xtask --initrd` lê um arquivo regular e valida-o com a montagem do
+VFS antes de regenerar o meio de arranque. Usa os mesmos bytes
+validados para escrever `/boot/initrd.tar`. A configuração do
+Limine associa a marca `kitty-initrd` ao módulo. A coordenação
+do contrato de entrega ao núcleo segue na #22.

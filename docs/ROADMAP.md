@@ -86,7 +86,7 @@ preparado para a interface gráfica (Fases 10–14).
 | Tarefa | Dono | Estado |
 |---|---|---|
 | VFS | CODEX | Raiz só de leitura, pesquisa e listagem do initrd em revisão; montagem no kernel e syscalls pendentes (#22) |
-| initrd (módulo do Limine) | CODEX | Parser USTAR em revisão no ramo `codex/initrd-ustar`; ligação ao Limine na #22 |
+| initrd (módulo do Limine) | CODEX | Parser e opção de empacotamento em revisão; leitura pelo kernel pendente (#22) |
 | Shell em userland | CODEX | TODO |
 | Syscalls de ficheiros (open/read/write/close) no núcleo | CLAUDE | TODO |
 

@@ -10,6 +10,7 @@
 //!
 //! Extra options:
 //!   --features <a,b>   extra kernel cargo features (e.g. selftest-page-fault)
+//!   --initrd <path>    include a validated USTAR archive in the boot media
 //!   --expect-panic     (test) pass only if the kernel panics: QEMU exit code
 //!                      35 and "KERNEL PANIC" on the serial port
 //!   --expect <text>    (test) the serial output must also contain <text>
@@ -18,7 +19,7 @@
 //! Environment overrides: KITTY_QEMU (qemu binary), KITTY_OVMF (UEFI code
 //! firmware), KITTY_XORRISO (xorriso binary).
 //!
-//! Only std is used on purpose (dependency policy, docs/DECISIONS.md).
+//! Host standard library and the project's VFS for initrd validation.
 
 use std::env;
 use std::fs;
@@ -27,6 +28,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
 
+mod initrd;
 mod memory_tests;
 
 /// Limine binary release we boot with. Pinned to an exact commit of the
@@ -53,6 +55,7 @@ struct Opts {
     features: Vec<String>,
     expect_panic: bool,
     expect: Vec<String>,
+    initrd: Option<PathBuf>,
 }
 
 fn main() -> ExitCode {
@@ -64,6 +67,13 @@ fn main() -> ExitCode {
             "--release" => opts.release = true,
             "--bios" => opts.bios = true,
             "--expect-panic" => opts.expect_panic = true,
+            "--initrd" => match args.next() {
+                Some(path) if opts.initrd.is_none() => opts.initrd = Some(PathBuf::from(path)),
+                _ => {
+                    eprintln!("xtask: --initrd requires exactly one archive path");
+                    return ExitCode::FAILURE;
+                }
+            },
             "--expect" => match args.next() {
                 Some(text) => opts.expect.push(text),
                 None => {
@@ -87,20 +97,24 @@ fn main() -> ExitCode {
         }
     }
 
+    if cmd == "build" && opts.initrd.is_some() {
+        eprintln!("xtask: use --initrd with a command that prepares boot media");
+        return ExitCode::FAILURE;
+    }
     let result = match cmd.as_str() {
         "build" => build_kernel(&opts, false).map(|p| println!("kernel: {}", p.display())),
         "esp" => build_kernel(&opts, false)
-            .and_then(|k| make_esp(&k))
+            .and_then(|k| make_esp(&k, opts.initrd.as_deref()))
             .map(|_| ()),
         "iso" => build_kernel(&opts, false)
-            .and_then(|k| make_iso(&k))
+            .and_then(|k| make_iso(&k, opts.initrd.as_deref()))
             .map(|_| ()),
         "run" => run(&opts),
         "test" => test(&opts),
         "test-memory" => memory_tests::run(&opts),
         _ => {
             eprintln!(
-                "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--expect-panic] [--expect text]"
+                "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--initrd path] [--expect-panic] [--expect text]"
             );
             eprintln!("       cargo xtask test-memory [--release] [--bios]");
             return ExitCode::FAILURE;
@@ -219,7 +233,8 @@ timeout: 0
 
 /// Lays out an EFI System Partition as a plain folder. QEMU can expose a
 /// folder as a FAT disk (vvfat), so UEFI boot needs no image tools at all.
-fn make_esp(kernel: &Path) -> Result<PathBuf> {
+fn make_esp(kernel: &Path, archive: Option<&Path>) -> Result<PathBuf> {
+    let archive = archive.map(initrd::load).transpose()?;
     let limine = limine_dir()?;
     let esp = build_dir().join("esp");
     if esp.exists() {
@@ -229,20 +244,19 @@ fn make_esp(kernel: &Path) -> Result<PathBuf> {
         &limine.join("BOOTX64.EFI"),
         &esp.join("EFI/BOOT/BOOTX64.EFI"),
     )?;
-    copy(kernel, &esp.join("boot").join(KERNEL_NAME))?;
-    write_conf(&esp.join("boot/limine/limine.conf"))?;
+    stage_boot_files(&esp, kernel, archive.as_deref())?;
     Ok(esp)
 }
 
 /// Builds a hybrid ISO that boots on both BIOS and UEFI.
-fn make_iso(kernel: &Path) -> Result<PathBuf> {
+fn make_iso(kernel: &Path, archive: Option<&Path>) -> Result<PathBuf> {
+    let archive = archive.map(initrd::load).transpose()?;
     let limine = limine_dir()?;
     let iso_root = build_dir().join("iso_root");
     if iso_root.exists() {
         fs::remove_dir_all(&iso_root).map_err(|e| format!("cleaning: {e}"))?;
     }
-    copy(kernel, &iso_root.join("boot").join(KERNEL_NAME))?;
-    write_conf(&iso_root.join("boot/limine/limine.conf"))?;
+    stage_boot_files(&iso_root, kernel, archive.as_deref())?;
     for f in [
         "limine-bios.sys",
         "limine-bios-cd.bin",
@@ -283,11 +297,18 @@ fn make_iso(kernel: &Path) -> Result<PathBuf> {
     Ok(iso)
 }
 
-fn write_conf(path: &Path) -> Result<()> {
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| format!("mkdir: {e}"))?;
+fn stage_boot_files(media: &Path, kernel: &Path, archive: Option<&[u8]>) -> Result<()> {
+    let boot = media.join("boot");
+    copy(kernel, &boot.join(KERNEL_NAME))?;
+    if let Some(archive) = archive {
+        let path = boot.join("initrd.tar");
+        fs::write(&path, archive).map_err(|e| format!("writing {}: {e}", path.display()))?;
     }
-    fs::write(path, LIMINE_CONF).map_err(|e| format!("writing {}: {e}", path.display()))
+    let config_dir = boot.join("limine");
+    fs::create_dir_all(&config_dir).map_err(|e| format!("mkdir {}: {e}", config_dir.display()))?;
+    let config = config_dir.join("limine.conf");
+    fs::write(&config, initrd::limine_config(archive.is_some()))
+        .map_err(|e| format!("writing {}: {e}", config.display()))
 }
 
 // ------------------------------------------------------------------ qemu ---
@@ -361,10 +382,10 @@ fn qemu_command(opts: &Opts, kernel: &Path, headless: bool) -> Result<Command> {
     cmd.args(["-machine", "q35", "-cpu", "max", "-m", "256M", "-no-reboot"]);
 
     if opts.bios {
-        let iso = make_iso(kernel)?;
+        let iso = make_iso(kernel, opts.initrd.as_deref())?;
         cmd.arg("-cdrom").arg(iso);
     } else {
-        make_esp(kernel)?;
+        make_esp(kernel, opts.initrd.as_deref())?;
         let (code, vars) = find_ovmf(&qemu)?;
         cmd.arg("-drive").arg(format!(
             "if=pflash,format=raw,unit=0,readonly=on,file={}",

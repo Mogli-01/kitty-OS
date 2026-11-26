@@ -46,6 +46,8 @@ cargo xtask iso            # gera build/kitty-os.iso (BIOS + UEFI)
 cargo xtask build          # só compila o ELF do kernel
 ```
 
+O guia de compilação inclui a preparação de um initrd opcional. [Guia de compilação](docs/BUILDING.md)
+
 A saída da porta série aparece no terminal; o ecrã do QEMU mostra a consola
 do framebuffer. Se o QEMU ou o OVMF não forem encontrados automaticamente,
 usa as variáveis `KITTY_QEMU`, `KITTY_OVMF` e `KITTY_XORRISO`.

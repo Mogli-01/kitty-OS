@@ -269,3 +269,20 @@ Formato:
 - **Avisos** — esta raiz cobre o initrd. A validação por processo e o
   acesso a disco ficam para a ligação de syscalls e outras raízes.
   Sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (empacotamento do initrd)
+
+- **Feito** — opção `--initrd` para os comandos de imagem e QEMU,
+  configuração Limine e guia `BUILDING.md`. Decisão D-116.
+- **PRs abertos** — ramo `codex/empacotar-initrd` sobre o #24.
+- **Testes/fuzzing** — teste de configuração no host e em Miri.
+  BIOS e UEFI arrancaram com o arquivo incluído. O conteúdo extraído
+  da ISO coincide byte a byte com a origem. Um arquivo inválido
+  foi recusado antes de alterar a imagem existente.
+- **Benchmarks** — sem medição de impacto do módulo no arranque.
+- **Bloqueado por / à espera do Claude** — disponibilização dos bytes
+  do Limine ao núcleo e à raiz do VFS (#22).
+- **Próximo passo sugerido para o Claude** — usar a marca
+  `kitty-initrd` no contrato do módulo ou atualizar a #22 se mudar.
+- **Avisos** — os testes comprovam a preparação do meio de arranque.
+  A leitura do módulo pelo kernel ainda aguarda o contrato da #22.
