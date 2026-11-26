@@ -112,7 +112,7 @@ preparado para a interface gráfica (Fases 10–14).
 | Tarefa | Dono | Estado |
 |---|---|---|
 | Biblioteca gráfica em user space: píxeis, retângulos, linhas, blit | CODEX | Primitivas BGRA8888 em revisão no ramo `codex/graficos-base` |
-| Fontes bitmap, depois PSF e TrueType simples | CODEX | TODO |
+| Fontes bitmap, depois PSF e TrueType simples | CODEX | Fonte bitmap original (#27) e leitura PSF2 (`codex/fontes-psf2`) em revisão. TrueType pendente |
 | Double buffering | CODEX | Dois buffers com apresentação total ou parcial em revisão no ramo `codex/double-buffer` |
 | Framebuffer mapeado com write-combining (usa a API de PAT da Fase 3) | CODEX | TODO |
 | Capacidade `DISPLAY`: syscall para mapear o framebuffer só no processo que a tem; a consola do kernel larga o ecrã | CLAUDE | TODO |
@@ -146,6 +146,6 @@ preparado para a interface gráfica (Fases 10–14).
 | Tarefa | Dono | Estado |
 |---|---|---|
 | Toolkit: botões, caixas de texto, menus | CODEX | TODO |
-| Terminal gráfico | CODEX | TODO |
+| Terminal gráfico | CODEX | Grelha de texto e desenho PSF2 em revisão no ramo `codex/terminal-grid`. Ligação à consola e apresentação pendentes |
 | Explorador de ficheiros | CODEX | TODO |
 | Ambiente de trabalho com barra de tarefas e tema "kitty" | CODEX | TODO |

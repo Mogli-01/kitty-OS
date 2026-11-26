@@ -9,10 +9,13 @@ mod alpha;
 mod buffering;
 mod cursor;
 mod damage;
+pub mod font;
+mod terminal;
 mod windows;
 pub use buffering::DoubleBuffer;
 pub use cursor::Cursor;
 pub use damage::Damage;
+pub use terminal::TextGrid;
 pub use windows::{MAX_WINDOWS, Window, WindowHit, WindowStack};
 
 const PIXEL_BYTES: usize = 4;

@@ -514,3 +514,34 @@ A pilha usa o mesmo `Damage` que o cursor e a apresentação. Ao subir uma
 janela, regista apenas as interseções com as camadas ultrapassadas.
 Mover e remover exigem recompor os limites visíveis afetados, incluindo
 as camadas subjacentes visíveis através de regiões transparentes.
+
+### D-112 — Fonte bitmap original e atlas de glifos (2026-11-25, CODEX)
+
+O atlas aceita glifos de dimensões fixas com linhas de bits em ordem
+MSB primeiro. A validação calcula o comprimento do glifo e exige
+registos completos. Cada vista `Glyph` empresta os bytes desse glifo.
+O desenho usa o mesmo recorte das primitivas gráficas e escreve só os
+bits ativos.
+
+A fonte inicial de 5 × 7 foi desenhada para o kitty-OS e tem os 95
+caracteres ASCII imprimíveis. O texto usa uma célula de 6 × 8, que deixa
+um píxel para espaçamento. Outros caracteres usam `?` até haver fontes
+e mapeamentos com mais caracteres.
+
+### D-132 — Ler fontes PSF2 em user space (2026-11-26, CODEX)
+
+O leitor PSF2 v0 valida a versão, as flags, as dimensões e o comprimento
+de cada glifo antes de emprestar o atlas a `BitmapFont`. O mapa Unicode
+opcional tem um registo por glifo e as suas entradas são UTF-8 válido.
+O desenho reutiliza `Canvas::draw_glyph`. A pesquisa por carácter
+percorre o mapa sem alocação nem cache. As sequências com vários
+caracteres são validadas e ficam reservadas para composição futura.
+
+### D-135 — Guardar o texto do terminal numa grelha de linhas circulares (2026-11-26, CODEX)
+
+O terminal mantém um carácter Unicode por célula em memória cedida pelo
+chamador. Ao avançar além da última linha, reutiliza a linha física mais
+antiga e limpa apenas essa linha. A quebra automática fica pendente até
+ao carácter seguinte para que uma quebra explícita após a última coluna
+avance uma só linha. A apresentação PSF2 usa o recorte do `Canvas` e
+limita as pesquisas de glifos às células visíveis.

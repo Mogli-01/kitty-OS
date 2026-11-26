@@ -92,3 +92,57 @@ as regiões recompostas com `DoubleBuffer::present_damage`. No primeiro
 frame, marca o ecrã completo. Depois, para desenhar cada janela numa
 região, calcula a interseção com `Rect::intersection` e usa os limites
 originais para converter a origem em coordenadas da superfície.
+
+## Texto em bitmap
+
+O atlas guarda glifos de dimensões fixas, com um bit por píxel e a
+coluna esquerda no bit mais significativo de cada byte. `BitmapFont`
+valida se o tamanho é um múltiplo do comprimento de um glifo e só
+empresta glifos completos. `draw_glyph` recorta os dois eixos antes de
+escrever os píxeis ativos. O fundo e o padding mantêm os seus valores.
+
+`draw_ascii` usa a fonte original do kitty-OS, com glifos de 5 × 7 e
+células de 6 × 8. A fonte inclui os 95 caracteres ASCII imprimíveis,
+usa `?` para outros caracteres e começa uma nova linha com `\n`.
+
+## Carregar fontes PSF2
+
+`Psf2Font::parse` recebe os bytes de um ficheiro PSF2 v0 já descomprimido.
+Valida o cabeçalho, o tamanho do atlas e o mapa Unicode opcional. A
+biblioteca empresta os bytes do ficheiro e aceita glifos de 1 a 255
+píxeis por eixo. Cada linha usa `ceil(largura / 8)` bytes.
+
+`bitmap().glyph(indice)` procura por índice. `glyph_for_char` percorre
+as correspondências Unicode e devolve a primeira que inclui o carácter.
+O mapa pode conter sequências de vários caracteres. São validadas
+durante a leitura e reservadas para uma futura composição de texto.
+O glifo devolvido usa o mesmo `Canvas::draw_glyph` da fonte original.
+
+O alvo de fuzzing testa ficheiros completos e mapas Unicode gerados.
+A CI usa AddressSanitizer e verifica também se desenhar um glifo
+recortado preserva o padding do destino.
+
+```sh
+cargo fuzz run --fuzz-dir fuzz/graphics psf2 -- -max_total_time=15 -timeout=5 -max_len=65536
+```
+
+## Grelha de texto do terminal
+
+`TextGrid` recebe um buffer de células `char` e a geometria em colunas e
+linhas. Cada carácter Unicode ocupa uma célula. A grelha aceita texto
+através de `core::fmt::Write` e conserva a posição entre escritas.
+O cursor passa à linha seguinte quando chega outro carácter depois de
+encher a última coluna. Uma quebra de linha explícita avança exatamente
+uma linha, mesmo depois de preencher essa coluna. Ao chegar ao fundo,
+a grelha reaproveita a linha mais antiga.
+
+`\r` volta ao início da linha e `\u{8}` recua uma célula. `\t` avança
+para a próxima paragem de oito colunas, até ao limite da linha. Os
+restantes caracteres de controlo são ignorados. O avanço do cursor
+preserva o texto que já ocupa as células atravessadas.
+
+`draw_psf2` preenche o fundo da grelha e desenha apenas as células que
+tocam a superfície. Usa as dimensões dos glifos PSF2 como tamanho da
+célula. Para um carácter sem glifo, tenta `�` e depois `?`. Se a fonte
+omitir ambos, essa célula mostra o fundo. O terminal pode consultar
+`cursor()` para desenhar a indicação da posição de escrita.

@@ -410,3 +410,58 @@ Formato:
   associa as superfícies partilhadas às janelas pelo protocolo.
 - **Avisos** — a seleção usa a geometria e conserva a ordem das camadas.
   A fila de eventos e a política de foco ficam para a integração.
+
+### [2026-11-25] — CODEX (fonte bitmap)
+
+- **Feito** — atlas de glifos de um bit, recorte e fonte original
+  ASCII 5 × 7 em `userland/gfx`. Decisão D-112.
+- **PRs abertos** — ramo `codex/fonte-bitmap` sobre o #26.
+- **Testes/fuzzing** — 12 testes gráficos passaram no host e em Miri.
+  Os três novos verificam a geometria e os limites dos glifos,
+  recorte de glifos de mais de um byte por linha e texto com quebras
+  e fallback. Uma prévia gráfica foi desenhada no host com a fonte
+  e o double buffering.
+- **Benchmarks** — sem medição de cadência de frames.
+- **Bloqueado por / à espera do Claude** — execução de apps no user
+  space e framebuffer através de DISPLAY.
+- **Próximo passo sugerido para o Claude** — continuar user mode e
+  preparar o contrato de apresentação do framebuffer.
+- **Avisos** — os acentos usam `?` nesta fonte. PSF e TrueType são
+  etapas seguintes. Sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (fontes PSF2)
+
+- **Feito** — leitura do atlas e do mapa Unicode PSF2 e desenho com
+  `Canvas::draw_glyph`. Decisão D-132.
+- **PRs abertos** — ramo `codex/fontes-psf2` sobre o #27.
+- **Testes/fuzzing** — 16 testes de `kitty-gfx` no host e em Miri. Duas
+  fontes do kbd com 512 glifos foram lidas e mapearam `é`. O alvo
+  `psf2` na CI passou 981 229 casos no ensaio local sob ASan, incluindo
+  recorte e padding do destino.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — cabeçalhos e intervalos são
+  validados antes de criar vistas. O parser e o desenho usam Rust seguro.
+- **Bloqueado por / à espera do Claude** — apresentação no ecrã requer
+  a concessão `DISPLAY` e a interface do dispositivo.
+- **Próximo passo sugerido para o Claude** — manter a descrição de
+  formato e pitch da superfície na futura interface `DISPLAY`.
+- **Avisos** — o alvo gráfico usa um workspace de host próprio, para
+  que o PR possa ser revisto sobre a base da biblioteca gráfica (#27).
+
+### [2026-11-26] — CODEX (grelha do terminal gráfico)
+
+- **Feito** — grelha com armazenamento cedido, posição de escrita,
+  quebra de linhas, deslocação circular e desenho PSF2. Decisão D-135.
+- **PRs abertos** — ramo `codex/terminal-grid` sobre o #54.
+- **Testes/fuzzing** — 20 testes no host e em Miri. Os quatro novos
+  verificam dimensões inválidas, caracteres de vários bytes, controlos
+  de escrita, deslocação e recorte sem tocar no padding do destino.
+- **Benchmarks** — sem medições. Deslocar a grelha limpa uma linha.
+- **Proteções de segurança alteradas** — dimensões validadas antes de
+  escrever e processamento de caracteres de controlo limitado.
+- **Bloqueado por / à espera do Claude** — transporte da consola e
+  apresentação pelo compositor.
+- **Próximo passo sugerido para o Claude** — manter a escrita de saída
+  compatível com a futura ligação ao terminal em user space.
+- **Avisos** — a grelha usa uma célula por carácter. A composição de
+  caracteres e as sequências de controlo ANSI ficam para mais tarde.
