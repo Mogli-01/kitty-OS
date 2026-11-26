@@ -347,7 +347,7 @@ pub fn sched::current() -> ThreadId;
 pub fn sched::switches() -> u64;
 ```
 - **Timer (Codex):** o handler do IRQ do timer só tem de chamar
-  `sched::tick()`. Não troca de thread dentro do handler: o núcleo fá-lo no
+  `sched::tick()` (não aloca nem toma locks). Não troca de thread dentro do handler: o núcleo fá-lo no
   fim do dispatch, depois do EOI. Frequência sugerida: 100–1000 Hz.
 - Cada thread tem 32 KiB de pilha com página de guarda; um overflow dá
   double fault com relatório (não corrompe outra thread).

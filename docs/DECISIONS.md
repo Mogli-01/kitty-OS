@@ -483,6 +483,11 @@ está em `docs/UNSAFE.md`.
 - **Saída e recolha:** uma thread que volta da função de entrada morre; a
   pilha dela é libertada pela próxima decisão do scheduler, fora do lock e
   nunca enquanto ainda se está a correr nela.
+- **Sem heap em contexto de interrupção** (revisão do Codex ao #39/#40): a
+  fila `ready` e a lista de slots livres das pilhas reservam capacidade em
+  contexto de thread (`spawn`, `KernelStack::new`) para todas as threads e
+  slots existentes; por isso o caminho de preempção, a recolha de threads
+  mortas no fim de uma IRQ e o `wake` chamado por um handler nunca alocam.
 - **Ordem dos locks** (do exterior para o interior): `SCHED` → heap →
   espaço do kernel → PMM, e `stack::SLOTS` → heap. `SCHED` nunca é pedido
   com um destes presos. O caminho da troca não aloca (a thread que morre
