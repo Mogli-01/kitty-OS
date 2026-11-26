@@ -69,3 +69,24 @@ recortado preserva o padding do destino.
 ```sh
 cargo fuzz run --fuzz-dir fuzz/graphics psf2 -- -max_total_time=15 -timeout=5 -max_len=65536
 ```
+
+## Grelha de texto do terminal
+
+`TextGrid` recebe um buffer de células `char` e a geometria em colunas e
+linhas. Cada carácter Unicode ocupa uma célula. A grelha aceita texto
+através de `core::fmt::Write` e conserva a posição entre escritas.
+O cursor passa à linha seguinte quando chega outro carácter depois de
+encher a última coluna. Uma quebra de linha explícita avança exatamente
+uma linha, mesmo depois de preencher essa coluna. Ao chegar ao fundo,
+a grelha reaproveita a linha mais antiga.
+
+`\r` volta ao início da linha e `\u{8}` recua uma célula. `\t` avança
+para a próxima paragem de oito colunas, até ao limite da linha. Os
+restantes caracteres de controlo são ignorados. O avanço do cursor
+preserva o texto que já ocupa as células atravessadas.
+
+`draw_psf2` preenche o fundo da grelha e desenha apenas as células que
+tocam a superfície. Usa as dimensões dos glifos PSF2 como tamanho da
+célula. Para um carácter sem glifo, tenta `�` e depois `?`. Se a fonte
+omitir ambos, essa célula mostra o fundo. O terminal pode consultar
+`cursor()` para desenhar a indicação da posição de escrita.

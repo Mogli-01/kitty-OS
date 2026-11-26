@@ -7,7 +7,9 @@ use core::ops::Range;
 
 mod buffering;
 pub mod font;
+mod terminal;
 pub use buffering::DoubleBuffer;
+pub use terminal::TextGrid;
 
 const PIXEL_BYTES: usize = 4;
 
