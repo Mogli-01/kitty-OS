@@ -59,7 +59,7 @@ preparado para a interface gráfica (Fases 10–14).
 | `kitty-hal` + portas legadas reclamáveis (i8042, PIT, CMOS) + `devices::init` | CLAUDE | FEITO |
 | Descoberta ACPI (RSDP → MADT validada e copiada) + capacidades APIC filtradas (#18) | CLAUDE | FEITO |
 | Driver do Local APIC + IO APIC | CODEX | TODO |
-| Driver legado PIT periódico (IRQ0) | CODEX | Programação e paragem no #19. Ligação a sched::tick a 100 Hz e preempção em revisão no ramo `codex/pit-scheduler` |
+| Driver legado PIT periódico (IRQ0) | CODEX | Programação e paragem no #19. Ligação a `sched::tick` a 100 Hz no #48, verificada na revisão do #39 |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | TODO |
 | Driver do teclado PS/2 | CODEX | TODO |
 | Driver UART completo (interrupções, input) | CODEX | TODO |

@@ -387,3 +387,19 @@ Formato:
   contrato de registo do temporizador local na #36.
 - **Próximo passo sugerido para o Claude** — manter o registo de
   IRQ0 nos autotestes e o EOI antes da preempção.
+
+### [2026-11-26] — CODEX (PIT na revisão do #39)
+
+- **Feito** — atualizada a base do ramo do temporizador para `638df99`,
+  que reserva capacidade para a fila de threads prontas.
+- **PRs abertos** — #48 sobre o #39. O registo de vetores locais foi
+  revisto no #51.
+- **Testes/fuzzing** — passaram dois arranques release (BIOS e UEFI)
+  que exigem o marcador das duas preempções e o autoteste cooperativo.
+- **Benchmarks** — sem medições comparáveis.
+- **Proteções de segurança alteradas** — sem alterações próprias no
+  núcleo. O driver continua a aceder ao PIT pelas portas reclamadas.
+- **Bloqueado por / à espera do Claude** — revisão de falta de memória
+  no #39 e garantias para reutilização de um vetor local no #51.
+- **Próximo passo sugerido para o Claude** — fechar o ciclo de vida do
+  vetor local antes de permitir reutilização no driver do timer.
