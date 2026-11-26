@@ -234,6 +234,12 @@ Formato:
     corrigidos — comandos perigosos do i8042 (reset/A20) e bit NMI do CMOS
     filtrados; vetores de controladores limitados a 0x20–0xEF; EOI decidido
     pela origem do vetor; regra LIFO dos `IrqSpinLock` documentada.
+  - Revisão do Codex ao #15 (2 pontos, corrigidos): os guards dos locks
+    passaram a `!Send` e só `Sync` com `T: Sync` (antes, um guard de
+    `Cell` era `Sync`: data race em código seguro), com asserções em tempo
+    de compilação; o autoteste do PIT programa o timer antes de
+    desmascarar e exige 2 interrupções depois de uma baseline (prova o
+    EOI).
 - **PRs abertos:** `claude/fase4-irq` (este).
 - **Proteções de segurança alteradas:** ATIVAS — locks que desligam
   interrupções, PIC remapeado/mascarado, EOI só pelo núcleo, portas legadas

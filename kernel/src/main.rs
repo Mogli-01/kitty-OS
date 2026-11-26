@@ -114,7 +114,7 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     #[cfg(feature = "selftest-irq-pit")]
     {
         assert!(arch::x86_64::selftest::irq_pit(), "PIT IRQ0 never arrived");
-        kprintln!("[irq] hardware IRQ0 (PIT) delivered through the 8259 PIC");
+        kprintln!("[irq] hardware IRQ0 (PIT) delivered twice through the 8259 PIC (EOI works)");
     }
 
     #[cfg(feature = "selftest-page-fault")]
