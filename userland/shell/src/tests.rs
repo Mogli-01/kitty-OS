@@ -167,3 +167,101 @@ fn executes_an_edited_command() {
         .unwrap();
     assert_eq!(output, "olá\n");
 }
+#[test]
+fn console_submits_an_edited_line_after_split_sequences() {
+    use crate::{SessionEvent, ShellSession};
+
+    let mut shell = ShellSession::default();
+    let mut output = String::new();
+    for chunk in [
+        b"echo cax".as_slice(),
+        b"\x1b",
+        b"[D",
+        b"\x1b[3",
+        b"~f\xc3",
+        b"\xa9",
+    ] {
+        for &byte in chunk {
+            assert!(matches!(
+                shell.push(byte, &mut output),
+                Ok(SessionEvent::Edited | SessionEvent::Ignored)
+            ));
+        }
+    }
+    assert_eq!(shell.line().as_bytes(), "echo café".as_bytes());
+    assert_eq!(shell.push(b'\n', &mut output), Ok(SessionEvent::Submitted));
+    assert_eq!(output, "café\n");
+    assert!(shell.line().as_bytes().is_empty());
+}
+
+#[test]
+fn console_cancels_and_resynchronises_after_invalid_input() {
+    use crate::{SessionEvent, ShellSession};
+
+    let mut shell = ShellSession::default();
+    let mut output = String::new();
+    for &byte in b"echo discarded\x1b[" {
+        assert!(shell.push(byte, &mut output).is_ok());
+    }
+    assert_eq!(shell.push(0x03, &mut output), Ok(SessionEvent::Cancelled));
+    assert!(shell.line().as_bytes().is_empty());
+    assert!(output.is_empty());
+
+    // Move to the end via Home/Right/End. Up and the unknown CSI are ignored.
+    // The incomplete and invalid UTF-8 sequences cannot swallow Enter.
+    for &byte in b"echo\tx!\x1b[H\x1b[C\x1b[F\x7f\x1b[A\x1b[1;5D\xf0\xf0\x80\x80\x80\xe2\n" {
+        assert!(shell.push(byte, &mut output).is_ok());
+    }
+    assert_eq!(output, "x\n");
+}
+
+#[test]
+fn console_keeps_working_after_invalid_command_or_failed_output() {
+    use crate::{SessionEvent, ShellSession};
+    use core::fmt;
+
+    struct BrokenOutput;
+
+    impl fmt::Write for BrokenOutput {
+        fn write_str(&mut self, _: &str) -> fmt::Result {
+            Err(fmt::Error)
+        }
+    }
+
+    let mut shell = ShellSession::default();
+    let mut output = String::new();
+    for &byte in b"echo 'unclosed\nno_such_command\nhelp extra\necho previous" {
+        assert!(shell.push(byte, &mut output).is_ok());
+    }
+    assert_eq!(
+        output,
+        "unclosed quote\nunknown command\nunexpected arguments\n"
+    );
+    assert_eq!(shell.push(b'\n', &mut BrokenOutput), Err(fmt::Error));
+    assert!(shell.line().as_bytes().is_empty());
+    assert_eq!(shell.push(b'\n', &mut output), Ok(SessionEvent::Submitted));
+    assert_eq!(
+        output,
+        "unclosed quote\nunknown command\nunexpected arguments\n"
+    );
+}
+
+#[test]
+fn console_keeps_the_line_editable_at_capacity() {
+    use crate::{MAX_LINE_BYTES, SessionEvent, ShellSession};
+
+    let mut shell = ShellSession::default();
+    let mut output = String::new();
+    for _ in 0..MAX_LINE_BYTES {
+        assert_eq!(shell.push(b'x', &mut output), Ok(SessionEvent::Edited));
+    }
+    assert_eq!(
+        shell.push(b'y', &mut output),
+        Ok(SessionEvent::EditRejected)
+    );
+    assert_eq!(shell.line().as_bytes().len(), MAX_LINE_BYTES);
+    assert_eq!(shell.push(0x7f, &mut output), Ok(SessionEvent::Edited));
+    assert_eq!(shell.push(b'y', &mut output), Ok(SessionEvent::Edited));
+    assert_eq!(shell.line().as_bytes().last(), Some(&b'y'));
+    assert!(output.is_empty());
+}

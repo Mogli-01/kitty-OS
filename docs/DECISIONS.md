@@ -506,3 +506,12 @@ offset de carácter válido. Inserção e remoção preservam os bytes
 dos restantes caracteres. Uma inserção acima do limite ou com um
 controlo recusado deixa a edição disponível. O parser recebe o
 slice utilizado da linha quando o comando é submetido.
+
+### D-131 — Descodificar o fluxo de entrada da consola (2026-11-26, CODEX)
+
+`ShellSession` mantém o estado da descodificação e da edição entre
+leituras. Usa o formato proposto na secção 6 do PR #52. Lê UTF-8 e as
+sequências de edição byte a byte num buffer de até quatro bytes. A
+apresentação recebe o estado do editor e os eventos de edição, envio
+e cancelamento. Enter consome a linha antes de escrever o resultado,
+para que uma falha de escrita deixe a sessão pronta para outra linha.

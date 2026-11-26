@@ -6,7 +6,9 @@
 use core::{fmt, str};
 
 mod editor;
+mod session;
 pub use editor::{EditError, LineBuffer};
+pub use session::{SessionEvent, ShellSession};
 
 pub const MAX_LINE_BYTES: usize = 1024;
 pub const MAX_WORDS: usize = 16;

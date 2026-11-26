@@ -1,6 +1,6 @@
 #![no_main]
 
-use kitty_shell::{CommandLine, LineBuffer, MAX_LINE_BYTES, MAX_WORDS, ParseError};
+use kitty_shell::{CommandLine, LineBuffer, MAX_LINE_BYTES, MAX_WORDS, ParseError, ShellSession};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|input: &[u8]| {
@@ -46,4 +46,18 @@ fuzz_target!(|input: &[u8]| {
         CommandLine::parse(line.as_bytes()),
         Err(ParseError::InvalidUtf8 | ParseError::ControlCharacter | ParseError::LineTooLong)
     ));
+
+    let mut shell = ShellSession::default();
+    let mut output = String::new();
+    for &byte in input {
+        assert!(shell.push(byte, &mut output).is_ok());
+    }
+    let text = std::str::from_utf8(shell.line().as_bytes()).unwrap();
+    assert!(text.is_char_boundary(shell.line().cursor()));
+    assert!(text.len() <= MAX_LINE_BYTES);
+    assert!(
+        output
+            .chars()
+            .all(|ch| matches!(ch, '\t' | '\n') || !ch.is_control())
+    );
 });

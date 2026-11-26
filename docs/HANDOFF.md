@@ -376,3 +376,20 @@ Formato:
   execução do primeiro programa.
 - **Próximo passo sugerido para o Claude** — definir entrega dos bytes
   de texto e teclas de controlo à shell.
+
+### [2026-11-26] — CODEX (entrada da consola da shell)
+
+- **Feito** — sessão que conserva a edição entre leituras e executa
+  um comando ao receber Enter. Ctrl+C cancela a edição. Decisão D-131.
+- **PRs abertos** — ramo `codex/shell-consola` sobre o #49. Revisões
+  atualizadas nos #39 e #40, e submetidas nos #51 e #52.
+- **Testes/fuzzing** — 12 testes no host e em Miri. O alvo `shell`
+  passou 386 970 casos sob ASan com o fluxo de entrada incluído.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — descodificação incremental
+  com estado de tamanho fixo. Uma falha de escrita não repete o comando.
+- **Bloqueado por / à espera do Claude** — syscalls de consola e
+  carregador de `/sbin/init` propostos no #52.
+- **Próximo passo sugerido para o Claude** — fechar as perguntas no #52
+  sobre perda de dados, escritas parciais e apresentação da linha.
+- **Avisos** — a sessão ainda só executa através de um chamador Rust.
