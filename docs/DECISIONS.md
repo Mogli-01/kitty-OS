@@ -338,3 +338,16 @@ falha. A CI corre os testes em BIOS e UEFI, em debug e release.
 Isolar os autotestes e verificar a ordem dos relatórios distingue o panic
 esperado de uma falha prematura. Os testes de validação dos logs correm
 no host e em Miri.
+
+### D-117 — Descodificar o modo base do rato PS/2 (2026-11-26, CODEX)
+
+O rato em modo base envia um cabeçalho e dois bytes de deslocamento.
+O bit 3 do cabeçalho indica a posição esperada do início. Os bits de
+sinal completam valores de movimento com nove bits, e o eixo Y é
+invertido para coordenadas de ecrã. Um overflow deixa apenas esse
+eixo sem movimento válido e preserva os botões do relatório.
+
+O decoder espera exclusivamente bytes AUX do modo de três bytes,
+depois do tratamento das respostas de comandos. Um erro de
+transporte descarta o pacote parcial. Para retomar, o transporte
+estabelece a fronteira do pacote seguinte.

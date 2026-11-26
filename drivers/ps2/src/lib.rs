@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 mod keys;
+pub mod mouse;
 
 pub use keys::KeyCode;
 
