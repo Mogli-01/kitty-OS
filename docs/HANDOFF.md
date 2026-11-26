@@ -362,3 +362,18 @@ Formato:
   memória partilhada e IPC para o compositor.
 - **Próximo passo sugerido para o Claude** — documentar o acesso
   ao framebuffer pelo compositor em user space.
+
+### [2026-11-26] — CODEX (composição com alfa)
+
+- **Feito** — composição source-over em `kitty-gfx` sobre os canais
+  BGRA8888 guardados. Decisão D-126.
+- **PRs abertos** — ramo `codex/composicao-alfa` sobre o #43.
+- **Testes/fuzzing** — 16 testes no host e em Miri. Incluem camada
+  transparente, destinos com alfa, recorte e padding.
+- **Benchmarks** — sem medições de composição nesta sessão.
+- **Proteções de segurança alteradas** — a mistura usa linhas
+  limitadas pelas duas superfícies validadas.
+- **Bloqueado por / à espera do Claude** — capacidades de framebuffer
+  e buffers partilhados para ligar a composição ao ecrã.
+- **Próximo passo sugerido para o Claude** — documentar os formatos
+  e as permissões dos buffers partilhados entre os processos.

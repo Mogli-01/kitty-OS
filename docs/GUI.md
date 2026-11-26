@@ -49,3 +49,12 @@ O compositor recompõe cada retângulo devolvido por `regions()` no
 buffer traseiro. Depois, `DoubleBuffer::present_damage` copia essas
 regiões para a frente e esvazia a lista. Se as dimensões forem
 incompatíveis, a lista continua disponível para corrigir e repetir.
+
+## Composição de camadas
+
+`Canvas::blend` coloca uma camada BGRA8888 sobre o que já está no
+canvas. Usa alfa direto e a operação source-over. Cada canal é
+calculado a partir dos valores guardados no buffer e do alfa das
+duas camadas. A composição conserva o alinhamento quando a origem ou
+o destino são recortados. Para desenhar um frame, o compositor pinta
+primeiro o fundo e depois percorre as camadas de trás para a frente.

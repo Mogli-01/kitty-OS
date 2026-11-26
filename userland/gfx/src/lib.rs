@@ -5,6 +5,7 @@
 
 use core::ops::Range;
 
+mod alpha;
 mod buffering;
 mod damage;
 pub use buffering::DoubleBuffer;
@@ -184,6 +185,18 @@ impl<'a> Canvas<'a> {
     /// Copies pixels from a source rectangle, clipping both surfaces while
     /// preserving the source-to-destination alignment. Copies alpha as stored.
     pub fn blit(&mut self, source: Surface<'_>, rect: Rect, at: Point) {
+        self.transfer_rows(source, rect, at, |target, source| {
+            target.copy_from_slice(source);
+        });
+    }
+
+    fn transfer_rows(
+        &mut self,
+        source: Surface<'_>,
+        rect: Rect,
+        at: Point,
+        mut transfer: impl FnMut(&mut [u8], &[u8]),
+    ) {
         let Some((sx, dx, width)) = span(
             rect.origin.x,
             source.layout.width,
@@ -205,7 +218,7 @@ impl<'a> Canvas<'a> {
         for row in 0..height {
             let source_range = source.layout.row(sx, sy + row, width);
             let target_range = self.layout.row(dx, dy + row, width);
-            self.bytes[target_range].copy_from_slice(&source.bytes[source_range]);
+            transfer(&mut self.bytes[target_range], &source.bytes[source_range]);
         }
     }
 

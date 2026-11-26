@@ -488,3 +488,11 @@ e o compositor conserva todas as zonas que precisa de redesenhar.
 O compositor recompõe cada região antes de chamar `present_damage`.
 A apresentação rejeita dimensões diferentes e limpa a lista só depois
 de copiar todas as regiões.
+
+### D-126 — Compor camadas BGRA8888 com alfa direto (2026-11-26, CODEX)
+
+`Canvas::blend` usa a mesma geometria de recorte que `blit`. A mistura
+source-over usa aritmética inteira e divide os canais pela soma dos
+pesos antes de arredondar o alfa final. A operação interpreta diretamente
+os canais guardados em BGRA8888. `blit` continua a fazer a cópia integral
+dos bytes para as operações de apresentação.
