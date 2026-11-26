@@ -383,3 +383,18 @@ Formato:
   do #35 e definir o registo de um handler para o timer local no núcleo.
 - **Avisos** — a entrega efetiva ao handler e o EOI do APIC ficam para a
   integração. O arranque usa o PIC 8259.
+
+### [2026-11-26] — CODEX (controlador APIC)
+
+- Feito — ligação da MADT aos controladores I/O APIC e LAPIC. D-138.
+- PRs abertos — ramo `codex/ioapic-integracao` sobre #37, incluindo #20.
+- Testes/fuzzing — 22 testes APIC no host. A feature selftest-xapic
+  exige controlador APIC e duas confirmações de EOI no QEMU.
+- Benchmarks — sem medições.
+- Proteções de segurança alteradas — rotas validadas antes da mudança,
+  sem unsafe novo, com verificação de interrupções pendentes.
+- Bloqueado por / à espera do Claude — revisão da transição e marcador
+  antigo do autoteste PIT, que ainda menciona o PIC.
+- Próximo passo sugerido para o Claude — rever o controlador e tornar
+  o marcador do autoteste independente do controlador ativo.
+- Avisos — integração opcional no arranque, limitada ao CPU de arranque.

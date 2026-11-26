@@ -5,8 +5,11 @@ use kitty_hal::RegisterBlock;
 
 const ID: u64 = 0x020;
 const VERSION: u64 = 0x030;
+const TASK_PRIORITY: u64 = 0x080;
 const EOI: u64 = 0x0b0;
 const SPURIOUS: u64 = 0x0f0;
+const IN_SERVICE: u64 = 0x100;
+const REQUESTS: u64 = 0x200;
 const TIMER: u64 = 0x320;
 const LINT0: u64 = 0x350;
 const LINT1: u64 = 0x360;
@@ -18,12 +21,18 @@ const DIVIDE: u64 = 0x3e0;
 const LOCAL_VECTORS: [u64; 7] = [TIMER, LINT0, LINT1, 0x370, 0x340, 0x330, 0x2f0];
 pub const SPURIOUS_VECTOR: u8 = 0xff;
 const SOFTWARE_ENABLED: u32 = 1 << 8;
+const FOCUS_PROCESSOR: u32 = 1 << 9;
 const SUPPRESS_EOI_BROADCAST: u32 = 1 << 12;
 const SPURIOUS_CONFIG: u32 = SOFTWARE_ENABLED | SPURIOUS_VECTOR as u32;
 const SPURIOUS_CONFIG_MASK: u32 = 0xff | SOFTWARE_ENABLED | SUPPRESS_EOI_BROADCAST;
+const SPURIOUS_FIELDS: u32 = SPURIOUS_CONFIG_MASK | FOCUS_PROCESSOR;
 const LVT_MASKED: u32 = 1 << 16;
 const DELIVERY_MODE: u32 = 0b111 << 8;
 const DELIVERY_NMI: u32 = 0b100 << 8;
+const DELIVERY_EXTINT: u32 = 0b111 << 8;
+const ACTIVE_LOW: u32 = 1 << 13;
+const LEVEL_TRIGGERED: u32 = 1 << 15;
+const LINT_FIELDS: u32 = 0xff | DELIVERY_MODE | ACTIVE_LOW | LEVEL_TRIGGERED | LVT_MASKED;
 const TIMER_MODE: u32 = 0b11 << 17;
 const TIMER_FIELDS: u32 = 0xff | LVT_MASKED | TIMER_MODE;
 const DIVIDE_FIELDS: u32 = 0b1011;
@@ -35,10 +44,18 @@ pub enum Error {
     UnsupportedVersion(u8),
     UnsupportedMaxLvt(u8),
     ActiveLocalSource { offset: u64 },
+    PendingInterrupts,
+    UnrestorableRegister { offset: u64 },
+    RollbackFailed,
     BroadcastId,
     InvalidVector,
     DeliveryNotEnabled,
     TimerUnconfigured,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Nmi {
+    pub active_low: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -116,6 +133,89 @@ impl<P: RegisterBlock> LocalApic<P> {
         // Leave EOI broadcasts enabled so level-triggered routes can complete.
         self.write(SPURIOUS, SPURIOUS_CONFIG)?;
         self.check(SPURIOUS, SPURIOUS_CONFIG_MASK, SPURIOUS_CONFIG)
+    }
+
+    /// Prepares the boot CPU to receive I/O APIC interrupts. The caller
+    /// holds interrupts off and has already masked all external inputs.
+    /// On success the caller replaces the legacy controller immediately.
+    ///
+    /// Enable the local APIC before unmasking LINT1. LINT0 is masked last.
+    /// Restore the original routing if a write is rejected or ignored. If
+    /// the spurious register was changed, restore its control bits with the
+    /// kernel's reserved vector, since the capability can reject other vectors.
+    pub fn enable_isa_delivery(&mut self, lint1_nmi: Option<Nmi>) -> Result<(), Error> {
+        for &offset in &LOCAL_VECTORS[..self.lvt_count] {
+            if !matches!(offset, LINT0 | LINT1) && self.read(offset)? & LVT_MASKED == 0 {
+                return Err(Error::ActiveLocalSource { offset });
+            }
+        }
+        let lint0 = self.read(LINT0)? & LINT_FIELDS;
+        let lint1 = self.read(LINT1)? & LINT_FIELDS;
+        if lint0 & LVT_MASKED == 0 && lint0 & DELIVERY_MODE != DELIVERY_EXTINT {
+            return Err(Error::ActiveLocalSource { offset: LINT0 });
+        }
+        if lint1 & LVT_MASKED == 0 && lint1 & DELIVERY_MODE != DELIVERY_NMI {
+            return Err(Error::ActiveLocalSource { offset: LINT1 });
+        }
+        let new_lint1 = lint1_nmi.map_or(lint1, |nmi| {
+            DELIVERY_NMI | if nmi.active_low { ACTIVE_LOW } else { 0 }
+        });
+        if new_lint1 != lint1
+            && !matches!(lint1 & DELIVERY_MODE, 0 | DELIVERY_NMI | DELIVERY_EXTINT)
+        {
+            return Err(Error::UnrestorableRegister { offset: LINT1 });
+        }
+        // Masking the I/O APIC does not retire vectors already accepted by
+        // the local APIC. Do not let the core immediately reuse one of them.
+        for index in 0..8 {
+            let offset = index * 0x10;
+            if self.read(IN_SERVICE + offset)? != 0 || self.read(REQUESTS + offset)? != 0 {
+                return Err(Error::PendingInterrupts);
+            }
+        }
+        // Firmware may leave the focus-processor bit set. Preserve it.
+        let spurious = self.read(SPURIOUS)?;
+        let changes = [
+            (TASK_PRIORITY, self.read(TASK_PRIORITY)? & 0xff, 0, 0xff),
+            (
+                SPURIOUS,
+                spurious & SPURIOUS_FIELDS,
+                SPURIOUS_CONFIG | (spurious & FOCUS_PROCESSOR),
+                SPURIOUS_FIELDS,
+            ),
+            (LINT1, lint1, new_lint1, LINT_FIELDS),
+            (LINT0, lint0, lint0 | LVT_MASKED, LINT_FIELDS),
+        ];
+        for (index, &(offset, before, after, mask)) in changes.iter().enumerate() {
+            if before == after {
+                continue;
+            }
+            if let Err(error) = self
+                .write(offset, after)
+                .and_then(|()| self.check(offset, mask, after))
+            {
+                let mut restored = true;
+                for &(offset, before, after, mask) in changes[..=index].iter().rev() {
+                    if before != after && self.check(offset, mask, before).is_err() {
+                        let before = if offset == SPURIOUS {
+                            (before & !0xff) | u32::from(SPURIOUS_VECTOR)
+                        } else {
+                            before
+                        };
+                        restored &= self
+                            .write(offset, before)
+                            .and_then(|()| self.check(offset, mask, before))
+                            .is_ok();
+                    }
+                }
+                return Err(if restored {
+                    error
+                } else {
+                    Error::RollbackFailed
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Acknowledges a device interrupt after its handler returns. The

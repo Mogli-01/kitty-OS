@@ -118,6 +118,70 @@ fn checks_that_eoi_broadcast_is_enabled() {
 }
 
 #[test]
+fn isa_handover_enables_delivery_before_unmasking_the_nmi() {
+    let mut apic = device();
+    apic.registers.set(TASK_PRIORITY, 0x50);
+    apic.registers.set(LINT0, DELIVERY_EXTINT);
+    apic.registers.set(SPURIOUS, 0x2f0);
+    apic.enable_isa_delivery(Some(Nmi { active_low: true }))
+        .unwrap();
+    assert_eq!(
+        *apic.registers.writes.borrow(),
+        [
+            (TASK_PRIORITY, 0),
+            (SPURIOUS, SPURIOUS_CONFIG | (1 << 9)),
+            (LINT1, DELIVERY_NMI | ACTIVE_LOW),
+            (LINT0, DELIVERY_EXTINT | LVT_MASKED),
+        ]
+    );
+}
+
+#[test]
+fn refused_handover_restores_extint_and_nmi_setup() {
+    let mut apic = device();
+    apic.registers.set(TASK_PRIORITY, 0x50);
+    apic.registers.set(LINT0, DELIVERY_EXTINT);
+    apic.registers.set(SPURIOUS, 0xf0);
+    apic.registers.ignore_write.set(Some(LINT0));
+    assert_eq!(
+        apic.enable_isa_delivery(Some(Nmi { active_low: false })),
+        Err(Error::ValueNotSet { offset: LINT0 })
+    );
+    for (offset, expected) in [
+        (SPURIOUS, 0xff),
+        (LINT0, DELIVERY_EXTINT),
+        (LINT1, LVT_MASKED),
+        (TASK_PRIORITY, 0x50),
+    ] {
+        assert_eq!(apic.registers.read32(offset), Some(expected));
+    }
+}
+
+#[test]
+fn refuses_pending_vectors_without_changing_delivery() {
+    for offset in [IN_SERVICE, REQUESTS + 0x70] {
+        let mut apic = device();
+        apic.registers.set(offset, 1);
+        assert_eq!(
+            apic.enable_isa_delivery(None),
+            Err(Error::PendingInterrupts)
+        );
+        assert!(apic.registers.writes.borrow().is_empty());
+    }
+}
+
+#[test]
+fn refuses_to_disable_active_nmi_on_legacy_pin() {
+    let mut apic = device();
+    apic.registers.set(LINT0, DELIVERY_NMI);
+    assert_eq!(
+        apic.enable_isa_delivery(None),
+        Err(Error::ActiveLocalSource { offset: LINT0 })
+    );
+    assert!(apic.registers.writes.borrow().is_empty());
+}
+
+#[test]
 fn acknowledges_device_vectors_only() {
     let mut apic = device();
     apic.end_of_interrupt(SPURIOUS_VECTOR).unwrap();

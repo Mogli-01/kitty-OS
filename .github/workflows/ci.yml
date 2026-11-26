@@ -95,6 +95,11 @@ jobs:
           grep -F -- '[cpu] breakpoint at rip=' build/serial-logs/boot.log
           grep -F -- '[cpu] breakpoint exception handled, execution resumed' build/serial-logs/boot.log
 
+          run_case xapic-pit --features selftest-xapic \
+            --expect 'controller: I/O APIC + xAPIC' \
+            --expect '[apic] two IRQ0 deliveries acknowledged' \
+            --expect 'hardware IRQ0 (PIT) delivered twice'
+
           run_case page-fault --features selftest-page-fault --expect-panic
           grep -F -- '=== Page Fault (#PF) (vector 14)' build/serial-logs/page-fault.log
           grep -F -- 'non-present page on read in kernel mode' build/serial-logs/page-fault.log

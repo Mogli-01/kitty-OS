@@ -21,6 +21,8 @@ version = "0.1.0"
 name = "kitty-kernel"
 version = "0.1.0"
 dependencies = [
+ "kitty-acpi",
+ "kitty-apic",
  "kitty-hal",
  "limine",
 ]

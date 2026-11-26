@@ -531,3 +531,12 @@ ao expirar. O chamador instala o handler antes de desmascarar e trata
 eventuais interrupções já aceites pelo CPU quando pára o timer.
 
 [Intel SDM, vol. 3A, §§12.4.8, 12.5.4 e 12.8.5](https://cdrdv2-public.intel.com/835754/253668-sdm-vol-3a.pdf)
+
+### D-138 — Ligar o controlador APIC no arranque (2026-11-26, CODEX)
+
+A feature `xapic` prepara o I/O APIC e o LAPIC pelas capacidades do
+núcleo e instala `InterruptController` antes dos restantes dispositivos.
+Os overrides ISA precedem as rotas por identidade. Uma GSI tem um único
+dono. São recusadas rotas especiais ativas, intervalos sobrepostos,
+NMI em LINT0 e NMI de nível em LINT1. O LAPIC é ativado antes de
+configurar NMI e os bancos ISR e IRR têm de estar vazios.

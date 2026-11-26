@@ -10,6 +10,7 @@ const REDIRECTION_START: u8 = 0x10;
 const MAX_INPUTS: u8 = (u8::MAX - REDIRECTION_START) / 2 + 1;
 
 const DELIVERY_PENDING: u32 = 1 << 12;
+const DELIVERY_MODE: u32 = 0b111 << 8;
 const ACTIVE_LOW: u32 = 1 << 13;
 const REMOTE_IRR: u32 = 1 << 14;
 const LEVEL: u32 = 1 << 15;
@@ -26,6 +27,7 @@ pub enum Error {
     InvalidVector,
     BroadcastDestination,
     MaskNotSet,
+    ActiveSpecialRoute,
     InFlight,
     RouteNotSet,
     Unconfigured,
@@ -80,6 +82,31 @@ impl<P: RegisterBlock> IoApic<P> {
     /// ranges before assigning routes across multiple I/O APICs.
     pub fn gsis(&self) -> RangeInclusive<u32> {
         self.gsi_base..=self.gsi_base + u32::from(self.max_pin)
+    }
+
+    /// Refuses a live non-Fixed firmware route before the legacy handover.
+    /// In particular, masking an ExtINT input could break virtual-wire PIC
+    /// delivery even if the driver later had to keep the PIC active.
+    pub fn check_legacy_handoff(&mut self) -> Result<(), Error> {
+        for pin in 0..=self.max_pin {
+            let entry = self.read(redirection(pin))?;
+            if entry & MASKED == 0 && entry & DELIVERY_MODE != 0 {
+                return Err(Error::ActiveSpecialRoute);
+            }
+        }
+        Ok(())
+    }
+
+    /// Masks the inputs for a one-time boot handover, with no old delivery
+    /// pending at the end. Check every controller before calling this.
+    pub fn quiesce_for_handoff(&mut self) -> Result<(), Error> {
+        for pin in 0..=self.max_pin {
+            let entry = self.mask_pin(pin)?;
+            if entry & (DELIVERY_PENDING | REMOTE_IRR) != 0 {
+                return Err(Error::InFlight);
+            }
+        }
+        Ok(())
     }
 
     /// Masks every input, including routes left configured by the firmware.

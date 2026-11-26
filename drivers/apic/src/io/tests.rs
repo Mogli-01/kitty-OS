@@ -83,6 +83,26 @@ fn validates_version_pin_count_and_gsi_range() {
 }
 
 #[test]
+fn preserves_active_legacy_extint_during_handoff_preflight() {
+    let mut apic = device();
+    let index = usize::from(redirection(2));
+    apic.registers.values[index].set(0b111 << 8);
+    assert_eq!(apic.check_legacy_handoff(), Err(Error::ActiveSpecialRoute));
+    assert!(apic.registers.writes.borrow().is_empty());
+    apic.registers.values[index].set(MASKED | (0b111 << 8));
+    assert_eq!(apic.check_legacy_handoff(), Ok(()));
+}
+
+#[test]
+fn refuses_handoff_with_old_delivery_in_flight() {
+    let mut apic = device();
+    let index = usize::from(redirection(0));
+    apic.registers.values[index].set(DELIVERY_PENDING);
+    assert_eq!(apic.quiesce_for_handoff(), Err(Error::InFlight));
+    assert_ne!(apic.registers.values[index].get() & MASKED, 0);
+}
+
+#[test]
 fn rejects_bad_routes_without_writing_the_table() {
     let mut apic = device();
     for gsi in [31, 56, u32::MAX] {
