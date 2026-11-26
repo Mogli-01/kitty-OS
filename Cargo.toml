@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["drivers/ps2", "kernel", "xtask"]
+members = ["drivers/ps2", "hal", "kernel", "xtask"]
 
 [workspace.package]
 version = "0.1.0"

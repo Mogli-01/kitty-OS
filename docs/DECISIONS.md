@@ -339,6 +339,134 @@ Isolar os autotestes e verificar a ordem dos relatórios distingue o panic
 esperado de uma falha prematura. Os testes de validação dos logs correm
 no host e em Miri.
 
+### D-037 — `IrqSpinLock` em todos os locks globais; `cli`/`sti`/`hlt` sem `nomem` (2026-11-25, CLAUDE)
+Um handler que tente apanhar um lock que o código interrompido já tem fica
+a girar para sempre (no mesmo CPU o dono nunca volta a correr). O
+`IrqSpinLock` desliga as interrupções **antes** de apanhar o lock e repõe o
+estado anterior **depois** de o libertar (por esta ordem; ao contrário
+haveria uma janela para o deadlock). Aninhar funciona: só o guard exterior
+volta a ligar as interrupções. Consola, PMM, espaço do kernel, memory map,
+heap e tabela de IRQs passaram todos a `IrqSpinLock`.
+**Mesma lição da #7:** os `asm!` de `cli`, `sti` e `hlt` tinham `nomem`, o
+que deixava o compilador mover acessos à memória para dentro ou para fora
+da secção crítica. Agora são barreiras de memória do compilador. O idle usa
+`sti; hlt` numa só instrução `asm!`: o `sti` só tem efeito depois da
+instrução seguinte, por isso nenhuma interrupção se "perde" entre os dois.
+
+### D-038 — Drivers sem `unsafe`: `kitty-hal` + portas reclamáveis (2026-11-25, CLAUDE)
+Os crates de `drivers/` (Codex) são `#![forbid(unsafe_code)]` e não
+dependem do kernel. Falam com o hardware só através dos traits do crate
+`kitty-hal` (`PortBlock` para portas I/O, `RegisterBlock` para MMIO). O
+kernel implementa-os sobre as suas camadas `unsafe` auditadas e entrega
+**objetos-capacidade** só para os registos permitidos:
+`arch::legacy::claim(LegacyDevice::I8042)` devolve um `LegacyPorts` que só
+deixa tocar em 0x60 e 0x64 (a 0x61, controlo do altifalante/NMI, fica de
+fora). Cada dispositivo só pode ser reclamado uma vez. A cola entre um driver
+e o kernel vai em `kernel/src/devices/<dispositivo>.rs`, em Rust seguro (o
+lint do crate proíbe `unsafe` aí). **Porquê:** todo o `unsafe` de hardware
+fica num sítio pequeno e revisto, e um bug num driver não consegue tocar em
+portas ou memória que não lhe foram dadas — o primeiro passo para mais tarde
+mover drivers para user space (D-001).
+**Valores também filtrados** (encontrado pelo `security-reviewer`): mesmo sem
+DMA, alguns registos afetam a máquina inteira. Na porta de comando do i8042,
+`0xFE` reinicia o CPU e `0xD1` escreve o output port (reset e **A20 gate**:
+desligar o A20 sobrepõe endereços físicos, ou seja, corrupção de memória
+provocada por código "seguro"). Por isso só passam os comandos de uma lista
+(`I8042_ALLOWED_COMMANDS`), e no CMOS o bit "desligar NMIs" é sempre limpo.
+
+### D-039 — PIC 8259 como controlador de arranque; EOI pelo núcleo (2026-11-25, CLAUDE)
+O núcleo traz um driver mínimo do 8259 (só portas I/O): remapeia as linhas
+para 0x20–0x2F (de origem iam para 0x08–0x0F, em cima das exceções — 0x08 é
+o double fault!) e deixa-as todas mascaradas até alguém registar. Assim as
+IRQs funcionam já, antes de existir driver de APIC. O driver de I/O APIC do
+Codex implementa o trait `InterruptController` e toma o lugar do PIC com
+`irq::set_controller`, que mascara o PIC por completo.
+**EOI:** é o núcleo que o envia, depois de o handler voltar, para todos os
+vetores 0x20–0xEF (exceto IRQs espúrios), **haja ou não handler**: decidir
+por "está registado?" deixaria o bit "em serviço" preso se a linha fosse
+desregistada com a interrupção a caminho (SMP), bloqueando essa linha e as de
+menor prioridade. Um driver nunca envia EOI.
+**Mapa de vetores:** 0x20–0x2F PIC, 0x30–0xEF dinâmicos (`register_isa`),
+0xF0–0xFE internos do kernel, 0xFF espúrio do APIC.
+
+### D-040 — `devices::init()`: o ponto de ligação dos drivers (2026-11-25, CLAUDE)
+Corre uma vez no CPU de arranque, depois do heap e do núcleo de interrupções
+e **antes** do `sti`. Um driver pode alocar, reclamar o hardware e registar
+o seu IRQ sem correr o risco de receber a primeira interrupção a meio da
+inicialização. O kernel passou a terminar o arranque em idle com as
+interrupções ligadas (em vez de `cli; hlt`).
+
+### D-041 — Descoberta ACPI no núcleo: validar e copiar a MADT (2026-11-26, CLAUDE)
+O kernel segue RSDP → XSDT/RSDT → MADT (o RSDP do Limine rev. 3 é um
+endereço **físico**) e valida cada passo: assinaturas, checksums (incluindo
+o estendido do RSDP v2), comprimentos (cabeçalho ≥ 36, tabela ≤ 64 KiB).
+A memória de firmware é lida com `vmm::copy_from_firmware`: cada tabela
+é **copiada** (leitura volátil, byte a byte, por um mapeamento temporário
+só de leitura e NX que é removido a seguir) e **validada sobre a cópia**.
+Só aceita memória de firmware por *allow-list*: regiões ACPI/reservadas do
+mapa de memória ou a área da BIOS (0x80000–0xFFFFF); recusa sempre RAM do
+kernel (também dentro da área da BIOS, onde abaixo de 640 KiB costuma haver
+RAM normal), a gama APIC/HPET 0xFEC00000–0xFEFFFFFF e a página do LAPIC (o
+UEFI reporta MMIO como "reserved") e **buracos do mapa** (normalmente MMIO:
+ler aí pode ter efeitos laterais, e um alias WB de uma página UC é
+comportamento indefinido). Máximo 64 KiB por
+tabela e 256 entradas da XSDT/RSDT. Não fica nenhuma referência longa a
+memória de firmware (que tem alias RW no HHDM e pode ser alterada por
+SMM/AML). Sem MADT válida, o kernel fica no PIC 8259.
+*Revisto depois do `security-reviewer`:* a 1.ª versão devolvia
+`&'static [u8]` sobre a memória de firmware (promessa de imutabilidade
+falsa), usava uma deny-list (aceitava MMIO) e validava o checksum na
+memória de firmware antes de copiar (dupla leitura).
+
+### D-042 — Capacidades APIC com filtro de valores (2026-11-26, CLAUDE)
+`arch::apic::local_apic()` e `arch::apic::io_apic(phys)` devolvem objetos
+que implementam `kitty_hal::RegisterBlock`, mapeados UC e NX, com dono único.
+- A base do local APIC vem **só** do MSR IA32_APIC_BASE (nunca do driver);
+  em modo x2APIC (registos por MSR) devolve `X2Apic` e o kernel fica no PIC.
+- Um I/O APIC só é concedido num endereço que a **cópia da MADT validada
+  pelo kernel** declara.
+- Acessos de 32 bits, alinhados, dentro da janela (LAPIC 0x400, I/O APIC
+  0x20); 64 bits recusados.
+- **Valores filtrados por allow-list** (mesma lição do A20, D-038): o
+  **ICR** do local APIC não é escrevível (enviaria INIT/SIPI a outros CPUs,
+  que passariam a executar código num endereço físico baixo: tomada total
+  da máquina); modos de entrega permitidos: LVT timer/erro só Fixed,
+  LINT0/1 Fixed/NMI/ExtINT, redireções Fixed/Lowest-priority/NMI/ExtINT
+  (SMI, INIT e reservados recusados); entradas Fixed/Lowest-priority não
+  mascaradas só com **vetores 0x20–0xEF** (0x10–0x1F cairiam em stubs de
+  exceção que esperam um código de erro e desalinhariam a pilha); SVR só
+  com o vetor espúrio 0xFF.
+- **I/O APIC:** seletor e janela sob um `IrqSpinLock` interno da
+  capacidade (sem TOCTOU entre verificar e escrever, nem de um handler nem
+  de outro CPU) e o IOREGSEL é **reposto em hardware a cada novo dono**
+  (antes, um seletor deixado por outro dono permitia contornar o filtro).
+  Endereços de I/O APIC cuja janela toque na página do local APIC ou noutro
+  I/O APIC são descartados (uma MADT hostil podia apontar um "I/O APIC" para
+  o ICR); a versão lida tem de ser plausível.
+
+### D-043 — Módulo initrd: validado pelo núcleo, entregue só de leitura (2026-11-26, CLAUDE)
+O initrd é o módulo do Limine com a string `kitty-initrd`
+(`module_string: kitty-initrd` no `limine.conf`). No arranque, o kernel lê
+diretamente o endereço, o tamanho e a string de cada módulo (o
+`File::cmdline()` do crate `limine` faz `unwrap()` a UTF-8 inválido e daria
+panic; o `File::data()` cria um slice a partir de valores não verificados),
+compara a string **exatamente** (no máximo 64 bytes lidos), e recusa se
+houver mais do que um módulo marcado (ambíguo). Depois das nossas tabelas
+de páginas estarem ativas, `vmm::initrd_slice` exige tamanho 1 B–128 MiB e
+que **todo** o intervalo físico esteja numa única região "kernel and
+modules" do mapa, que **não se sobreponha a nenhuma página física da imagem
+do kernel** (verificado página a página nas nossas tabelas: a imagem tem o
+mesmo tipo no mapa e páginas `.data`/`.bss` escrevíveis — um "módulo" por
+cima dela seria um alias imutável de memória que o kernel escreve e uma
+fuga de dados do kernel para o VFS), e que todas as suas páginas do HHDM
+estejam mapeadas **só de leitura** (uma página partilhada com uma região
+ACPI podia ter ficado RW). Mais de 64 módulos → recusado (não se sabe se
+há outro `kitty-initrd` escondido). O PMM nunca entrega estas páginas, por
+isso o `&'static [u8]` é sólido durante toda a vida do kernel.
+*Revisto depois do `security-reviewer`*, que confirmou o caso da
+sobreposição com a imagem do kernel. Sem módulo, ou módulo recusado: o arranque
+continua sem initrd (diagnóstico), com a razão escrita no log.
+
 ### D-117 — Descodificar o modo base do rato PS/2 (2026-11-26, CODEX)
 
 O rato em modo base envia um cabeçalho e dois bytes de deslocamento.
