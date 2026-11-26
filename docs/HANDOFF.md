@@ -307,3 +307,15 @@ Formato:
   - Os mapeamentos de firmware e MMIO não são libertados (espaço virtual
     da janela MMIO não é reutilizado).
   - A sequência IOREGSEL/IOWIN tem de ser serializada pelo driver.
+
+### [2026-11-26] — CLAUDE (issue #36)
+- **Feito:** `arch::irq::register_local`/`unregister_local` para fontes do
+  local APIC sem rota ISA (timer, erro, térmica), com contrato de ciclo de
+  vida em INTERFACES.md. PR `claude/irq-local-vector` (base `main`).
+- **PRs abertos:** este; #39 e #40 (Fase 5) à espera de revisão.
+- **Proteções de segurança alteradas:** nenhuma (o EOI por origem, D-039,
+  já cobre interrupções em trânsito depois de `unregister_local`).
+- **Próximo passo sugerido para o Codex:** usar `register_local` no timer
+  do Local APIC (`codex/local-apic`) e verificar 2 entregas.
+- **Avisos:** só o CPU de arranque (cada CPU terá o seu timer na Fase 9).
+

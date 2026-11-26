@@ -94,6 +94,8 @@ struct IrqTable {
     handlers: [Option<IrqHandler>; 256],
     /// Vector each ISA line is connected to.
     isa: [Option<u8>; ISA_LINES as usize],
+    /// Vectors handed out by `register_local` (local APIC sources).
+    local: [bool; 256],
     controller: Option<&'static dyn InterruptController>,
     unexpected: u64,
 }
@@ -101,6 +103,7 @@ struct IrqTable {
 static TABLE: IrqSpinLock<IrqTable> = IrqSpinLock::new(IrqTable {
     handlers: [None; 256],
     isa: [None; ISA_LINES as usize],
+    local: [false; 256],
     controller: None,
     unexpected: 0,
 });
@@ -178,6 +181,41 @@ pub fn unregister_isa(line: u8) -> Result<(), IrqError> {
     Ok(())
 }
 
+/// Reserves a free **device vector** (0x30–0xEF) for an interrupt source
+/// that is not an ISA line — the local APIC timer, error or thermal LVT
+/// entries (issue #36) — and installs `handler` on it. No controller
+/// routing is done: the driver programs the source itself with the
+/// returned vector, **masked**, and unmasks it only after this returns.
+///
+/// EOI is sent by the core after the handler, like for every device vector
+/// (with the APIC controller that is a write to the local APIC EOI
+/// register). Usable before or after `sti`; boot CPU only (single CPU).
+pub fn register_local(handler: IrqHandler) -> Result<Vector, IrqError> {
+    let mut t = TABLE.lock();
+    let vector = (FIRST_DYNAMIC..=LAST_DYNAMIC)
+        .find(|&v| t.handlers[v as usize].is_none() && !t.local[v as usize])
+        .ok_or(IrqError::NoFreeVector)?;
+    t.handlers[vector as usize] = Some(handler);
+    t.local[vector as usize] = true;
+    Ok(Vector(vector))
+}
+
+/// Removes a handler installed by [`register_local`]. Mask the source
+/// first. An interrupt already in flight that arrives afterwards finds no
+/// handler: it is counted as unexpected and still gets its EOI, so the
+/// controller is never left with an in-service bit set. The vector can be
+/// handed out again only after this returns.
+pub fn unregister_local(vector: Vector) -> Result<(), IrqError> {
+    let mut t = TABLE.lock();
+    let v = vector.0 as usize;
+    if !t.local.get(v).copied().unwrap_or(false) {
+        return Err(IrqError::InvalidLine);
+    }
+    t.handlers[v] = None;
+    t.local[v] = false;
+    Ok(())
+}
+
 /// Registers a handler on a kernel-internal vector (0xF0–0xFE). No
 /// controller is involved and no EOI is sent.
 pub(crate) fn register_internal(vector: u8, handler: IrqHandler) -> Result<(), IrqError> {
@@ -250,7 +288,23 @@ pub fn selftest() -> bool {
     }
     let ok = HITS.load(Ordering::Relaxed) == 1;
     TABLE.lock().handlers[SELFTEST_VECTOR as usize] = None;
-    ok
+
+    // register_local: a device vector, distinct each time, released by
+    // unregister_local, and only for vectors it handed out.
+    let local_ok = match (register_local(on_selftest), register_local(on_selftest)) {
+        (Ok(a), Ok(b)) => {
+            let in_range = [a, b]
+                .iter()
+                .all(|v| (FIRST_DYNAMIC..=LAST_DYNAMIC).contains(&v.0));
+            let distinct = a != b;
+            let released = unregister_local(a).is_ok() && unregister_local(b).is_ok();
+            let twice = unregister_local(a).is_err();
+            let foreign = unregister_local(Vector(SELFTEST_VECTOR)).is_err();
+            in_range && distinct && released && twice && foreign
+        }
+        _ => false,
+    };
+    ok && local_ok
 }
 
 /// Name of the active interrupt controller.
