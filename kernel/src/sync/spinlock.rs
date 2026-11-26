@@ -7,6 +7,7 @@
 
 use core::cell::UnsafeCell;
 use core::hint::spin_loop;
+use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -55,14 +56,33 @@ impl<T> SpinLock<T> {
         self.locked
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             .ok()
-            .map(|_| SpinLockGuard { lock: self })
+            .map(|_| SpinLockGuard {
+                lock: self,
+                _not_send: PhantomData,
+            })
     }
 }
 
 /// Proof that the lock is held. Dropping it releases the lock.
+///
+/// Auto traits are chosen by hand (review of PR #15):
+/// - **not `Send`**: a spinlock is held by the execution context that took
+///   it; handing the guard to another thread/CPU (once the scheduler can
+///   move tasks) would release the lock from the wrong place. The raw
+///   pointer in `_not_send` removes both `Send` and `Sync`.
+/// - **`Sync` only if `T: Sync`** (impl below): sharing `&guard` gives `&T`
+///   to every thread that sees it. With the automatic impl (`T: Send` was
+///   enough) a `T` such as `Cell` could be accessed from two threads at
+///   once through `&guard` — a data race in safe code. Same rule as the
+///   standard library's `MutexGuard`.
 pub struct SpinLockGuard<'a, T> {
     lock: &'a SpinLock<T>,
+    _not_send: PhantomData<*mut ()>,
 }
+
+// SAFETY: `&SpinLockGuard<T>` only gives out `&T` (through `Deref`), so it
+// may be shared between threads exactly when `&T` may, i.e. `T: Sync`.
+unsafe impl<T: Sync> Sync for SpinLockGuard<'_, T> {}
 
 impl<T> Deref for SpinLockGuard<'_, T> {
     type Target = T;
