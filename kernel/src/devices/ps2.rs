@@ -82,27 +82,36 @@ pub(super) fn init() {
         }
     };
 
-    // The boot CPU still has interrupts disabled. They are enabled after
-    // both handlers have been registered and the device state is installed.
+    *DEVICES.lock() = Some(devices);
     if let Err(error) = irq::register_isa(KEYBOARD_IRQ, on_keyboard_irq) {
-        let _ = devices.stop();
+        stop_controller();
         kprintln!("[kbd] IRQ1 registration failed: {:?}", error);
         return;
     }
     if mouse_ready && let Err(error) = irq::register_isa(AUXILIARY_IRQ, on_auxiliary_irq) {
         kprintln!("[mouse] IRQ12 registration failed: {:?}", error);
-        if devices.stop_mouse().is_err() {
+        let stopped = DEVICES
+            .lock()
+            .as_mut()
+            .is_some_and(|devices| devices.stop_mouse().is_ok());
+        if !stopped {
             let _ = irq::unregister_isa(KEYBOARD_IRQ);
-            let _ = devices.stop();
+            stop_controller();
             kprintln!("[ps2] controller recovery failed");
             return;
         }
         mouse_ready = false;
     }
 
-    *DEVICES.lock() = Some(devices);
     kprintln!("[kbd] PS/2 keyboard ready on IRQ1");
     if mouse_ready {
         kprintln!("[mouse] PS/2 mouse ready on IRQ12");
+    }
+}
+
+fn stop_controller() {
+    let devices = DEVICES.lock().take();
+    if let Some(devices) = devices {
+        let _ = devices.stop();
     }
 }

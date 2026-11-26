@@ -422,3 +422,18 @@ Formato:
 - **Avisos** — testes de QEMU usam uma feature que regista os eventos
   na série. A fila existe no kernel e a entrega ao user space fica
   para o contrato de INPUT. Sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (PS/2 no Platform atual)
+
+- **Feito** — adaptados o teclado e o rato à inicialização com
+  `Platform`. O estado do controlador é instalado antes de registar IRQ1
+  e IRQ12. Se o registo falhar, o driver pára a porta afetada.
+- **PRs abertos** — #14, #16, #17, #32, #33 e #34 atualizados.
+- **Testes/fuzzing** — teclado em IRQ1 e rato em IRQ12 passaram em QEMU
+  8.2.2 com BIOS e UEFI, debug e release. Testes no host e clippy passaram.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — os handlers encontram o estado
+  inicializado assim que a linha pode entregar interrupções.
+- **Bloqueado por / à espera do Claude** — timestamps e entrega por INPUT.
+- **Próximo passo sugerido para o Claude** — documentar o relógio e o
+  contrato de entrega para o compositor.
