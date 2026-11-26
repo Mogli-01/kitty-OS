@@ -467,6 +467,19 @@ isso o `&'static [u8]` é sólido durante toda a vida do kernel.
 sobreposição com a imagem do kernel. Sem módulo, ou módulo recusado: o arranque
 continua sem initrd (diagnóstico), com a razão escrita no log.
 
+### D-117 — Descodificar o modo base do rato PS/2 (2026-11-26, CODEX)
+
+O rato em modo base envia um cabeçalho e dois bytes de deslocamento.
+O bit 3 do cabeçalho indica a posição esperada do início. Os bits de
+sinal completam valores de movimento com nove bits, e o eixo Y é
+invertido para coordenadas de ecrã. Um overflow deixa apenas esse
+eixo sem movimento válido e preserva os botões do relatório.
+
+O decoder espera exclusivamente bytes AUX do modo de três bytes,
+depois do tratamento das respostas de comandos. Um erro de
+transporte descarta o pacote parcial. Para retomar, o transporte
+estabelece a fronteira do pacote seguinte.
+
 ### D-103 — Transporte i8042 através de `PortBlock` (2026-11-25, CODEX)
 O crate interno `kitty-i8042` usa `kitty-hal` para configurar o teclado
 em Set 2 sem tradução. Mantém as IRQs do controlador desligadas até
@@ -487,19 +500,6 @@ premidas. A porta auxiliar segue um percurso distinto.
 A fila mantém o trabalho em interrupção limitado e usa memória fixa. O
 teste QEMU envia uma tecla normal e uma estendida e valida as pressões e
 libertações pela saída série de um build de teste.
-
-### D-117 — Descodificar o modo base do rato PS/2 (2026-11-26, CODEX)
-
-O rato em modo base envia um cabeçalho e dois bytes de deslocamento.
-O bit 3 do cabeçalho indica a posição esperada do início. Os bits de
-sinal completam valores de movimento com nove bits, e o eixo Y é
-invertido para coordenadas de ecrã. Um overflow deixa apenas esse
-eixo sem movimento válido e preserva os botões do relatório.
-
-O decoder espera exclusivamente bytes AUX do modo de três bytes,
-depois do tratamento das respostas de comandos. Um erro de
-transporte descarta o pacote parcial. Para retomar, o transporte
-estabelece a fronteira do pacote seguinte.
 
 ### D-118 — Respostas AUX e recuperação do teclado no i8042 (2026-11-26, CODEX)
 
