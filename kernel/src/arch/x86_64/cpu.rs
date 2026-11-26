@@ -134,10 +134,32 @@ unsafe fn wrmsr(msr: u32, value: u64) {
     }
 }
 
+const MSR_APIC_BASE: u32 = 0x1B;
+
 /// Physical base address of the local APIC registers (IA32_APIC_BASE).
 pub fn local_apic_base() -> u64 {
-    const MSR_APIC_BASE: u32 = 0x1B;
     rdmsr(MSR_APIC_BASE) & 0x000F_FFFF_FFFF_F000
+}
+
+/// State of the boot CPU's local APIC, from IA32_APIC_BASE.
+#[derive(Clone, Copy, Debug)]
+pub struct LocalApicState {
+    /// Physical base of the xAPIC register page.
+    pub base: u64,
+    /// Bit 11: the APIC is globally enabled.
+    pub enabled: bool,
+    /// Bit 10: x2APIC mode (registers via MSRs, not MMIO).
+    pub x2apic: bool,
+}
+
+/// Reads IA32_APIC_BASE.
+pub fn local_apic_state() -> LocalApicState {
+    let msr = rdmsr(MSR_APIC_BASE);
+    LocalApicState {
+        base: msr & 0x000F_FFFF_FFFF_F000,
+        enabled: msr & (1 << 11) != 0,
+        x2apic: msr & (1 << 10) != 0,
+    }
 }
 
 /// Whether the CPU supports the NX (execute-disable) bit.

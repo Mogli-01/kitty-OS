@@ -1,5 +1,6 @@
 //! x86_64 support: boot hand-off, CPU control, I/O ports, early serial.
 
+pub mod apic;
 pub mod boot;
 pub mod cpu;
 mod exceptions;
