@@ -18,7 +18,7 @@
 //!                      (repeatable)
 //!
 //! Environment overrides: KITTY_QEMU (qemu binary), KITTY_OVMF (UEFI code
-//! firmware), KITTY_XORRISO (xorriso binary).
+//! firmware), KITTY_XORRISO (xorriso binary), KITTY_BENCH_AGAINST (baseline ELF).
 //!
 //! Only std is used on purpose (dependency policy, docs/DECISIONS.md).
 

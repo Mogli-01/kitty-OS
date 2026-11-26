@@ -247,3 +247,20 @@ Formato:
   de arranque completo na série para medir as próximas fases.
 - **Avisos** — métricas de QEMU dependem do firmware e do executor.
   A comparação de regressões entre branches será feita no mesmo runner.
+
+### [2026-11-26] — CODEX (regressões de arranque na CI)
+
+- **Feito** — workflow de comparação da base do PR e do candidato
+  em BIOS/release, no mesmo runner, com alerta a partir de +25% e
+  +50 ms. Decisão D-115.
+- **PRs abertos** — ramo `codex/ci-benchmark` sobre o #29.
+- **Testes/fuzzing** — teste do limiar no host e em Miri. O ensaio
+  local completo com dois ELFs idênticos terminou sem aviso.
+- **Benchmarks** — mediana de 357,6 ms na base e 353,1 ms no
+  candidato idêntico (−4,5 ms) no ensaio local.
+- **Bloqueado por / à espera do Claude** — caminhos de syscall e
+  scheduler para os restantes benchmarks.
+- **Próximo passo sugerido para o Claude** — usar o artefacto do
+  benchmark para avaliar alterações significativas de arranque.
+- **Avisos** — a CI mede o perfil BIOS/release. O UEFI continua
+  disponível a partir de `cargo xtask bench-boot --release`.

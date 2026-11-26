@@ -25,6 +25,17 @@ comparar alterações. O firmware e a carga do host afetam os tempos.
 | BIOS/ISO | 7 | 354,0 ms | 361,1 ms | 387,2 ms |
 | UEFI/OVMF | 7 | 2 002,8 ms | 2 124,0 ms | 2 753,0 ms |
 
+## Comparação na CI
+
+O job BIOS/release mede o ELF da base do PR e o candidato no mesmo
+runner, com o mesmo QEMU e Limine. `KITTY_BENCH_AGAINST` aponta para
+um ELF de referência compilado com `qemu-exit`. Cada lado tem o seu
+aquecimento e sete amostras. A CI emite um aviso se a mediana subir
+pelo menos 25% e 50 ms. O artefacto guarda amostras e logs de ambos.
+
+Num ensaio local com o mesmo ELF dos dois lados, as medianas foram
+357,6 ms e 353,1 ms. A variação foi de −4,5 ms e o aviso ficou inativo.
+
 Os benchmarks de ciclos por syscall e de troca de contexto dependem do
 scheduler e da entrada em user mode. A medição dos frames do compositor
 entra quando houver apresentação no framebuffer.

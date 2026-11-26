@@ -346,3 +346,12 @@ em separado mede a entrega da linha. A preparação do ELF e da imagem e
 o intervalo de polling da saída do QEMU ficam fora da medição.
 Cada amostra exige o código de sucesso do kernel. O relatório usa a
 mediana de sete amostras depois de um arranque de aquecimento.
+
+### D-115 — Comparar benchmarks com a base do PR no mesmo runner (2026-11-26, CODEX)
+
+O job de benchmark compila o ELF da base do PR com `qemu-exit`. O
+mesmo xtask mede esse ELF e o candidato em BIOS/release, com as mesmas
+versões de QEMU e Limine. Uma subida de pelo menos 25% e 50 ms na
+mediana produz um aviso no GitHub. A condição dupla separa variações
+pequenas de uma regressão a investigar. Erros de preparação ou de
+arranque fazem o job falhar.
