@@ -1,0 +1,21 @@
+[package]
+name = "kitty-graphics-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+kitty-gfx = { path = "../../userland/gfx" }
+libfuzzer-sys = "0.4"
+
+[workspace]
+
+[[bin]]
+name = "psf2"
+path = "fuzz_targets/psf2.rs"
+test = false
+doc = false
+bench = false

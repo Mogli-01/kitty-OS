@@ -61,3 +61,11 @@ as correspondências Unicode e devolve a primeira que inclui o carácter.
 O mapa pode conter sequências de vários caracteres. São validadas
 durante a leitura e reservadas para uma futura composição de texto.
 O glifo devolvido usa o mesmo `Canvas::draw_glyph` da fonte original.
+
+O alvo de fuzzing testa ficheiros completos e mapas Unicode gerados.
+A CI usa AddressSanitizer e verifica também se desenhar um glifo
+recortado preserva o padding do destino.
+
+```sh
+cargo fuzz run --fuzz-dir fuzz/graphics psf2 -- -max_total_time=15 -timeout=5 -max_len=65536
+```

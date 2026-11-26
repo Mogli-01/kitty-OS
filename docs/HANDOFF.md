@@ -373,8 +373,9 @@ Formato:
   `Canvas::draw_glyph`. Decisão D-132.
 - **PRs abertos** — ramo `codex/fontes-psf2` sobre o #27.
 - **Testes/fuzzing** — 16 testes de `kitty-gfx` no host e em Miri. Duas
-  fontes do kbd com 512 glifos foram lidas e mapearam `é`. Um alvo local
-  sob ASan passou 1 268 281 casos, incluindo recorte e padding do destino.
+  fontes do kbd com 512 glifos foram lidas e mapearam `é`. O alvo
+  `psf2` na CI passou 981 229 casos no ensaio local sob ASan, incluindo
+  recorte e padding do destino.
 - **Benchmarks** — sem medições.
 - **Proteções de segurança alteradas** — cabeçalhos e intervalos são
   validados antes de criar vistas. O parser e o desenho usam Rust seguro.
@@ -382,4 +383,5 @@ Formato:
   a concessão `DISPLAY` e a interface do dispositivo.
 - **Próximo passo sugerido para o Claude** — manter a descrição de
   formato e pitch da superfície na futura interface `DISPLAY`.
-- **Avisos** — o fuzzing do formato ainda está fora da CI neste ramo.
+- **Avisos** — o alvo gráfico usa um workspace de host próprio, para
+  que o PR possa ser revisto sobre a base da biblioteca gráfica (#27).
