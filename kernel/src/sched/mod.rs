@@ -173,6 +173,17 @@ pub fn spawn(name: &'static str, entry: fn()) -> Result<ThreadId, SpawnError> {
     });
     let mut guard = SCHED.lock();
     let s = guard.as_mut().ok_or(SpawnError::NotInitialised)?;
+    // Reserve, here in thread context, room in the ready queue for every
+    // thread (each can be in it at most once). Then `wake` and the
+    // preemption path, which run in interrupt handlers, never allocate
+    // (review of #39/#40).
+    let total = s.threads.len() + 1;
+    if s.ready
+        .try_reserve(total.saturating_sub(s.ready.len()))
+        .is_err()
+    {
+        return Err(SpawnError::OutOfMemory);
+    }
     let id = ThreadId(s.next_id);
     s.next_id += 1;
     s.threads.insert(id, thread);
