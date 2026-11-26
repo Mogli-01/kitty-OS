@@ -68,7 +68,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf xorriso
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup toolchain install
-      - name: Check breakpoint, page fault and double fault
+      - name: Check exceptions and repeated PIT IRQ0 delivery
         shell: bash
         env:
           FIRMWARE: ${{ matrix.firmware }}
@@ -102,6 +102,8 @@ jobs:
           run_case double-fault --features selftest-double-fault --expect-panic
           grep -F -- '=== Double Fault (#DF) (vector 8)' build/serial-logs/double-fault.log
           grep -F -- '(running on the IST double-fault stack)' build/serial-logs/double-fault.log
+
+          run_case pit-irq --features selftest-irq-pit --expect 'hardware IRQ0 (PIT) delivered twice'
       - name: Upload serial logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

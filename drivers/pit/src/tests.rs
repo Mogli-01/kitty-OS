@@ -75,3 +75,34 @@ fn stops_after_a_rejected_write() {
         assert_eq!(pit.ports.writes.into_inner().len(), index + 1);
     }
 }
+
+#[test]
+fn switches_to_mode_zero_without_reloading_the_counter() {
+    let mut pit = Pit::new(Ports::default());
+    let period = Period::from_hz(1000).unwrap();
+    pit.start_periodic(period).unwrap();
+    pit.stop().unwrap();
+    pit.start_periodic(period).unwrap();
+    assert_eq!(
+        pit.ports.writes.into_inner(),
+        [
+            (3, 0x34),
+            (0, 0xa9),
+            (0, 0x04),
+            (3, 0x30),
+            (3, 0x34),
+            (0, 0xa9),
+            (0, 0x04)
+        ]
+    );
+}
+
+#[test]
+fn reports_a_rejected_stop_write() {
+    let mut pit = Pit::new(Ports {
+        reject_at: Some(0),
+        ..Ports::default()
+    });
+    assert_eq!(pit.stop(), Err(PortRejected { offset: 3 }));
+    assert_eq!(pit.ports.writes.into_inner(), [(3, 0x30)]);
+}

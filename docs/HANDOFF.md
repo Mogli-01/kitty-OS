@@ -278,3 +278,21 @@ Formato:
 - **Avisos** — arranque normal ainda sem tick periódico. Uma linha
   desmascarada pode entregar um IRQ pendente anterior à programação.
   Sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (paragem do PIT e entrega repetida na CI)
+
+- **Feito** — operação `Pit::stop` e execução do autoteste de dois IRQ0
+  nos quatro perfis QEMU do #19. Decisão D-120.
+- **PRs abertos** — atualização do #19 sobre a revisão do #15.
+- **Testes/fuzzing** — sete testes do driver no host e em Miri. O
+  autoteste de interrupções passou localmente em QEMU 8.2.2 com BIOS
+  e UEFI em debug e release.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — cobertura de reconhecimento de
+  interrupções na CI. Driver em Rust seguro.
+- **Bloqueado por / à espera do Claude** — `sched::tick()` para o
+  arranque usar o PIT como origem de ticks.
+- **Próximo passo sugerido para o Claude** — documentar a transição
+  entre a contagem periódica do PIT e a fonte de tempo do scheduler.
+- **Avisos** — o autoteste do núcleo prova a entrega pelo PIC.
+  Os testes de portas verificam a programação de `kitty-pit`.

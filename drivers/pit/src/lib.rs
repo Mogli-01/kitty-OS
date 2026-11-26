@@ -12,6 +12,8 @@ const CHANNEL_0: u16 = 0;
 const CONTROL: u16 = 3;
 // Select channel 0, write LSB then MSB, mode 2 (rate generator), binary count.
 const PERIODIC: u8 = 0x34;
+// Mode 0 drives OUT low and waits for a new count before running.
+const STOP: u8 = 0x30;
 
 /// Reload count for the mode 2 rate generator.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -72,6 +74,12 @@ impl<P: PortBlock> Pit<P> {
         self.write(CONTROL, PERIODIC)?;
         self.write(CHANNEL_0, low)?;
         self.write(CHANNEL_0, high)
+    }
+
+    /// Stops channel 0 without loading another count. Mask IRQ0 first and
+    /// let the interrupt controller handle any previously latched IRQ.
+    pub fn stop(&mut self) -> Result<(), PortRejected> {
+        self.write(CONTROL, STOP)
     }
 
     fn write(&mut self, offset: u16, value: u8) -> Result<(), PortRejected> {

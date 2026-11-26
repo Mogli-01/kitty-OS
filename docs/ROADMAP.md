@@ -58,7 +58,7 @@ preparado para a interface gráfica (Fases 10–14).
 | PIC 8259 como controlador de arranque (remapeado, tudo mascarado) | CLAUDE | FEITO |
 | `kitty-hal` + portas legadas reclamáveis (i8042, PIT, CMOS) + `devices::init` | CLAUDE | FEITO |
 | Driver do Local APIC + IO APIC | CODEX | TODO |
-| Driver legado PIT periódico (IRQ0) | CODEX | Programação e testes feitos no ramo `codex/pit-periodico`, ligação ao scheduler pendente |
+| Driver legado PIT periódico (IRQ0) | CODEX | Programação e paragem no #19, teste de IRQ0 repetido na CI; ligação ao scheduler pendente |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | TODO |
 | Driver do teclado PS/2 | CODEX | TODO |
 | Driver UART completo (interrupções, input) | CODEX | TODO |

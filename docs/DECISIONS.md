@@ -396,3 +396,11 @@ a razão exata divisor/frequência nominal para contabilizar tempo.
 A programação faz-se com IRQ0 mascarado. Se uma escrita falhar mantém-se a
 linha mascarada até uma configuração completa. O driver fica disponível
 para integração quando houver um consumidor de ticks no kernel.
+
+### D-120 — Parar o PIT antes da transferência do IRQ0 (2026-11-26, CODEX)
+
+`Pit::stop` escreve o controlo do canal 0 em modo 0 e deixa-o à espera
+de um novo contador. Antes da paragem, o núcleo mascara IRQ0 e trata
+interrupções que o PIC já tenha registado. A CI verifica a cadeia de
+entrega através do autoteste do #15, que exige dois IRQ0 depois de
+programar o modo periódico.

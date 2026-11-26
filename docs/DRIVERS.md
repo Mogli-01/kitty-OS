@@ -22,7 +22,20 @@ três escritas. O controlador pode entregar um IRQ que já estava pendente
 quando se desmascara a linha. O núcleo confirma cada interrupção (EOI)
 depois de o handler regressar.
 
+`Pit::stop` escreve `0x30` no registo de controlo. O modo 0 leva a
+saída a zero e aguarda um novo contador, pelo que o driver pode parar
+os impulsos ou voltar a programar o período. Mascare IRQ0 antes da
+paragem e trate no controlador qualquer interrupção já pendente.
+
 `cargo test -p kitty-pit --locked` verifica a ordem das escritas, o
 arredondamento, os limites e as escritas recusadas através de `PortBlock`
 simulado. O PIT periódico será ligado ao scheduler quando a interface
 `sched::tick()` estiver disponível.
+
+O autoteste do núcleo programa o PIT e confirma dois IRQ0 pelo PIC.
+A segunda entrega verifica que o reconhecimento da primeira libertou a
+linha. A CI executa o teste em BIOS e UEFI, em debug e release.
+
+```sh
+cargo xtask test --features selftest-irq-pit --expect 'hardware IRQ0 (PIT) delivered twice'
+```
