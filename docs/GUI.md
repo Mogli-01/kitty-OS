@@ -48,3 +48,16 @@ escrever os píxeis ativos. O fundo e o padding mantêm os seus valores.
 `draw_ascii` usa a fonte original do kitty-OS, com glifos de 5 × 7 e
 células de 6 × 8. A fonte inclui os 95 caracteres ASCII imprimíveis,
 usa `?` para outros caracteres e começa uma nova linha com `\n`.
+
+## Carregar fontes PSF2
+
+`Psf2Font::parse` recebe os bytes de um ficheiro PSF2 v0 já descomprimido.
+Valida o cabeçalho, o tamanho do atlas e o mapa Unicode opcional. A
+biblioteca empresta os bytes do ficheiro e aceita glifos de 1 a 255
+píxeis por eixo. Cada linha usa `ceil(largura / 8)` bytes.
+
+`bitmap().glyph(indice)` procura por índice. `glyph_for_char` percorre
+as correspondências Unicode e devolve a primeira que inclui o carácter.
+O mapa pode conter sequências de vários caracteres. São validadas
+durante a leitura e reservadas para uma futura composição de texto.
+O glifo devolvido usa o mesmo `Canvas::draw_glyph` da fonte original.

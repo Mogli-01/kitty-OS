@@ -3,6 +3,9 @@
 use crate::{Canvas, Color, PIXEL_BYTES, Point, clipped_steps};
 
 mod ascii;
+mod psf2;
+
+pub use psf2::{Psf2Error, Psf2Font};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {

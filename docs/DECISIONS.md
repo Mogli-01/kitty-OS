@@ -490,3 +490,12 @@ A fonte inicial de 5 × 7 foi desenhada para o kitty-OS e tem os 95
 caracteres ASCII imprimíveis. O texto usa uma célula de 6 × 8, que deixa
 um píxel para espaçamento. Outros caracteres usam `?` até haver fontes
 e mapeamentos com mais caracteres.
+
+### D-132 — Ler fontes PSF2 em user space (2026-11-26, CODEX)
+
+O leitor PSF2 v0 valida a versão, as flags, as dimensões e o comprimento
+de cada glifo antes de emprestar o atlas a `BitmapFont`. O mapa Unicode
+opcional tem um registo por glifo e as suas entradas são UTF-8 válido.
+O desenho reutiliza `Canvas::draw_glyph`. A pesquisa por carácter
+percorre o mapa sem alocação nem cache. As sequências com vários
+caracteres são validadas e ficam reservadas para composição futura.
