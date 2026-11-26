@@ -379,9 +379,22 @@ fn map_window(start: u64, size: u64, flags: MapFlags) -> Result<u64, MapError> {
     with_kernel_space(|space| {
         let mut off = 0;
         while off < size {
-            let v = VirtAddr::new(virt_start + off).ok_or(MapError::Misaligned)?;
-            let p = PhysAddr::new(start + off).ok_or(MapError::Misaligned)?;
-            space.map_4k(v, p, flags)?;
+            let mapped = VirtAddr::new(virt_start + off)
+                .zip(PhysAddr::new(start + off))
+                .ok_or(MapError::Misaligned)
+                .and_then(|(v, p)| space.map_4k(v, p, flags));
+            if let Err(e) = mapped {
+                // Undo the pages mapped so far: no half-mapped window stays
+                // behind. They are not PMM frames, so nothing is freed.
+                let mut undo = 0;
+                while undo < off {
+                    if let Some(v) = VirtAddr::new(virt_start + undo) {
+                        let _ = space.unmap_4k(v);
+                    }
+                    undo += PAGE_SIZE;
+                }
+                return Err(e);
+            }
             off += PAGE_SIZE;
         }
         Ok(())
@@ -397,17 +410,42 @@ pub const MAX_FIRMWARE_COPY: u64 = 64 * 1024;
 /// the memory map does not describe it.
 const LEGACY_BIOS_AREA: core::ops::Range<u64> = 0x8_0000..0x10_0000;
 
+/// Physical range conventionally used by the I/O APICs, HPET and local APIC
+/// (0xFEC00000–0xFEFFFFFF). UEFI firmware often reports such MMIO as
+/// "reserved", so it is refused explicitly.
+const APIC_MMIO_RANGE: core::ops::Range<u64> = 0xFEC0_0000..0xFF00_0000;
+
 /// Whether every page of `[start, end)` is firmware memory: inside an ACPI
-/// or reserved region of the memory map, or in the legacy BIOS area. Holes
-/// (usually MMIO: PCI BARs, APIC pages) and kernel-owned RAM are refused.
+/// or reserved region of the memory map, or in the legacy BIOS area, and
+/// **never** overlapping kernel-owned RAM, the APIC/HPET MMIO range or the
+/// local APIC page. Holes (usually MMIO: PCI BARs) are refused.
 fn is_firmware_range(start: u64, end: u64) -> bool {
     let map = MEMORY_MAP.lock();
     let Some(map) = map.as_ref() else {
         return false;
     };
+    let lapic = crate::arch::x86_64::cpu::local_apic_base();
     let mut page = start;
     while page < end {
         let page_end = page + PAGE_SIZE;
+        // Deny first: kernel-owned RAM (the BIOS area below 640 KiB is often
+        // ordinary RAM handed out by the PMM), APIC/HPET MMIO, LAPIC page.
+        let kernel_owned = map.iter().any(|r| {
+            matches!(
+                r.kind,
+                MemoryKind::Usable
+                    | MemoryKind::BootloaderReclaimable
+                    | MemoryKind::KernelAndModules
+                    | MemoryKind::Framebuffer
+                    | MemoryKind::Bad
+            ) && r.base < page_end
+                && r.base.saturating_add(r.len) > page
+        });
+        let apic_mmio = APIC_MMIO_RANGE.start < page_end && page < APIC_MMIO_RANGE.end
+            || (lapic..lapic.saturating_add(PAGE_SIZE)).contains(&page);
+        if kernel_owned || apic_mmio {
+            return false;
+        }
         let in_bios_area = LEGACY_BIOS_AREA.start <= page && page_end <= LEGACY_BIOS_AREA.end;
         let in_firmware_region = map.iter().any(|r| {
             matches!(

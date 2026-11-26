@@ -393,9 +393,12 @@ A memória de firmware é lida com `vmm::copy_from_firmware`: cada tabela
 é **copiada** (leitura volátil, byte a byte, por um mapeamento temporário
 só de leitura e NX que é removido a seguir) e **validada sobre a cópia**.
 Só aceita memória de firmware por *allow-list*: regiões ACPI/reservadas do
-mapa de memória ou a área da BIOS (0x80000–0xFFFFF); recusa RAM do kernel e
-**buracos do mapa** (normalmente MMIO: ler aí pode ter efeitos laterais, e
-um alias WB de uma página UC é comportamento indefinido). Máximo 64 KiB por
+mapa de memória ou a área da BIOS (0x80000–0xFFFFF); recusa sempre RAM do
+kernel (também dentro da área da BIOS, onde abaixo de 640 KiB costuma haver
+RAM normal), a gama APIC/HPET 0xFEC00000–0xFEFFFFFF e a página do LAPIC (o
+UEFI reporta MMIO como "reserved") e **buracos do mapa** (normalmente MMIO:
+ler aí pode ter efeitos laterais, e um alias WB de uma página UC é
+comportamento indefinido). Máximo 64 KiB por
 tabela e 256 entradas da XSDT/RSDT. Não fica nenhuma referência longa a
 memória de firmware (que tem alias RW no HHDM e pode ser alterada por
 SMM/AML). Sem MADT válida, o kernel fica no PIC 8259.

@@ -260,6 +260,8 @@ pub fn arch::apic::io_apic(phys: u64) -> Result<IoApicRegisters, ApicError>;
   tem de usar um vetor **0x20–0xEF**. Mascarada, o vetor não é verificado
   (é-o quando for desmascarada, porque cada escrita leva o registo inteiro).
 - Cada APIC tem um só dono de cada vez; o `Drop` liberta-o.
+- **Não usar as capacidades no handler de NMI**: usam `IrqSpinLock` e o
+  `cli` não mascara NMIs (deadlock se a NMI chegar com o lock preso).
 
 **Transição PIC → APIC** (em `devices::init`, com interrupções desligadas):
 1. Estado à entrada: PIC remapeado e com **todas** as linhas mascaradas;

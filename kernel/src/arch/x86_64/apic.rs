@@ -27,6 +27,9 @@
 //!     (some expect an error code the hardware does not push for external
 //!     interrupts, corrupting the stack); 0xF0–0xFF are kernel-internal. The
 //!     spurious vector (SVR) must be 0xFF.
+//! - **Not from the NMI handler**: the capabilities use `IrqSpinLock`s, and
+//!   `cli` does not mask NMIs; an NMI arriving while the lock is held and
+//!   trying to take it would deadlock.
 //! - **I/O APIC selector/window**: the selector (IOREGSEL) and the window
 //!   write are done under one internal `IrqSpinLock`, and the selector is
 //!   reset on every claim, so the kernel always knows which register a
@@ -258,6 +261,9 @@ pub fn io_apic(phys: u64) -> Result<IoApicRegisters, ApicError> {
     };
     // The hardware selector survives previous owners: set it to a known
     // value before trusting `selected` (found by the security review).
+    // This is a real write (0x01 to offset 0) before the plausibility check:
+    // harmless on a real I/O APIC; the address already passed the MADT and
+    // overlap checks, so it cannot be the local APIC.
     regs.write(IOAPIC_SELECT, IOAPIC_VERSION_INDEX)
         .ok_or(ApicError::MapFailed)?;
     let version = regs
