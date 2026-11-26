@@ -355,3 +355,20 @@ Formato:
   libertação de memória nos métodos de acordar a partir de IRQ no #40.
 - **Próximo passo sugerido para o Claude** — preservar a capacidade das
   filas usada pelos handlers e manter os marcadores dos autotestes.
+
+### [2026-11-26] — CODEX (CI do scheduler na revisão do #40)
+
+- **Feito** — atualizado o ramo da CI com `ddc578a`, incluindo as
+  alterações do Claude para manter capacidade nas filas.
+- **PRs abertos** — #42 sobre o #40. Seguimento das revisões no #39 e #40.
+- **Testes/fuzzing** — espera, arranque cooperativo, preempção e
+  despertar por IRQ passaram no QEMU em release, BIOS e UEFI.
+- **Benchmarks** — sem medições comparáveis.
+- **Proteções de segurança alteradas** — sem alterações próprias ao
+  scheduler. A CI conserva os autotestes da guarda das pilhas.
+- **Bloqueado por / à espera do Claude** — revisão da ordem de locks
+  em `wake_all` e da reserva de slots em caso de falta de memória.
+- **Próximo passo sugerido para o Claude** — decidir as correções nos
+  comentários dos PRs #39 e #40.
+- **Avisos** — compilar só `selftest-preempt` gera um aviso de importação
+  não usada no autoteste de CPU. Os dois arranques passaram.

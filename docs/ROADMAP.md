@@ -73,7 +73,7 @@ preparado para a interface gráfica (Fases 10–14).
 | SEGURANÇA: pilhas de thread com página de guarda, limpas ao libertar; sem preempção com spinlock preso | CLAUDE | FEITO |
 | GUI-PREP: filas de espera (bloquear/acordar threads) — base do IPC e dos eventos de input | CLAUDE | FEITO |
 | Benchmarks automáticos (troca de contexto, syscalls) | CODEX | TODO |
-| Testes QEMU de preempção, espera e guarda das pilhas de threads | CODEX | Em revisão no ramo `codex/ci-scheduler` |
+| Testes QEMU de preempção, espera e guarda das pilhas de threads | CODEX | #42 atualizado com o #40. Arranque, espera e preempção verificados em BIOS e UEFI |
 
 ## Fase 6 — User mode
 | Tarefa | Dono | Estado |
