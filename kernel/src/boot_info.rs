@@ -18,10 +18,34 @@ pub struct BootInfo {
     pub kernel_image: KernelImage,
     /// Physical address of the ACPI RSDP, if the firmware has one.
     pub rsdp_phys: Option<u64>,
+    /// The boot module tagged `kitty-initrd`, as reported by the
+    /// bootloader (not validated yet: see `mm::vmm::initrd_slice`).
+    pub initrd: InitrdModule,
     /// The first usable linear framebuffer, if any.
     pub framebuffer: Option<FrameBuffer>,
     /// Bootloader name and version, if reported.
     pub bootloader: Option<BootloaderInfo>,
+}
+
+/// What the bootloader reported for the initrd module (docs/INTERFACES.md,
+/// "initrd"). Only raw values: the kernel validates them against the memory
+/// map before creating any slice (D-043).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InitrdModule {
+    /// No module carries the `kitty-initrd` string.
+    Absent,
+    /// Exactly one module carries it.
+    Found {
+        /// Virtual (HHDM) address reported by the bootloader.
+        virt: u64,
+        /// Size in bytes reported by the bootloader.
+        size: u64,
+    },
+    /// More than one module carries it: refused (which one is meant?).
+    Ambiguous,
+    /// More modules than the kernel inspects: a second tagged module could
+    /// be hidden among the uninspected ones, so this is refused too.
+    TooManyModules,
 }
 
 /// Physical and virtual load address of the kernel image.

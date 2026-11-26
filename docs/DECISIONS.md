@@ -432,3 +432,26 @@ que implementam `kitty_hal::RegisterBlock`, mapeados UC e NX, com dono único.
   Endereços de I/O APIC cuja janela toque na página do local APIC ou noutro
   I/O APIC são descartados (uma MADT hostil podia apontar um "I/O APIC" para
   o ICR); a versão lida tem de ser plausível.
+
+### D-043 — Módulo initrd: validado pelo núcleo, entregue só de leitura (2026-11-26, CLAUDE)
+O initrd é o módulo do Limine com a string `kitty-initrd`
+(`module_string: kitty-initrd` no `limine.conf`). No arranque, o kernel lê
+diretamente o endereço, o tamanho e a string de cada módulo (o
+`File::cmdline()` do crate `limine` faz `unwrap()` a UTF-8 inválido e daria
+panic; o `File::data()` cria um slice a partir de valores não verificados),
+compara a string **exatamente** (no máximo 64 bytes lidos), e recusa se
+houver mais do que um módulo marcado (ambíguo). Depois das nossas tabelas
+de páginas estarem ativas, `vmm::initrd_slice` exige tamanho 1 B–128 MiB e
+que **todo** o intervalo físico esteja numa única região "kernel and
+modules" do mapa, que **não se sobreponha a nenhuma página física da imagem
+do kernel** (verificado página a página nas nossas tabelas: a imagem tem o
+mesmo tipo no mapa e páginas `.data`/`.bss` escrevíveis — um "módulo" por
+cima dela seria um alias imutável de memória que o kernel escreve e uma
+fuga de dados do kernel para o VFS), e que todas as suas páginas do HHDM
+estejam mapeadas **só de leitura** (uma página partilhada com uma região
+ACPI podia ter ficado RW). Mais de 64 módulos → recusado (não se sabe se
+há outro `kitty-initrd` escondido). O PMM nunca entrega estas páginas, por
+isso o `&'static [u8]` é sólido durante toda a vida do kernel.
+*Revisto depois do `security-reviewer`*, que confirmou o caso da
+sobreposição com a imagem do kernel. Sem módulo, ou módulo recusado: o arranque
+continua sem initrd (diagnóstico), com a razão escrita no log.

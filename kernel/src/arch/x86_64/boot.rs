@@ -16,13 +16,14 @@ use limine::framebuffer::FRAMEBUFFER_RGB;
 use limine::memmap::{self, Entry};
 use limine::request::{
     BootloaderInfoRequest, ExecutableAddressRequest, FramebufferRequest, HhdmRequest,
-    MemmapRequest, RsdpRequest,
+    MemmapRequest, ModulesRequest, RsdpRequest,
 };
 use limine::{RequestsEndMarker, RequestsStartMarker};
 
 use super::{cpu, serial::SerialPort};
 use crate::boot_info::{
-    BootInfo, BootloaderInfo, ChannelMask, FrameBuffer, KernelImage, MemoryKind, MemoryRegion,
+    BootInfo, BootloaderInfo, ChannelMask, FrameBuffer, InitrdModule, KernelImage, MemoryKind,
+    MemoryRegion,
 };
 
 /// Protocol base revision we are written against. See docs/DECISIONS.md
@@ -64,6 +65,10 @@ static EXECUTABLE_ADDRESS_REQUEST: ExecutableAddressRequest = ExecutableAddressR
 #[used]
 #[unsafe(link_section = ".requests")]
 static RSDP_REQUEST: RsdpRequest = RsdpRequest::new();
+
+#[used]
+#[unsafe(link_section = ".requests")]
+static MODULES_REQUEST: ModulesRequest = ModulesRequest::new();
 
 #[used]
 #[unsafe(link_section = ".requests_end_marker")]
@@ -112,6 +117,7 @@ extern "C" fn kernel_entry() -> ! {
             .response()
             .map(|r| r.address.addr() as u64)
             .filter(|&a| a != 0),
+        initrd: find_initrd(),
         framebuffer: take_framebuffer(),
         bootloader: BOOTLOADER_INFO_REQUEST.response().map(|r| BootloaderInfo {
             name: r.name(),
@@ -196,4 +202,86 @@ impl MemoryMap {
             },
         })
     }
+}
+
+/// String that marks the initrd module (`module_string: kitty-initrd` in
+/// limine.conf; it reaches us in the file's `cmdline` field).
+const INITRD_TAG: &[u8] = b"kitty-initrd";
+/// Most bytes of a module string we look at.
+const MAX_TAG_SCAN: usize = 64;
+/// Most modules we look at.
+const MAX_MODULES: usize = 64;
+
+/// Byte offsets of the fields we need in `limine::file::File`, which is
+/// `#[repr(C)]` (limine crate 0.6.5, pinned in Cargo.lock): `revision: u64`
+/// at 0, `address: *mut ()` at 8, `size: u64` at 16, `path` at 24,
+/// `cmdline: *const c_char` at 32. We read them directly instead of calling
+/// `File::data()` (creates a slice from unchecked values) or
+/// `File::cmdline()` (`unwrap()`s on invalid UTF-8 → panic at boot).
+const FILE_ADDRESS: usize = 8;
+const FILE_SIZE: usize = 16;
+const FILE_CMDLINE: usize = 32;
+
+fn file_field(file: &limine::file::File, offset: usize) -> u64 {
+    let base = core::ptr::from_ref(file).cast::<u8>();
+    // SAFETY: `file` is a valid `File` provided by Limine (a `#[repr(C)]`
+    // struct at least 40 bytes long, see the offsets above), so
+    // `base + offset .. + 8` is inside it. `read_unaligned` makes no
+    // alignment assumption; every bit pattern is a valid `u64`.
+    let field = base.wrapping_add(offset).cast::<u64>();
+    // SAFETY: (see above) `field` points 8 readable bytes inside `file`.
+    unsafe { field.read_unaligned() }
+}
+
+/// Whether the NUL-terminated module string at `ptr` is exactly
+/// `kitty-initrd`. Reads at most `MAX_TAG_SCAN` bytes, never panics.
+fn is_initrd_tag(ptr: u64) -> bool {
+    if ptr == 0 {
+        return false;
+    }
+    for i in 0..MAX_TAG_SCAN {
+        let Some(addr) = (ptr as usize).checked_add(i) else {
+            return false;
+        };
+        let p = core::ptr::with_exposed_provenance::<u8>(addr);
+        // SAFETY: we trust the bootloader's string pointer (Limine is in the
+        // trusted computing base, docs/SECURITY.md): Limine places module
+        // strings in bootloader-reclaimable memory mapped by its HHDM (still
+        // active: we run on Limine's page tables here) and terminates them
+        // with NUL. We stop at the first NUL or after MAX_TAG_SCAN bytes and
+        // only read bytes (any value is a valid `u8`).
+        let byte = unsafe { p.read_volatile() };
+        match (INITRD_TAG.get(i), byte) {
+            (None, 0) => return true, // matched the whole tag, then NUL
+            (Some(&want), got) if want == got => {}
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// Finds the module tagged `kitty-initrd`. Only records raw values; the
+/// memory-map validation happens in `mm::vmm::initrd_slice` (D-043).
+fn find_initrd() -> InitrdModule {
+    let Some(response) = MODULES_REQUEST.response() else {
+        return InitrdModule::Absent;
+    };
+    let modules = response.modules();
+    if modules.len() > MAX_MODULES {
+        return InitrdModule::TooManyModules;
+    }
+    let mut found = InitrdModule::Absent;
+    for file in modules {
+        if !is_initrd_tag(file_field(file, FILE_CMDLINE)) {
+            continue;
+        }
+        found = match found {
+            InitrdModule::Absent => InitrdModule::Found {
+                virt: file_field(file, FILE_ADDRESS),
+                size: file_field(file, FILE_SIZE),
+            },
+            _ => InitrdModule::Ambiguous,
+        };
+    }
+    found
 }
