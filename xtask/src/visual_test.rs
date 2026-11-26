@@ -43,14 +43,12 @@ pub(crate) fn run(opts: &Opts) -> Result<()> {
         .stderr(Stdio::inherit())
         .spawn()
         .map_err(|e| format!("cannot start QEMU: {e}"))?;
-    let captured = capture(&mut guest, &serial);
+    let captured = capture(&mut guest, &serial, &screenshot);
     if captured.is_err() {
         let _ = guest.kill();
         let _ = guest.wait();
     }
-    captured?;
-    let bytes = read_bounded(&screenshot, MAX_SCREENSHOT)
-        .map_err(|e| format!("reading {}: {e}", screenshot.display()))?;
+    let bytes = captured?;
     let actual = Ppm::parse(&bytes)?;
     actual.check_banner(&expected)?;
     println!(
@@ -61,7 +59,7 @@ pub(crate) fn run(opts: &Opts) -> Result<()> {
     Ok(())
 }
 
-fn capture(guest: &mut Child, serial: &Path) -> Result<()> {
+fn capture(guest: &mut Child, serial: &Path, screenshot: &Path) -> Result<Vec<u8>> {
     let start = Instant::now();
     loop {
         if let Some(status) = guest
@@ -85,14 +83,32 @@ fn capture(guest: &mut Child, serial: &Path) -> Result<()> {
         std::thread::sleep(Duration::from_millis(25));
     }
 
-    let input = guest
-        .stdin
-        .as_mut()
-        .ok_or("QEMU monitor input unavailable")?;
-    input
-        .write_all(b"screendump build/visual/frame.ppm\nquit\n")
-        .and_then(|()| input.flush())
-        .map_err(|e| format!("writing to the QEMU monitor: {e}"))?;
+    monitor_write(guest, b"screendump build/visual/frame.ppm\n")?;
+    let start = Instant::now();
+    let bytes = loop {
+        if let Some(status) = guest
+            .try_wait()
+            .map_err(|e| format!("waiting for QEMU: {e}"))?
+        {
+            return Err(format!(
+                "QEMU exited before the screenshot was complete ({status})"
+            ));
+        }
+        match read_bounded(screenshot, MAX_SCREENSHOT) {
+            Ok(bytes) if Ppm::parse(&bytes).is_ok() => break bytes,
+            Ok(_) => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("reading {}: {e}", screenshot.display())),
+        }
+        if start.elapsed() >= TEST_TIMEOUT {
+            return Err(format!(
+                "timed out waiting for a complete P6 image at {}",
+                screenshot.display()
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    };
+    monitor_write(guest, b"quit\n")?;
     let start = Instant::now();
     while start.elapsed() < TEST_TIMEOUT {
         if let Some(status) = guest
@@ -100,14 +116,25 @@ fn capture(guest: &mut Child, serial: &Path) -> Result<()> {
             .map_err(|e| format!("waiting for QEMU: {e}"))?
         {
             return if status.success() {
-                Ok(())
+                Ok(bytes)
             } else {
                 Err(format!("QEMU capture failed ({status})"))
             };
         }
         std::thread::sleep(Duration::from_millis(25));
     }
-    Err("timed out waiting for QEMU to finish the screen capture".into())
+    Err("timed out waiting for QEMU to exit after the screen capture".into())
+}
+
+fn monitor_write(guest: &mut Child, command: &[u8]) -> Result<()> {
+    let input = guest
+        .stdin
+        .as_mut()
+        .ok_or("QEMU monitor input unavailable")?;
+    input
+        .write_all(command)
+        .and_then(|()| input.flush())
+        .map_err(|e| format!("writing to the QEMU monitor: {e}"))
 }
 
 fn read_bounded(path: &Path, limit: usize) -> io::Result<Vec<u8>> {
