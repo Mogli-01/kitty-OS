@@ -385,6 +385,77 @@ o seu IRQ sem correr o risco de receber a primeira interrupção a meio da
 inicialização. O kernel passou a terminar o arranque em idle com as
 interrupções ligadas (em vez de `cli; hlt`).
 
+### D-041 — Descoberta ACPI no núcleo: validar e copiar a MADT (2026-11-26, CLAUDE)
+O kernel segue RSDP → XSDT/RSDT → MADT (o RSDP do Limine rev. 3 é um
+endereço **físico**) e valida cada passo: assinaturas, checksums (incluindo
+o estendido do RSDP v2), comprimentos (cabeçalho ≥ 36, tabela ≤ 64 KiB).
+A memória de firmware é lida com `vmm::copy_from_firmware`: cada tabela
+é **copiada** (leitura volátil, byte a byte, por um mapeamento temporário
+só de leitura e NX que é removido a seguir) e **validada sobre a cópia**.
+Só aceita memória de firmware por *allow-list*: regiões ACPI/reservadas do
+mapa de memória ou a área da BIOS (0x80000–0xFFFFF); recusa sempre RAM do
+kernel (também dentro da área da BIOS, onde abaixo de 640 KiB costuma haver
+RAM normal), a gama APIC/HPET 0xFEC00000–0xFEFFFFFF e a página do LAPIC (o
+UEFI reporta MMIO como "reserved") e **buracos do mapa** (normalmente MMIO:
+ler aí pode ter efeitos laterais, e um alias WB de uma página UC é
+comportamento indefinido). Máximo 64 KiB por
+tabela e 256 entradas da XSDT/RSDT. Não fica nenhuma referência longa a
+memória de firmware (que tem alias RW no HHDM e pode ser alterada por
+SMM/AML). Sem MADT válida, o kernel fica no PIC 8259.
+*Revisto depois do `security-reviewer`:* a 1.ª versão devolvia
+`&'static [u8]` sobre a memória de firmware (promessa de imutabilidade
+falsa), usava uma deny-list (aceitava MMIO) e validava o checksum na
+memória de firmware antes de copiar (dupla leitura).
+
+### D-042 — Capacidades APIC com filtro de valores (2026-11-26, CLAUDE)
+`arch::apic::local_apic()` e `arch::apic::io_apic(phys)` devolvem objetos
+que implementam `kitty_hal::RegisterBlock`, mapeados UC e NX, com dono único.
+- A base do local APIC vem **só** do MSR IA32_APIC_BASE (nunca do driver);
+  em modo x2APIC (registos por MSR) devolve `X2Apic` e o kernel fica no PIC.
+- Um I/O APIC só é concedido num endereço que a **cópia da MADT validada
+  pelo kernel** declara.
+- Acessos de 32 bits, alinhados, dentro da janela (LAPIC 0x400, I/O APIC
+  0x20); 64 bits recusados.
+- **Valores filtrados por allow-list** (mesma lição do A20, D-038): o
+  **ICR** do local APIC não é escrevível (enviaria INIT/SIPI a outros CPUs,
+  que passariam a executar código num endereço físico baixo: tomada total
+  da máquina); modos de entrega permitidos: LVT timer/erro só Fixed,
+  LINT0/1 Fixed/NMI/ExtINT, redireções Fixed/Lowest-priority/NMI/ExtINT
+  (SMI, INIT e reservados recusados); entradas Fixed/Lowest-priority não
+  mascaradas só com **vetores 0x20–0xEF** (0x10–0x1F cairiam em stubs de
+  exceção que esperam um código de erro e desalinhariam a pilha); SVR só
+  com o vetor espúrio 0xFF.
+- **I/O APIC:** seletor e janela sob um `IrqSpinLock` interno da
+  capacidade (sem TOCTOU entre verificar e escrever, nem de um handler nem
+  de outro CPU) e o IOREGSEL é **reposto em hardware a cada novo dono**
+  (antes, um seletor deixado por outro dono permitia contornar o filtro).
+  Endereços de I/O APIC cuja janela toque na página do local APIC ou noutro
+  I/O APIC são descartados (uma MADT hostil podia apontar um "I/O APIC" para
+  o ICR); a versão lida tem de ser plausível.
+
+### D-043 — Módulo initrd: validado pelo núcleo, entregue só de leitura (2026-11-26, CLAUDE)
+O initrd é o módulo do Limine com a string `kitty-initrd`
+(`module_string: kitty-initrd` no `limine.conf`). No arranque, o kernel lê
+diretamente o endereço, o tamanho e a string de cada módulo (o
+`File::cmdline()` do crate `limine` faz `unwrap()` a UTF-8 inválido e daria
+panic; o `File::data()` cria um slice a partir de valores não verificados),
+compara a string **exatamente** (no máximo 64 bytes lidos), e recusa se
+houver mais do que um módulo marcado (ambíguo). Depois das nossas tabelas
+de páginas estarem ativas, `vmm::initrd_slice` exige tamanho 1 B–128 MiB e
+que **todo** o intervalo físico esteja numa única região "kernel and
+modules" do mapa, que **não se sobreponha a nenhuma página física da imagem
+do kernel** (verificado página a página nas nossas tabelas: a imagem tem o
+mesmo tipo no mapa e páginas `.data`/`.bss` escrevíveis — um "módulo" por
+cima dela seria um alias imutável de memória que o kernel escreve e uma
+fuga de dados do kernel para o VFS), e que todas as suas páginas do HHDM
+estejam mapeadas **só de leitura** (uma página partilhada com uma região
+ACPI podia ter ficado RW). Mais de 64 módulos → recusado (não se sabe se
+há outro `kitty-initrd` escondido). O PMM nunca entrega estas páginas, por
+isso o `&'static [u8]` é sólido durante toda a vida do kernel.
+*Revisto depois do `security-reviewer`*, que confirmou o caso da
+sobreposição com a imagem do kernel. Sem módulo, ou módulo recusado: o arranque
+continua sem initrd (diagnóstico), com a razão escrita no log.
+
 ### D-105 — PIT legado em modo periódico (2026-11-25, CODEX)
 
 O crate `kitty-pit` programa o canal 0 do PIT 8254 em modo 2 através de
