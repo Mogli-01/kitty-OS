@@ -361,3 +361,18 @@ Formato:
   do primeiro programa em user space.
 - **Próximo passo sugerido para o Claude** — documentar o contrato
   de entrada e saída de texto para a primeira shell.
+
+### [2026-11-26] — CODEX (editor de linha da shell)
+
+- **Feito** — edição, navegação e remoção em fronteiras UTF-8.
+  Decisão D-130.
+- **PRs abertos** — ramo `codex/shell-edicao` sobre o #47.
+- **Testes/fuzzing** — oito testes no host e em Miri. O alvo `shell`
+  validou sequências de edição em 564 613 casos sob ASan.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — armazenamento limitado e
+  preservação da linha quando uma inserção é recusada.
+- **Bloqueado por / à espera do Claude** — consola de user space e
+  execução do primeiro programa.
+- **Próximo passo sugerido para o Claude** — definir entrega dos bytes
+  de texto e teclas de controlo à shell.

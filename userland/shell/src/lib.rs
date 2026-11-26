@@ -5,6 +5,9 @@
 
 use core::{fmt, str};
 
+mod editor;
+pub use editor::{EditError, LineBuffer};
+
 pub const MAX_LINE_BYTES: usize = 1024;
 pub const MAX_WORDS: usize = 16;
 
@@ -40,7 +43,7 @@ impl CommandLine {
             return Err(ParseError::LineTooLong);
         }
         let line = str::from_utf8(input).map_err(|_| ParseError::InvalidUtf8)?;
-        if line.chars().any(|ch| ch.is_control() && ch != '\t') {
+        if line.chars().any(disallowed_control) {
             return Err(ParseError::ControlCharacter);
         }
         let mut parsed = Self {
@@ -125,6 +128,10 @@ impl CommandLine {
             Some(_) => Err(ExecuteError::UnknownCommand),
         }
     }
+}
+
+fn disallowed_control(ch: char) -> bool {
+    ch.is_control() && ch != '\t'
 }
 
 #[cfg(test)]

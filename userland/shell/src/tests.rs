@@ -100,3 +100,70 @@ fn propagates_output_errors() {
         Err(ExecuteError::Output(fmt::Error))
     );
 }
+
+#[test]
+fn moves_and_deletes_at_utf8_character_boundaries() {
+    let mut line = LineBuffer::new();
+    for ch in "aé🦀z".chars() {
+        line.insert(ch).unwrap();
+    }
+    line.move_left();
+    assert_eq!(line.cursor(), "aé🦀".len());
+    line.move_left();
+    assert_eq!(line.cursor(), "aé".len());
+    line.delete();
+    assert_eq!(line.as_bytes(), "aéz".as_bytes());
+    line.backspace();
+    assert_eq!(line.as_bytes(), b"az");
+    line.insert('ç').unwrap();
+    assert_eq!(line.as_bytes(), "açz".as_bytes());
+    line.move_right();
+    line.move_right();
+    line.delete();
+    assert_eq!(line.cursor(), "açz".len());
+    line.move_home();
+    line.backspace();
+    line.move_left();
+    assert_eq!(line.cursor(), 0);
+    line.move_right();
+    assert_eq!(line.cursor(), 1);
+    line.move_right();
+    assert_eq!(line.cursor(), "aç".len());
+}
+
+#[test]
+fn full_line_and_rejected_controls_leave_the_current_edit_intact() {
+    let mut line = LineBuffer::new();
+    for _ in 0..MAX_LINE_BYTES - 1 {
+        line.insert('a').unwrap();
+    }
+    line.move_home();
+    assert_eq!(line.insert('é'), Err(EditError::LineFull));
+    assert_eq!(line.insert('\x1b'), Err(EditError::ControlCharacter));
+    assert_eq!(line.cursor(), 0);
+    assert_eq!(line.as_bytes(), vec![b'a'; MAX_LINE_BYTES - 1]);
+    line.insert('\t').unwrap();
+    assert_eq!(line.as_bytes()[0], b'\t');
+    assert_eq!(line.as_bytes().len(), MAX_LINE_BYTES);
+    line.clear();
+    assert_eq!(line.as_bytes(), b"");
+    assert_eq!(line.cursor(), 0);
+}
+
+#[test]
+fn executes_an_edited_command() {
+    let mut line = LineBuffer::new();
+    for ch in "eco olá".chars() {
+        line.insert(ch).unwrap();
+    }
+    line.move_home();
+    line.move_right();
+    line.move_right();
+    line.insert('h').unwrap();
+    let mut output = String::new();
+    CommandLine::parse(line.as_bytes())
+        .unwrap()
+        .execute(&mut output)
+        .unwrap();
+    assert_eq!(output, "olá\n");
+}

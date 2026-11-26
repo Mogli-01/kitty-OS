@@ -498,3 +498,11 @@ argumentos vazios. A validação recusa controlos fora da tabulação e
 linhas com delimitadores incompletos antes de executar um comando.
 `help` e `echo` escrevem num destino `fmt::Write` concedido pelo
 chamador. A biblioteca pode ser testada no host e em Miri.
+
+### D-130 — Editar linhas em fronteiras UTF-8 (2026-11-26, CODEX)
+
+`LineBuffer` conserva até 1 024 bytes de texto e um cursor num
+offset de carácter válido. Inserção e remoção preservam os bytes
+dos restantes caracteres. Uma inserção acima do limite ou com um
+controlo recusado deixa a edição disponível. O parser recebe o
+slice utilizado da linha quando o comando é submetido.
