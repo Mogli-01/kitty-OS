@@ -384,7 +384,9 @@ Formato:
 - **PRs abertos** — ramo `codex/shell-consola` sobre o #49. Revisões
   atualizadas nos #39 e #40, e submetidas nos #51 e #52.
 - **Testes/fuzzing** — 12 testes no host e em Miri. O alvo `shell`
-  passou 386 970 casos sob ASan com o fluxo de entrada incluído.
+  passou 386 970 casos sob ASan com o fluxo de entrada incluído. Um
+  segundo ensaio passou 228 226 casos após alargar as inserções a todo
+  o intervalo de Unicode. O teste de leituras parciais inclui um emoji.
 - **Benchmarks** — sem medições.
 - **Proteções de segurança alteradas** — descodificação incremental
   com estado de tamanho fixo. Uma falha de escrita não repete o comando.

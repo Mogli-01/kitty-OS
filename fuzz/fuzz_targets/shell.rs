@@ -21,7 +21,8 @@ fuzz_target!(|input: &[u8]| {
     }
 
     let mut line = LineBuffer::new();
-    for &byte in input {
+    for operation in input.chunks(3) {
+        let byte = operation[0];
         match byte & 7 {
             0 => line.move_left(),
             1 => line.move_right(),
@@ -33,7 +34,10 @@ fuzz_target!(|input: &[u8]| {
                 let _ = line.insert(char::from(byte));
             }
             _ => {
-                if let Some(ch) = char::from_u32(u32::from(byte) * 257) {
+                let middle = operation.get(1).copied().unwrap_or_default();
+                let high = operation.get(2).copied().unwrap_or_default();
+                let scalar = u32::from_le_bytes([byte, middle, high, 0]) % 0x11_0000;
+                if let Some(ch) = char::from_u32(scalar) {
                     let _ = line.insert(ch);
                 }
             }

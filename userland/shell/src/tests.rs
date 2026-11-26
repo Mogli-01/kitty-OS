@@ -179,7 +179,9 @@ fn console_submits_an_edited_line_after_split_sequences() {
         b"[D",
         b"\x1b[3",
         b"~f\xc3",
-        b"\xa9",
+        b"\xa9\xf0",
+        b"\x9f\xa6",
+        b"\x80",
     ] {
         for &byte in chunk {
             assert!(matches!(
@@ -188,9 +190,9 @@ fn console_submits_an_edited_line_after_split_sequences() {
             ));
         }
     }
-    assert_eq!(shell.line().as_bytes(), "echo café".as_bytes());
+    assert_eq!(shell.line().as_bytes(), "echo café🦀".as_bytes());
     assert_eq!(shell.push(b'\n', &mut output), Ok(SessionEvent::Submitted));
-    assert_eq!(output, "café\n");
+    assert_eq!(output, "café🦀\n");
     assert!(shell.line().as_bytes().is_empty());
 }
 

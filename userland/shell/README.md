@@ -3,7 +3,8 @@
 `CommandLine::parse` recebe uma linha UTF-8 com até 1 024 bytes.
 Espaços e tabs separam palavras fora de aspas. Aspas simples preservam
 o conteúdo literal. Fora de aspas simples, a barra invertida preserva
-o carácter seguinte. O comando e os argumentos ocupam até 16 palavras.
+o carácter seguinte, incluindo dentro de aspas duplas. O comando e
+os argumentos ocupam até 16 palavras.
 A validação recusa sequências UTF-8 inválidas e caracteres de controlo
 fora da tabulação.
 
