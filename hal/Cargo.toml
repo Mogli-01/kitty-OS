@@ -1,0 +1,8 @@
+[package]
+name = "kitty-hal"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+description = "Safe hardware-access traits shared by the kitty-OS kernel and its drivers"
+
+[dependencies]
