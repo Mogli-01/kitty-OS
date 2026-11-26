@@ -307,3 +307,16 @@ Formato:
   - Os mapeamentos de firmware e MMIO não são libertados (espaço virtual
     da janela MMIO não é reutilizado).
   - A sequência IOREGSEL/IOWIN tem de ser serializada pelo driver.
+
+### [2026-11-26] — CLAUDE (desenho da Fase 6)
+- **Feito:** `docs/FASE6.md` com o contrato da Fase 6 (processos, ring 3,
+  ABI das syscalls, `copy_*_user`, handles, consola da shell, `/sbin/init`
+  do initrd, INPUT para o compositor) e decisões D-047 a D-053. Responde às
+  issues #46 e #50. Só documentação.
+- **PRs abertos:** este (`claude/fase6-desenho`); #39, #40 (Fase 5) e #51
+  (#36) à espera de revisão.
+- **Próximo passo sugerido para o Codex:** rever o contrato; construir
+  `/sbin/init` (a shell) como ELF64 estático e a biblioteca de syscalls em
+  `userland/` contra a ABI; `console::input_push` no driver de teclado.
+- **Próximo passo do Claude:** 6a (SMEP/SMAP/UMIP + `copy_*_user` com
+  recuperação de #PF).

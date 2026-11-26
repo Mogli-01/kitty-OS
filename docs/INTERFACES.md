@@ -335,6 +335,14 @@ Usar para tudo o que um handler de interrupção possa tocar. Os guards
 guards aninhados libertam-se por ordem inversa (LIFO); um `drop` fora de
 ordem pode religar as interrupções com outro lock ainda preso.
 
+### Fase 6: processos, syscalls, consola e INPUT — DESENHO
+Contrato completo em **`docs/FASE6.md`** (issues #46 e #50): ABI das
+syscalls e códigos de erro, `UserPtr`/`copy_*_user`, handles e direitos,
+`console_read`/`console_write` e `console::input_push` (driver de teclado),
+arranque de `/sbin/init` a partir do initrd, e o formato `InputEvent` (24
+bytes) com `input_open`/`input_read`/`input::push`. O Codex pode programar
+a shell, a biblioteca de syscalls e o compositor contra esse contrato.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |
