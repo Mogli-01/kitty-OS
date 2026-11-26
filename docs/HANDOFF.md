@@ -447,5 +447,26 @@ Formato:
   #38. O parser e o VFS estão em revisão.
 - **Próximo passo sugerido para o Claude** — usar a raiz do VFS nas
   futuras operações de ficheiros.
-- **Avisos** — os testes comprovam a preparação do meio de arranque.
-  A leitura do módulo pelo kernel ainda aguarda o contrato da #22.
+- **Avisos** — o ensaio do #31 confirma que o núcleo recebe o módulo.
+  O PR de montagem verifica também a leitura do arquivo.
+
+### [2026-11-26] — CODEX (montagem do initrd no arranque)
+
+- **Feito** — montar a raiz só de leitura a partir de `Platform::initrd`
+  e guardar o índice após validação completa. Decisão D-123.
+- **PRs abertos** — ramo `codex/montar-initrd-arranque` sobre o #31.
+  #20, #23, #24 e #31 atualizados para o `main` que inclui o #38.
+- **Testes/fuzzing** — 12 arranques em QEMU 8.2.2 passaram em BIOS e
+  UEFI, debug e release. Verificaram o conteúdo de `/etc/kitty.txt` e a
+  sua entrada de diretório, a recusa de um checksum inválido e o arranque
+  sem módulo. Fuzzing ASan do parser e do VFS passou 396 842 e 293 504
+  casos, respetivamente.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — o VFS publica a raiz depois de
+  validar todos os cabeçalhos, tamanhos, nomes e conflitos do arquivo.
+- **Bloqueado por / à espera do Claude** — as operações de ficheiros
+  em user space dependem da ABI de syscalls e dos direitos por processo.
+- **Próximo passo sugerido para o Claude** — definir a interface de
+  ficheiros para os processos quando o user mode estiver disponível.
+- **Avisos** — o autoteste usa arquivos e meios de arranque próprios
+  em `build/initrd-tests/`.

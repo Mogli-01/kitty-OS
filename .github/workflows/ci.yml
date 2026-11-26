@@ -52,7 +52,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf xorriso
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup toolchain install
-      - name: Check breakpoint, page fault and double fault
+      - name: Check exceptions and initrd boot
         shell: bash
         env:
           FIRMWARE: ${{ matrix.firmware }}
@@ -87,20 +87,13 @@ jobs:
           grep -F -- '=== Double Fault (#DF) (vector 8)' build/serial-logs/double-fault.log
           grep -F -- '(running on the IST double-fault stack)' build/serial-logs/double-fault.log
 
-          if [[ "$PROFILE" == release ]]; then
-            mkdir -p build/initrd-smoke/etc
-            printf 'kitty-OS initrd smoke test\n' > build/initrd-smoke/etc/kitty.txt
-            tar --format=ustar -cf build/initrd-smoke.tar -C build/initrd-smoke .
-            run_case initrd --initrd build/initrd-smoke.tar --expect '[initrd] module validated'
-            media=build/esp
-            if [[ "$FIRMWARE" == bios ]]; then media=build/iso_root; fi
-            cmp build/initrd-smoke.tar "$media/boot/initrd.tar"
-            grep -F -- 'module_string: kitty-initrd' "$media/boot/limine/limine.conf"
-          fi
+          cargo xtask test-initrd "${flags[@]}"
       - name: Upload serial logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: serial-logs-${{ matrix.firmware }}-${{ matrix.profile }}
-          path: build/serial-logs/*.log
+          path: |
+            build/serial-logs/*.log
+            build/initrd-tests/*/*.log
           if-no-files-found: ignore

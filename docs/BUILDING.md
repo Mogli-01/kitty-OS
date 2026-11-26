@@ -47,3 +47,16 @@ O xtask aceita arquivos entre 1 byte e 128 MiB e valida-os com o VFS
 antes de os incorporar como `/boot/initrd.tar`. A configuração do Limine
 identifica o módulo como `kitty-initrd`. O núcleo confirma a receção do
 módulo com `[initrd] module validated` na consola série.
+
+Depois de validar o arquivo USTAR e criar o índice, o VFS confirma a
+montagem com `[vfs] initrd mounted read-only`. Um arquivo recusado pelo
+VFS produz `[vfs] initrd archive rejected` e o kernel continua o arranque.
+
+```sh
+cargo xtask test-initrd --release        # UEFI
+cargo xtask test-initrd --bios --release # BIOS
+```
+
+O teste verifica a leitura de `/etc/kitty.txt`, um arquivo com checksum
+inválido e um arranque sem módulo. Os logs e meios do teste ficam em
+`build/initrd-tests/<firmware>-<perfil>/`.

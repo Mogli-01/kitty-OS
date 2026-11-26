@@ -19,6 +19,7 @@ name = "kitty-kernel"
 version = "0.1.0"
 dependencies = [
  "kitty-hal",
+ "kitty-vfs",
  "limine",
 ]
 

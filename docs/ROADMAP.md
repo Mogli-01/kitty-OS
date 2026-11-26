@@ -88,8 +88,8 @@ preparado para a interface gráfica (Fases 10–14).
 ## Fase 7 — Sistema de ficheiros e shell
 | Tarefa | Dono | Estado |
 |---|---|---|
-| VFS | CODEX | Raiz só de leitura com índice limitado, pesquisa e listagem em revisão no #24. Montagem no arranque em preparação |
-| initrd (módulo do Limine) | CODEX | Parser USTAR (#23) e empacotamento (#31) em revisão. Entrega do módulo disponível no #38 |
+| VFS | CODEX | Raiz só de leitura com índice limitado (#24). Montagem e leitura no QEMU em revisão no ramo `codex/montar-initrd-arranque` |
+| initrd (módulo do Limine) | CODEX | Parser (#23), empacotamento (#31), receção e validação do arquivo verificadas em BIOS e UEFI |
 | Shell em userland | CODEX | TODO |
 | Entrega do módulo initrd ao VFS (`Platform::initrd`, validado, só de leitura) (#22) | CLAUDE | FEITO |
 | Syscalls de ficheiros (open/read/write/close) no núcleo | CLAUDE | TODO |

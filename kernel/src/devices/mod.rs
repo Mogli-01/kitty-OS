@@ -12,6 +12,8 @@
 //! device) and is written in safe Rust — `unsafe` is denied here by the
 //! crate-level lint. See docs/INTERFACES.md ("Interrupções (Fase 4)").
 
+mod initrd;
+
 /// Platform description handed to the drivers.
 pub struct Platform<'a> {
     /// The ACPI MADT, already validated by the kernel (signature, length,
@@ -31,4 +33,6 @@ pub struct Platform<'a> {
 /// Starts every driver. Order matters (docs/INTERFACES.md, "Transição PIC
 /// para APIC"): the interrupt controller first, then the devices that
 /// register IRQ lines.
-pub fn init(_platform: &Platform<'_>) {}
+pub fn init(platform: &Platform<'_>) {
+    initrd::init(platform.initrd);
+}

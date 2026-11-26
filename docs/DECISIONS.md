@@ -539,3 +539,16 @@ Em complemento à D-016, o xtask pode usar crates por caminho do próprio
 workspace para partilhar a validação com o núcleo. O carregador do
 initrd depende de `kitty-vfs` e a política sobre crates externos da
 D-016 aplica-se à ferramenta.
+
+### D-123 — Publicar a raiz do initrd após validar o arquivo (2026-11-26, CODEX)
+
+`devices::init` monta `Platform::initrd` depois de o heap estar pronto.
+O VFS valida todo o USTAR e o índice antes de guardar a raiz. Os dados
+dos ficheiros permanecem nas páginas só de leitura reservadas pelo
+núcleo. Um arquivo recusado deixa a raiz indisponível e o arranque
+continua com a razão na consola série.
+
+O `xtask test-initrd` verifica um ficheiro conhecido, uma imagem em que
+o checksum do cabeçalho é inválido e a ausência de módulo. Os ensaios
+usam meios de arranque próprios em `build/initrd-tests/`. O comando
+normal `--initrd` valida o arquivo no host antes de preparar o meio.

@@ -7,6 +7,7 @@
 //!   run   [--release] [--bios]   boot in QEMU (UEFI from build/esp, or BIOS from the ISO)
 //!   test  [--release] [--bios]   boot headless, check serial output and exit code
 //!   test-memory [--release] [--bios]   check the Phase 3 memory protections in QEMU
+//!   test-initrd [--release] [--bios]   check initrd mounting and rejection in QEMU
 //!
 //! Extra options:
 //!   --features <a,b>   extra kernel cargo features (e.g. selftest-page-fault)
@@ -29,6 +30,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
 
 mod initrd;
+mod initrd_tests;
 mod memory_tests;
 
 /// Limine binary release we boot with. Pinned to an exact commit of the
@@ -56,6 +58,12 @@ struct Opts {
     expect_panic: bool,
     expect: Vec<String>,
     initrd: Option<PathBuf>,
+}
+
+impl Opts {
+    fn load_initrd(&self) -> Result<Option<Vec<u8>>> {
+        self.initrd.as_deref().map(initrd::load).transpose()
+    }
 }
 
 fn main() -> ExitCode {
@@ -104,19 +112,21 @@ fn main() -> ExitCode {
     let result = match cmd.as_str() {
         "build" => build_kernel(&opts, false).map(|p| println!("kernel: {}", p.display())),
         "esp" => build_kernel(&opts, false)
-            .and_then(|k| make_esp(&k, opts.initrd.as_deref()))
+            .and_then(|k| make_esp(&k, opts.load_initrd()?.as_deref(), &build_dir()))
             .map(|_| ()),
         "iso" => build_kernel(&opts, false)
-            .and_then(|k| make_iso(&k, opts.initrd.as_deref()))
+            .and_then(|k| make_iso(&k, opts.load_initrd()?.as_deref(), &build_dir()))
             .map(|_| ()),
         "run" => run(&opts),
         "test" => test(&opts),
         "test-memory" => memory_tests::run(&opts),
+        "test-initrd" => initrd_tests::run(&opts),
         _ => {
             eprintln!(
                 "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--initrd path] [--expect-panic] [--expect text]"
             );
             eprintln!("       cargo xtask test-memory [--release] [--bios]");
+            eprintln!("       cargo xtask test-initrd [--release] [--bios]");
             return ExitCode::FAILURE;
         }
     };
@@ -233,10 +243,9 @@ timeout: 0
 
 /// Lays out an EFI System Partition as a plain folder. QEMU can expose a
 /// folder as a FAT disk (vvfat), so UEFI boot needs no image tools at all.
-fn make_esp(kernel: &Path, archive: Option<&Path>) -> Result<PathBuf> {
-    let archive = archive.map(initrd::load).transpose()?;
+fn make_esp(kernel: &Path, archive: Option<&[u8]>, output: &Path) -> Result<PathBuf> {
     let limine = limine_dir()?;
-    let esp = build_dir().join("esp");
+    let esp = output.join("esp");
     if esp.exists() {
         fs::remove_dir_all(&esp).map_err(|e| format!("cleaning {}: {e}", esp.display()))?;
     }
@@ -244,19 +253,18 @@ fn make_esp(kernel: &Path, archive: Option<&Path>) -> Result<PathBuf> {
         &limine.join("BOOTX64.EFI"),
         &esp.join("EFI/BOOT/BOOTX64.EFI"),
     )?;
-    stage_boot_files(&esp, kernel, archive.as_deref())?;
+    stage_boot_files(&esp, kernel, archive)?;
     Ok(esp)
 }
 
 /// Builds a hybrid ISO that boots on both BIOS and UEFI.
-fn make_iso(kernel: &Path, archive: Option<&Path>) -> Result<PathBuf> {
-    let archive = archive.map(initrd::load).transpose()?;
+fn make_iso(kernel: &Path, archive: Option<&[u8]>, output: &Path) -> Result<PathBuf> {
     let limine = limine_dir()?;
-    let iso_root = build_dir().join("iso_root");
+    let iso_root = output.join("iso_root");
     if iso_root.exists() {
         fs::remove_dir_all(&iso_root).map_err(|e| format!("cleaning: {e}"))?;
     }
-    stage_boot_files(&iso_root, kernel, archive.as_deref())?;
+    stage_boot_files(&iso_root, kernel, archive)?;
     for f in [
         "limine-bios.sys",
         "limine-bios-cd.bin",
@@ -269,7 +277,7 @@ fn make_iso(kernel: &Path, archive: Option<&Path>) -> Result<PathBuf> {
         &iso_root.join("EFI/BOOT/BOOTX64.EFI"),
     )?;
 
-    let iso = build_dir().join("kitty-os.iso");
+    let iso = output.join("kitty-os.iso");
     let xorriso = env::var("KITTY_XORRISO").unwrap_or_else(|_| "xorriso".into());
     run_cmd(
         Command::new(xorriso)
@@ -373,7 +381,13 @@ fn find_ovmf(qemu: &Path) -> Result<(PathBuf, Option<PathBuf>)> {
 }
 
 /// Builds the QEMU command line for the requested boot mode.
-fn qemu_command(opts: &Opts, kernel: &Path, headless: bool) -> Result<Command> {
+fn qemu_command(
+    opts: &Opts,
+    kernel: &Path,
+    archive: Option<&[u8]>,
+    output: &Path,
+    headless: bool,
+) -> Result<Command> {
     let qemu = qemu_binary();
     let mut cmd = Command::new(&qemu);
     cmd.current_dir(root());
@@ -382,17 +396,17 @@ fn qemu_command(opts: &Opts, kernel: &Path, headless: bool) -> Result<Command> {
     cmd.args(["-machine", "q35", "-cpu", "max", "-m", "256M", "-no-reboot"]);
 
     if opts.bios {
-        let iso = make_iso(kernel, opts.initrd.as_deref())?;
+        let iso = make_iso(kernel, archive, output)?;
         cmd.arg("-cdrom").arg(iso);
     } else {
-        make_esp(kernel, opts.initrd.as_deref())?;
+        let esp = make_esp(kernel, archive, output)?;
         let (code, vars) = find_ovmf(&qemu)?;
         cmd.arg("-drive").arg(format!(
             "if=pflash,format=raw,unit=0,readonly=on,file={}",
             code.display()
         ));
         if let Some(vars) = vars {
-            let local = build_dir().join("ovmf-vars.fd");
+            let local = output.join("ovmf-vars.fd");
             copy(&vars, &local)?;
             cmd.arg("-drive").arg(format!(
                 "if=pflash,format=raw,unit=1,file={}",
@@ -400,7 +414,11 @@ fn qemu_command(opts: &Opts, kernel: &Path, headless: bool) -> Result<Command> {
             ));
         }
         // Relative path on purpose: vvfat's option parser chokes on `C:\`.
-        cmd.args(["-drive", "format=raw,file=fat:rw:build/esp"]);
+        let esp = esp
+            .strip_prefix(root())
+            .map_err(|e| format!("ESP path: {e}"))?;
+        cmd.arg("-drive")
+            .arg(format!("format=raw,file=fat:rw:{}", esp.display()));
     }
 
     if headless {
@@ -413,8 +431,15 @@ fn qemu_command(opts: &Opts, kernel: &Path, headless: bool) -> Result<Command> {
 }
 
 fn run(opts: &Opts) -> Result<()> {
+    let archive = opts.load_initrd()?;
     let kernel = build_kernel(opts, false)?;
-    run_cmd(&mut qemu_command(opts, &kernel, false)?)
+    run_cmd(&mut qemu_command(
+        opts,
+        &kernel,
+        archive.as_deref(),
+        &build_dir(),
+        false,
+    )?)
 }
 
 fn test(opts: &Opts) -> Result<()> {
@@ -422,8 +447,18 @@ fn test(opts: &Opts) -> Result<()> {
 }
 
 fn boot_test(opts: &Opts, log: &Path) -> Result<String> {
+    let archive = opts.load_initrd()?;
+    boot_test_with_initrd(opts, log, archive.as_deref(), &build_dir())
+}
+
+fn boot_test_with_initrd(
+    opts: &Opts,
+    log: &Path,
+    archive: Option<&[u8]>,
+    output: &Path,
+) -> Result<String> {
     let kernel = build_kernel(opts, true)?;
-    let mut cmd = qemu_command(opts, &kernel, true)?;
+    let mut cmd = qemu_command(opts, &kernel, archive, output, true)?;
     let mode = if opts.bios { "BIOS/ISO" } else { "UEFI" };
     println!("xtask: boot test ({mode})");
 
