@@ -3,3 +3,4 @@
 *.fd binary
 *.bin binary
 *.efi binary
+*.ppm binary

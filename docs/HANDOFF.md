@@ -324,3 +324,12 @@ Formato:
   mudanças de tipografia ou do início da consola para rever a referência.
 - **Avisos** — a comparação visual cobre a primeira linha. Os relatórios
   de exceção e a proteção de memória mantêm os seus testes próprios.
+
+### [2026-11-26] — CODEX (captura visual)
+
+- **Feito** — O xtask espera pela imagem P6 completa. O Git trata as referências PPM como binárias.
+- **PRs abertos** — #28.
+- **Testes/fuzzing** — O banner coincidiu em BIOS e UEFI, debug e release, no QEMU 8.2.2.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — Leitura com limite e validação do comprimento dos pixels.
+- **Bloqueado por / à espera do Claude** — revisão da integração.
