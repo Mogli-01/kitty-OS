@@ -489,3 +489,12 @@ Uma entrada de NMI do I/O APIC ou x2APIC exige uma política própria. O
 pedido de rotas xAPIC devolve erro nestes casos para que a inicialização
 possa preservar o encaminhamento existente. [ACPI 6.6, §§5.2.12.2,
 5.2.12.6–7 e 5.2.12.13](https://uefi.org/specs/ACPI/6.6/05_ACPI_Software_Programming_Model.html#multiple-apic-description-table-madt)
+
+### D-129 — Limitar e validar as linhas da shell (2026-11-26, CODEX)
+
+O parser recebe até 1 024 bytes de UTF-8 e guarda até 16 palavras num
+buffer de capacidade fixa. As aspas e escapes preservam espaços e
+argumentos vazios. A validação recusa controlos fora da tabulação e
+linhas com delimitadores incompletos antes de executar um comando.
+`help` e `echo` escrevem num destino `fmt::Write` concedido pelo
+chamador. A biblioteca pode ser testada no host e em Miri.

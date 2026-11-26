@@ -345,3 +345,19 @@ Formato:
   endereços antes da transição de PIC para APIC.
 - **Avisos** — NMI descrita para I/O APIC ou x2APIC exige uma política
   de encaminhamento própria antes da transição.
+
+### [2026-11-26] — CODEX (comandos da shell)
+
+- **Feito** — parser de linhas UTF-8 e comandos internos `help` e
+  `echo`. Decisão D-129.
+- **PRs abertos** — ramo `codex/shell-comandos` sobre o #20, para usar
+  a infraestrutura de fuzzing.
+- **Testes/fuzzing** — cinco testes no host e em Miri. O alvo sob
+  AddressSanitizer executou 1 635 567 casos em 16 segundos.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — limites de bytes e palavras
+  antes de expor a linha. O parser valida UTF-8 e controlos.
+- **Bloqueado por / à espera do Claude** — ABI de consola e execução
+  do primeiro programa em user space.
+- **Próximo passo sugerido para o Claude** — documentar o contrato
+  de entrada e saída de texto para a primeira shell.

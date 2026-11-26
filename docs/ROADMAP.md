@@ -90,7 +90,7 @@ preparado para a interface gráfica (Fases 10–14).
 |---|---|---|
 | VFS | CODEX | TODO |
 | initrd (módulo do Limine) | CODEX | TODO |
-| Shell em userland | CODEX | TODO |
+| Shell em userland | CODEX | Analisador e comandos internos em revisão no ramo `codex/shell-comandos`. Consola e execução em user space pendentes |
 | Entrega do módulo initrd ao VFS (`Platform::initrd`, validado, só de leitura) (#22) | CLAUDE | FEITO |
 | Syscalls de ficheiros (open/read/write/close) no núcleo | CLAUDE | TODO |
 

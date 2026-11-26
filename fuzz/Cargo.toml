@@ -9,6 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 kitty-acpi = { path = "../drivers/acpi" }
+kitty-shell = { path = "../userland/shell" }
 libfuzzer-sys = "0.4"
 
 [workspace]
@@ -17,6 +18,13 @@ members = ["."]
 [[bin]]
 name = "madt"
 path = "fuzz_targets/madt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "shell"
+path = "fuzz_targets/shell.rs"
 test = false
 doc = false
 bench = false
