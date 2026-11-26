@@ -7,9 +7,14 @@ name = "kitty-gfx"
 version = "0.1.0"
 
 [[package]]
+name = "kitty-hal"
+version = "0.1.0"
+
+[[package]]
 name = "kitty-kernel"
 version = "0.1.0"
 dependencies = [
+ "kitty-hal",
  "limine",
 ]
 

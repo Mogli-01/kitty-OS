@@ -32,7 +32,7 @@ use super::addr::{PAGE_SIZE, VirtAddr};
 use super::paging::MapFlags;
 use super::pmm::{self, PhysFrame};
 use super::vmm;
-use crate::sync::SpinLock;
+use crate::sync::IrqSpinLock;
 
 const HEAP_BASE: u64 = 0xFFFF_C000_0000_0000;
 const HEAP_END: u64 = HEAP_BASE + (1 << 40);
@@ -53,12 +53,12 @@ struct Heap {
 
 /// The kernel's global allocator.
 pub struct KernelHeap {
-    inner: SpinLock<Heap>,
+    inner: IrqSpinLock<Heap>,
 }
 
 #[global_allocator]
 static HEAP: KernelHeap = KernelHeap {
-    inner: SpinLock::new(Heap {
+    inner: IrqSpinLock::new(Heap {
         free: [0; CLASSES.len()],
         next_va: HEAP_BASE,
         secret: 0,

@@ -26,7 +26,7 @@ use core::mem::{self, size_of};
 use super::addr::{PAGE_SIZE, PhysAddr};
 use super::hhdm;
 use crate::boot_info::{MemoryKind, MemoryMap};
-use crate::sync::SpinLock;
+use crate::sync::IrqSpinLock;
 
 /// Marker in `refcount` for frames that are not RAM we manage (firmware,
 /// kernel image, the frame database itself, …).
@@ -142,7 +142,7 @@ struct Pmm {
 // through the `PMM` lock). Moving it between CPUs is fine.
 unsafe impl Send for Pmm {}
 
-static PMM: SpinLock<Option<Pmm>> = SpinLock::new(None);
+static PMM: IrqSpinLock<Option<Pmm>> = IrqSpinLock::new(None);
 
 impl Pmm {
     fn index(&self, addr: PhysAddr) -> Option<usize> {

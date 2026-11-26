@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["kernel", "userland/gfx", "xtask"]
+members = ["hal", "kernel", "userland/gfx", "xtask"]
 
 [workspace.package]
 version = "0.1.0"

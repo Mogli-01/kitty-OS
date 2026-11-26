@@ -16,6 +16,11 @@ pub fn init(offset: u64) {
     let _ = OFFSET.compare_exchange(0, offset, Ordering::AcqRel, Ordering::Acquire);
 }
 
+/// The HHDM offset (a kernel address: never print it).
+pub fn offset() -> u64 {
+    OFFSET.load(Ordering::Acquire)
+}
+
 /// Virtual address at which physical address `phys` is mapped.
 ///
 /// Panics if called before [`init`] or if the result is not canonical,
