@@ -42,6 +42,7 @@ cargo xtask run            # compila e arranca no QEMU (UEFI)
 cargo xtask run --release  # o mesmo, com otimizações completas (LTO)
 cargo xtask run --bios     # arranque BIOS a partir da ISO (precisa de xorriso)
 cargo xtask test           # teste de arranque automático (sem ecrã)
+cargo xtask test-visual    # captura o framebuffer do arranque e compara a primeira linha
 cargo xtask iso            # gera build/kitty-os.iso (BIOS + UEFI)
 cargo xtask build          # só compila o ELF do kernel
 ```

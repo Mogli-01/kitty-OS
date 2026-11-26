@@ -23,6 +23,7 @@ preparado para a interface gráfica (Fases 10–14).
 | Consola de texto no framebuffer | CLAUDE | FEITO |
 | Panic handler com localização | CLAUDE | FEITO |
 | Teste de arranque no QEMU (isa-debug-exit) | CLAUDE → CODEX | FEITO (mínimo) |
+| Captura e comparação visual do texto de arranque no framebuffer | CODEX | Em revisão no ramo `codex/teste-visual` |
 | Teste de integração de panic no QEMU (código de saída e série) | CODEX | FEITO (CI da Fase 2) |
 
 ## Fase 2 — CPU: GDT, TSS, IDT, exceções

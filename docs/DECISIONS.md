@@ -327,3 +327,13 @@ falha. A CI corre os testes em BIOS e UEFI, em debug e release.
 Isolar os autotestes e verificar a ordem dos relatórios distingue o panic
 esperado de uma falha prematura. Os testes de validação dos logs correm
 no host e em Miri.
+
+### D-113 — Comparação visual da primeira linha de arranque (2026-11-26, CODEX)
+
+`cargo xtask test-visual` espera pela confirmação de arranque na porta
+série e obtém o framebuffer com `screendump` do QEMU. A referência
+contém a primeira linha de 304 × 16 píxeis. A comparação ignora o
+conteúdo fora dessa região, onde aparecem valores dependentes do
+firmware e do build. O leitor PPM verifica dimensões e comprimento
+usando aritmética verificada. Em caso de diferença, o relatório
+identifica a primeira coordenada e preserva a captura.

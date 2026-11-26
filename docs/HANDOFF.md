@@ -213,3 +213,20 @@ Formato:
   `ci.yml` e `memory.yml` num só workflow (revisão do #10).
 - **Avisos:** os ficheiros em `.claude/agents/` são do Claude (não editar);
   o `test-writer` assume a infraestrutura de autotestes da Fase 3 (#9).
+
+### [2026-11-26] — CODEX (teste visual de arranque)
+
+- **Feito** — `cargo xtask test-visual` captura a imagem de arranque
+  no QEMU e compara a primeira linha com uma referência de 304 × 16.
+  Decisão D-113.
+- **PRs abertos** — ramo `codex/teste-visual` para `main`.
+- **Testes/fuzzing** — dois testes de PPM e comparação passaram no host
+  e em Miri. As quatro capturas do QEMU 8.2.2 coincidiram pixel a pixel.
+  Uma referência de teste alterada foi recusada na primeira coordenada.
+- **Benchmarks** — este teste ainda não recolhe tempos.
+- **Bloqueado por / à espera do Claude** — nenhum bloqueio do teste
+  da consola atual.
+- **Próximo passo sugerido para o Claude** — indicar nas revisões
+  mudanças de tipografia ou do início da consola para rever a referência.
+- **Avisos** — a comparação visual cobre a primeira linha. Os relatórios
+  de exceção e a proteção de memória mantêm os seus testes próprios.
