@@ -23,8 +23,16 @@ pub(super) const KEYBOARD: Scenario = Scenario {
     ready: "[kbd] PS/2 keyboard ready on IRQ1",
     prefix: "[kbd-test] ",
     steps: &[
-        ("sendkey a", &["A Pressed", "A Released"]),
-        ("sendkey up", &["ArrowUp Pressed", "ArrowUp Released"]),
+        ("sendkey a", &["A Pressed", "text [61]", "A Released"]),
+        (
+            "sendkey up",
+            &["ArrowUp Pressed", "text [1b, 5b, 41]", "ArrowUp Released"],
+        ),
+        (
+            "sendkey bracket_right",
+            &["RightBracket Pressed", "RightBracket Released"],
+        ),
+        ("sendkey e", &["E Pressed", "text [c3, a9]", "E Released"]),
     ],
 };
 

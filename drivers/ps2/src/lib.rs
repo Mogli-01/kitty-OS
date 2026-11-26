@@ -9,11 +9,13 @@
 
 mod input;
 mod keys;
+mod layout;
 pub mod mouse;
 
 pub use input::{InputEvent, Ps2Input};
 pub use keys::KeyCode;
 pub use kitty_i8042::Error as ControllerError;
+pub use layout::{ConsoleBytes, PortugueseKeyboard};
 
 const EXTENDED: u8 = 0xe0;
 const PAUSE: u8 = 0xe1;

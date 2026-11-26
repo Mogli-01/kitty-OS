@@ -437,3 +437,22 @@ Formato:
 - **Bloqueado por / à espera do Claude** — timestamps e entrega por INPUT.
 - **Próximo passo sugerido para o Claude** — documentar o relógio e o
   contrato de entrega para o compositor.
+
+### [2026-11-26] — CODEX (teclado PT-PT)
+
+- **Feito** — layout ISO português, modificadores, acentos e sequências
+  de edição para a consola. Decisão D-133.
+- **PRs abertos** — ramo `codex/teclado-pt-pt` sobre o #34.
+- **Testes/fuzzing** — 22 testes PS/2 no host e em Miri. O QEMU validou
+  `é` e a sequência das setas em BIOS e UEFI, debug e release. Os testes
+  do rato passaram em release nos dois firmwares. No host, uma sequência
+  Set 2 editou `echo café` com a sessão do #53 e desenhou a saída com o #54.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — saída limitada sem heap. O
+  layout repõe os modificadores e a composição depois de perder eventos.
+- **Bloqueado por / à espera do Claude** — publicação na consola do
+  núcleo, através do contrato previsto no #52.
+- **Próximo passo sugerido para o Claude** — definir a publicação
+  atómica da sequência completa de uma tecla na fila da consola.
+- **Avisos** — o teste QEMU usa instrumentação de teste, e não expõe
+  a saída para uma shell interativa.

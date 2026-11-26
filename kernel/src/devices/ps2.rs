@@ -34,7 +34,10 @@ fn on_interrupt(_line: u8) {
 
 #[cfg(feature = "selftest-ps2-input")]
 fn log_test_event(line: u8, event: Option<kitty_ps2::InputEvent>) {
-    use kitty_ps2::InputEvent;
+    use kitty_ps2::{InputEvent, PortugueseKeyboard};
+
+    static LAYOUT: IrqSpinLock<Option<PortugueseKeyboard>> = IrqSpinLock::new(None);
+
     match event {
         Some(InputEvent::Key(event)) => crate::console::debug_print(format_args!(
             "[kbd-test] {:?} {:?}\n",
@@ -54,6 +57,18 @@ fn log_test_event(line: u8, event: Option<kitty_ps2::InputEvent>) {
             ));
         }
         None => {}
+    }
+    if let Some(event) = event {
+        let bytes = LAYOUT
+            .lock()
+            .get_or_insert_with(PortugueseKeyboard::default)
+            .push(event);
+        if let Some(bytes) = bytes {
+            crate::console::debug_print(format_args!(
+                "[kbd-test] text {:02x?}\n",
+                bytes.as_bytes()
+            ));
+        }
     }
 }
 

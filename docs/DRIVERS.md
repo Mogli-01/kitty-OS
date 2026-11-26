@@ -26,7 +26,22 @@ sinaliza `Lost` em caso de erro ou lotação, para o consumidor limpar o
 estado das teclas premidas. [Contratos do núcleo](INTERFACES.md)
 
 O caminho do controlador até aos eventos está ligado. A entrega dos
-eventos a aplicações e o layout de texto pertencem à camada de input.
+eventos a aplicações depende da camada de input.
+
+### Teclado português para a consola
+
+`PortugueseKeyboard` aplica um layout ISO PT-PT aos eventos físicos.
+As duas teclas Shift funcionam separadamente, o Caps Lock alterna no
+primeiro evento de pressão e o Alt direito permite escrever símbolos
+como `@` e `€`. As teclas mortas combinam os acentos mais comuns com a
+letra seguinte. Um evento `Lost` repõe os modificadores e descarta o
+acento pendente.
+
+`ConsoleBytes` transporta de uma vez o carácter UTF-8, o resultado de
+uma composição ou a sequência de edição da secção 6 do PR #52. Este
+layout cobre a escrita alfanumérica. O Num Lock, os LEDs e a seleção
+de layout ficam para passos seguintes. A entrega em funcionamento
+normal requer `console::input_push` no núcleo.
 
 ### Testar
 
@@ -41,5 +56,7 @@ cargo xtask test-keyboard
 Os testes abrangem os códigos de pressão e libertação, repetições,
 teclado ISO, teclas estendidas e recuperação após sequências inválidas.
 Também percorrem os 256 valores de byte em cada estado do descodificador.
-`test-keyboard` envia `A` e seta para cima ao QEMU e confirma a pressão e
-libertação de ambas. `--bios` e `--release` mudam o firmware e o perfil.
+`test-keyboard` envia `A`, seta para cima e a sequência física de `é`.
+Verifica as pressões, as libertações e os bytes de consola produzidos
+pelo layout através de IRQ1. `--bios` e `--release` mudam o firmware e
+o perfil.

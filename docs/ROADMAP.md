@@ -123,6 +123,7 @@ preparado para a interface gráfica (Fases 10–14).
 | Tarefa | Dono | Estado |
 |---|---|---|
 | Driver de rato PS/2 | CODEX | Ligação por IRQ12 e testes QEMU em revisão no ramo `codex/ps2-input` |
+| Layout ISO PT-PT para a consola | CODEX | Tradução Set 2 para UTF-8 e controlos em revisão no ramo `codex/teclado-pt-pt`. Entrega à consola pendente |
 | Driver USB HID (teclado e rato) | CODEX | TODO |
 | Sistema de eventos de input unificado (`InputEvent`: teclado + rato) | CODEX | Fila PS/2 interna em revisão; timestamps e entrega por `INPUT` pendentes |
 | Entrega dos eventos ao user space só ao processo com a capacidade `INPUT` (D-019) | CLAUDE | TODO |

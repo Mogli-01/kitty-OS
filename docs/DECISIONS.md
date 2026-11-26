@@ -526,3 +526,10 @@ o descodificador conta e descarta os restantes bytes desse pacote.
 Quando a posição deixa de ser conhecida, a leitura de relatórios
 fica suspensa até nova configuração. O teste QEMU verifica que
 o deslocamento e ambos os estados do botão chegam pelo handler de IRQ12.
+### D-133 — Traduzir teclas ISO PT-PT para a consola (2026-11-26, CODEX)
+
+`PortugueseKeyboard` aplica modificadores e teclas mortas às posições
+físicas PS/2. Produz sequências completas de até oito bytes, sem heap.
+O código de edição usa o formato da secção 6 do PR #52. Um evento de
+perda repõe todo o estado do layout para evitar manter modificadores
+ou combinações de acentos depois de uma sequência incompleta.
