@@ -7,8 +7,10 @@ use core::ops::Range;
 
 mod alpha;
 mod buffering;
+mod cursor;
 mod damage;
 pub use buffering::DoubleBuffer;
+pub use cursor::Cursor;
 pub use damage::Damage;
 
 const PIXEL_BYTES: usize = 4;
@@ -50,6 +52,7 @@ pub enum Error {
     InvalidPitch,
     SizeOverflow,
     BufferTooShort,
+    InvalidHotspot,
     MismatchedDimensions,
 }
 

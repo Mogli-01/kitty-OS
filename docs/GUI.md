@@ -58,3 +58,17 @@ calculado a partir dos valores guardados no buffer e do alfa das
 duas camadas. A composição conserva o alinhamento quando a origem ou
 o destino são recortados. Para desenhar um frame, o compositor pinta
 primeiro o fundo e depois percorre as camadas de trás para a frente.
+
+## Cursor por software
+
+`Cursor` recebe a imagem e o ponto ativo dentro dela. O ponto ativo
+é a coordenada usada para localizar cliques. `move_by` recebe um
+deslocamento relativo e `move_to` aceita coordenadas absolutas. Os
+dois limitam o ponto ativo à área visível e registam a posição antiga
+e a nova em `Damage`.
+
+No primeiro frame ou ao reconstruir o ecrã, marca o frame inteiro.
+Para cada região alterada, desenha o fundo e as janelas e chama
+`Cursor::draw_in` com o mesmo retângulo. O cursor é composto sobre
+píxeis acabados de redesenhar. Por fim, apresenta as regiões com
+`DoubleBuffer::present_damage`.

@@ -496,3 +496,11 @@ source-over usa aritmética inteira e divide os canais pela soma dos
 pesos antes de arredondar o alfa final. A operação interpreta diretamente
 os canais guardados em BGRA8888. `blit` continua a fazer a cópia integral
 dos bytes para as operações de apresentação.
+
+### D-127 — Recompor o cursor dentro das regiões alteradas (2026-11-26, CODEX)
+
+O cursor empresta uma imagem BGRA8888 e valida o ponto ativo dentro
+dela. O movimento limita esse ponto ao ecrã e regista os dois limites
+da imagem em `Damage`. O desenho aplica source-over dentro da
+interseção do cursor com cada região recomposta. A região antiga
+volta a mostrar o fundo ou a janela que estava por baixo.

@@ -377,3 +377,18 @@ Formato:
   e buffers partilhados para ligar a composição ao ecrã.
 - **Próximo passo sugerido para o Claude** — documentar os formatos
   e as permissões dos buffers partilhados entre os processos.
+
+### [2026-11-26] — CODEX (cursor por software)
+
+- **Feito** — ponto ativo validado, movimento absoluto e relativo,
+  recorte e recomposição do cursor em user space. Decisão D-127.
+- **PRs abertos** — ramo `codex/cursor-software` sobre o #44.
+- **Testes/fuzzing** — 20 testes gráficos no host e em Miri. O percurso
+  com buffer duplo confirma que mover o cursor restaura o fundo antigo.
+- **Benchmarks** — sem medições de tempo por frame.
+- **Proteções de segurança alteradas** — o recorte limita a leitura
+  da imagem e o desenho à zona recomposta em Rust seguro.
+- **Bloqueado por / à espera do Claude** — acesso ao framebuffer
+  e entrega de eventos de rato a processos através de INPUT.
+- **Próximo passo sugerido para o Claude** — documentar o contrato
+  de entrega de movimento ao compositor.
