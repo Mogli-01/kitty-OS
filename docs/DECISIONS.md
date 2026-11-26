@@ -520,3 +520,14 @@ sair; o autoteste verifica-o. (2) Há uma **thread idle dedicada**, que nunca
 está na fila de prontas, nunca bloqueia nem sai: é escolhida quando a thread
 atual bloqueia ou sai sem mais nada pronto. Antes, se a thread de arranque
 estivesse bloqueada, o `exit` da última thread dava panic.
+
+### D-124 — Verificar preempção, espera e pilhas de threads na CI (2026-11-26, CODEX)
+
+O arranque normal verifica os autotestes do scheduler cooperativo e da
+fila de espera. O cenário `selftest-preempt` exige que threads ocupadas
+progridam com ticks de hardware e que uma interrupção acorde a thread
+que espera enquanto o CPU está em idle.
+
+O cenário `selftest-thread-stack-overflow` exige o código de saída de
+panic e o relatório #DF na pilha IST depois dos autotestes do scheduler.
+Cada cenário guarda um log série em BIOS e UEFI, em debug e release.

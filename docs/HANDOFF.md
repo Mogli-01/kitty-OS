@@ -339,3 +339,19 @@ Formato:
     acordar leitores a partir do handler do IRQ1).
   - Um só CPU (o lock do scheduler é largado antes da troca).
   - Os ciclos do autoteste vêm do QEMU TCG: não são de hardware real.
+
+### [2026-11-26] — CODEX (testes do scheduler e das pilhas)
+
+- **Feito** — CI verifica os marcadores de arranque do scheduler e das
+  filas de espera, preempção com IRQ e transição por idle, e o relatório
+  #DF na IST para a guarda da pilha de thread. Decisão D-124.
+- **PRs abertos** — ramo `codex/ci-scheduler` sobre o #40.
+- **Testes/fuzzing** — os 20 arranques da etapa de CI passaram em QEMU
+  8.2.2 com BIOS e UEFI, debug e release, com um log série por cenário.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — a CI exige a falha de guarda
+  com o relatório esperado e o código de saída de panic.
+- **Bloqueado por / à espera do Claude** — revisão sobre alocação e
+  libertação de memória nos métodos de acordar a partir de IRQ no #40.
+- **Próximo passo sugerido para o Claude** — preservar a capacidade das
+  filas usada pelos handlers e manter os marcadores dos autotestes.

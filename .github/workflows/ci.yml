@@ -52,7 +52,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf xorriso
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup toolchain install
-      - name: Check breakpoint, page fault and double fault
+      - name: Check exceptions, scheduling and thread stacks
         shell: bash
         env:
           FIRMWARE: ${{ matrix.firmware }}
@@ -75,7 +75,9 @@ jobs:
             return "$status"
           }
 
-          run_case boot
+          run_case boot \
+            --expect '[sched] cooperative self-test passed' \
+            --expect '[sched] wait queue self-test passed'
           grep -F -- '[cpu] breakpoint at rip=' build/serial-logs/boot.log
           grep -F -- '[cpu] breakpoint exception handled, execution resumed' build/serial-logs/boot.log
 
@@ -86,6 +88,15 @@ jobs:
           run_case double-fault --features selftest-double-fault --expect-panic
           grep -F -- '=== Double Fault (#DF) (vector 8)' build/serial-logs/double-fault.log
           grep -F -- '(running on the IST double-fault stack)' build/serial-logs/double-fault.log
+
+          run_case preemption --features selftest-preempt \
+            --expect '[sched] preemption self-test passed' \
+            --expect 'idle + wake from IRQ work'
+
+          run_case thread-stack-guard --features selftest-thread-stack-overflow --expect-panic \
+            --expect '[sched] wait queue self-test passed' \
+            --expect '=== Double Fault (#DF) (vector 8)' \
+            --expect '(running on the IST double-fault stack)'
       - name: Upload serial logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
