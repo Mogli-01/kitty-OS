@@ -71,6 +71,13 @@ impl<T> IrqSpinLock<T> {
 }
 
 /// Proof that the lock is held (with interrupts off).
+///
+/// **Not `Send`**: `were_enabled` is the interrupt flag of the CPU that took
+/// the lock, and `Drop` restores it on the CPU that runs it. Moving the
+/// guard to another CPU would re-enable interrupts on the wrong one (and
+/// leave them off on the original). It is `!Send` because the inner
+/// `SpinLockGuard` is, and `Sync` only when `T: Sync` (same reason as
+/// `SpinLockGuard`); the compile-time assertions below keep it that way.
 pub struct IrqSpinLockGuard<'a, T> {
     guard: ManuallyDrop<SpinLockGuard<'a, T>>,
     were_enabled: bool,
@@ -100,6 +107,41 @@ impl<T> Drop for IrqSpinLockGuard<'_, T> {
         if self.were_enabled {
             cpu::enable_interrupts();
         }
+    }
+}
+
+// Compile-time proof of the auto-trait rules above: these functions only
+// type-check while the guards are !Send and Sync requires T: Sync. If a
+// future change made a guard Send, the `impl` below would conflict with the
+// blanket one and the build would fail.
+#[allow(dead_code)]
+mod auto_traits {
+    use super::IrqSpinLockGuard;
+    use crate::sync::SpinLockGuard;
+
+    trait AmbiguousIfSend<A> {
+        fn some_item() {}
+    }
+    impl<T: ?Sized> AmbiguousIfSend<()> for T {}
+    struct Invalid;
+    impl<T: ?Sized + Send> AmbiguousIfSend<Invalid> for T {}
+
+    fn guards_are_not_send() {
+        // Fails to compile ("type annotations needed") if the type is Send.
+        <SpinLockGuard<'static, u32> as AmbiguousIfSend<_>>::some_item();
+        <IrqSpinLockGuard<'static, u32> as AmbiguousIfSend<_>>::some_item();
+    }
+
+    trait AmbiguousIfSync<A> {
+        fn some_item() {}
+    }
+    impl<T: ?Sized> AmbiguousIfSync<()> for T {}
+    impl<T: ?Sized + Sync> AmbiguousIfSync<Invalid> for T {}
+
+    fn guard_of_cell_is_not_sync() {
+        // `Cell` is Send but not Sync: the guard must not be Sync either.
+        <SpinLockGuard<'static, core::cell::Cell<u32>> as AmbiguousIfSync<_>>::some_item();
+        <IrqSpinLockGuard<'static, core::cell::Cell<u32>> as AmbiguousIfSync<_>>::some_item();
     }
 }
 
