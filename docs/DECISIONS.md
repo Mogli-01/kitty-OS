@@ -456,6 +456,40 @@ isso o `&'static [u8]` é sólido durante toda a vida do kernel.
 sobreposição com a imagem do kernel. Sem módulo, ou módulo recusado: o arranque
 continua sem initrd (diagnóstico), com a razão escrita no log.
 
+### D-106 — Descodificação MADT sobre bytes imutáveis (2026-11-25, CODEX)
+
+`kitty-acpi` verifica a assinatura, o comprimento declarado (limite de
+64 KiB) e a soma de verificação antes de percorrer a MADT. Descodifica
+registos I/O APIC, overrides de IRQ ISA e o override de endereço do Local
+APIC. Rejeita campos reservados nos registos usados e definições repetidas
+do mesmo ID de I/O APIC, fonte ISA ou endereço alternativo do Local APIC.
+Avança sobre os outros tipos apenas depois de validar os limites do
+registo. Sem alocação no parser.
+
+A descoberta e o mapeamento de firmware pertencem ao núcleo (#18).
+Endereços físicos descodificados precisam da capacidade de MMIO do
+núcleo. O driver deve determinar o número de entradas de cada I/O APIC e
+validar os intervalos GSI antes de programar qualquer rota.
+
+O workspace separado `fuzz/` usa `libfuzzer-sys` e `cargo-fuzz`
+só no host. A CI verifica a lógica com Miri e corre AddressSanitizer
+tanto sobre bytes brutos como sobre registos dentro de um cabeçalho
+com soma válida, para exercitar a lógica após essa verificação.
+
+### D-122 — Resolver as rotas NMI do Local APIC por CPU (2026-11-26, CODEX)
+
+Os registos MADT tipo 0 ligam o ID de um xAPIC ativo ao UID ACPI do seu
+processador. Os registos tipo 4 usam esse UID ou `0xff` para indicar todos
+os processadores. `local_nmis` resolve separadamente LINT0 e LINT1, valida
+a polaridade e o modo de disparo e rejeita configurações contraditórias.
+As flags conformes são interpretadas como ativo alto, disparo por flanco.
+UIDs ou IDs repetidos entre processadores ativos tornam a tabela ambígua.
+
+Uma entrada de NMI do I/O APIC ou x2APIC exige uma política própria. O
+pedido de rotas xAPIC devolve erro nestes casos para que a inicialização
+possa preservar o encaminhamento existente. [ACPI 6.6, §§5.2.12.2,
+5.2.12.6–7 e 5.2.12.13](https://uefi.org/specs/ACPI/6.6/05_ACPI_Software_Programming_Model.html#multiple-apic-description-table-madt)
+
 ### D-107 — Programar rotas I/O APIC com a entrada mascarada (2026-11-25, CODEX)
 
 O driver recebe um `RegisterBlock` exclusivo. Escreve o índice de 8 bits

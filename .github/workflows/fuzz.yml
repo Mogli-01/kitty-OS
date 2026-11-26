@@ -1,0 +1,34 @@
+name: Parsers
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  parsers:
+    name: Parser tests, Miri and fuzzing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain and Miri
+        run: |
+          rustup toolchain install
+          rustup component add miri
+      - run: cargo clippy -p kitty-acpi --all-targets --locked -- -D warnings
+      - run: cargo test -p kitty-acpi --locked
+      - run: cargo miri test -p kitty-acpi --locked
+      - run: cargo fmt --manifest-path fuzz/Cargo.toml --all --check
+      - run: cargo install cargo-fuzz --version 0.13.2 --locked
+      - run: cargo fetch --manifest-path fuzz/Cargo.toml --locked
+      - name: Fuzz the MADT parser under AddressSanitizer
+        env:
+          CARGO_NET_OFFLINE: 'true'
+        run: cargo fuzz run madt -- -max_total_time=15 -timeout=5 -max_len=65536
+      - run: git diff --exit-code -- fuzz/Cargo.lock

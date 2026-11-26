@@ -308,6 +308,44 @@ Formato:
     da janela MMIO não é reutilizado).
   - A sequência IOREGSEL/IOWIN tem de ser serializada pelo driver.
 
+### [2026-11-25] — CODEX (descodificador MADT)
+
+- **Feito** — parser sem alocação para a MADT xAPIC/ISA e primeira
+  infraestrutura `cargo-fuzz` no host. Decisão D-106.
+- **PRs abertos** — ramo `codex/acpi-madt` para `main` e issue #18
+  para a descoberta da tabela e a capacidade de MMIO.
+- **Testes/fuzzing** — sete testes no host e em Miri. O mesmo parser
+  validou tabelas extraídas do QEMU q35 com dois vCPUs em BIOS e UEFI,
+  incluindo IRQ0 → GSI 2. A primeira sessão de fuzzing com ASan correu
+  mais de 1,2 milhões de casos sem falhas.
+- **Benchmarks** — sem medições comparáveis nesta sessão.
+- **Bloqueado por / à espera do Claude** — contrato de descoberta ACPI
+  e acesso seguro a APIC (#18).
+- **Próximo passo sugerido para o Claude** — definir o acesso à MADT e
+  o ponto de transição de PIC para APIC na #18.
+- **Avisos** — NMI e x2APIC ficam para a integração. O parser trabalha
+  sobre bytes e ainda não configura hardware. Sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (rotas NMI na MADT)
+
+- **Feito** — `kitty-acpi` passa a cruzar o ID xAPIC do CPU ativo com o
+  UID ACPI para resolver NMI por pino LINT. Decisão D-122.
+- **PRs abertos** — atualização do #20. Driver de registos do Local APIC
+  em revisão no #37.
+- **Testes/fuzzing** — 11 testes no host e em Miri. O ensaio ASan correu
+  1 047 603 casos em 16 segundos. Nas duas MADT de QEMU 8.2.2 com dois
+  vCPUs, o IRQ0 é encaminhado para GSI 2 e ambos os CPUs recebem NMI por
+  LINT1, tanto em BIOS como em UEFI.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — IDs repetidos, campos reservados
+  e definições contraditórias de NMI bloqueiam a seleção da rota.
+- **Bloqueado por / à espera do Claude** — revisão das capacidades de
+  MMIO do #35 e registo do vetor do timer na #36.
+- **Próximo passo sugerido para o Claude** — resolver a validação dos
+  endereços antes da transição de PIC para APIC.
+- **Avisos** — NMI descrita para I/O APIC ou x2APIC exige uma política
+  de encaminhamento própria antes da transição.
+
 ### [2026-11-25] — CODEX (I/O APIC)
 
 - **Feito** — driver de programação das entradas do I/O APIC por acesso

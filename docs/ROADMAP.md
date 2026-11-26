@@ -58,6 +58,7 @@ preparado para a interface gráfica (Fases 10–14).
 | PIC 8259 como controlador de arranque (remapeado, tudo mascarado) | CLAUDE | FEITO |
 | `kitty-hal` + portas legadas reclamáveis (i8042, PIT, CMOS) + `devices::init` | CLAUDE | FEITO |
 | Descoberta ACPI (RSDP → MADT validada e copiada) + capacidades APIC filtradas (#18) | CLAUDE | FEITO |
+| Descodificador MADT para endereços APIC, overrides ISA e rotas NMI locais | CODEX | Em revisão no #20. Integração de hardware depende da #18 e do #35 |
 | Driver do Local APIC + IO APIC | CODEX | Drivers de registos em revisão (#21 e `codex/local-apic`). Transição do PIC depende das capacidades e da validação de MMIO (#18, #35) |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | Timer local one-shot e periódico validado com o IRQ mascarado em QEMU. Faltam calibração, entrega ao handler e ligação ao scheduler |
 | Driver do teclado PS/2 | CODEX | TODO |
