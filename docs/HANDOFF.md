@@ -333,3 +333,20 @@ Formato:
 - **Avisos** — modo base de três botões, ainda sem roda e sem
   ligação ao IRQ12. O transporte tem de restabelecer o alinhamento
   após perda de bytes.
+
+### [2026-11-26] — CODEX (transporte AUX i8042)
+
+- **Feito** — inicialização do rato PS/2 padrão e reposição do teclado
+  no mesmo `PortBlock`. Decisão D-118.
+- **PRs abertos** — ramo `codex/i8042-aux` sobre o #16.
+- **Testes/fuzzing** — nove testes de transporte no host e em Miri.
+  Uma ligação temporária no QEMU 8.2.2 recebeu movimento (7, 4),
+  clique e libertação por IRQ12 e a tecla A por IRQ1, em BIOS e
+  UEFI/release.
+- **Benchmarks** — nenhuma medição de input nesta sessão.
+- **Bloqueado por / à espera do Claude** — aprovação do contrato
+  IRQ do #15. A fila e o ensaio automático de IRQ12 seguem noutro PR.
+- **Próximo passo sugerido para o Claude** — confirmar as
+  garantias de afinidade das guardas e de entrega de IRQ do #15.
+- **Avisos** — a configuração corre com consumidores parados.
+  O modo de três bytes exige ID zero. Sem `unsafe` novo.
