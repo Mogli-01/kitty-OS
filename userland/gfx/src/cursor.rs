@@ -59,26 +59,20 @@ impl<'a> Cursor<'a> {
     /// Use the same screen coordinates for movement, damage and the canvas.
     pub fn draw_in(&self, canvas: &mut Canvas<'_>, region: Rect) {
         let bounds = self.bounds();
-        let x = bounds.origin.x.max(region.origin.x);
-        let y = bounds.origin.y.max(region.origin.y);
-        let right = (i64::from(bounds.origin.x) + i64::from(bounds.width))
-            .min(i64::from(region.origin.x) + i64::from(region.width));
-        let bottom = (i64::from(bounds.origin.y) + i64::from(bounds.height))
-            .min(i64::from(region.origin.y) + i64::from(region.height));
-        if right <= i64::from(x) || bottom <= i64::from(y) {
+        let Some(visible) = bounds.intersection(region) else {
             return;
-        }
+        };
         canvas.blend(
             self.sprite,
             Rect {
                 origin: Point {
-                    x: x - bounds.origin.x,
-                    y: y - bounds.origin.y,
+                    x: visible.origin.x - bounds.origin.x,
+                    y: visible.origin.y - bounds.origin.y,
                 },
-                width: (right - i64::from(x)) as u32,
-                height: (bottom - i64::from(y)) as u32,
+                width: visible.width,
+                height: visible.height,
             },
-            Point { x, y },
+            visible.origin,
         );
     }
 

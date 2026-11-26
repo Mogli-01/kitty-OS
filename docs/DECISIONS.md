@@ -504,3 +504,13 @@ dela. O movimento limita esse ponto ao ecrã e regista os dois limites
 da imagem em `Damage`. O desenho aplica source-over dentro da
 interseção do cursor com cada região recomposta. A região antiga
 volta a mostrar o fundo ou a janela que estava por baixo.
+
+### D-139 — Manter a geometria das janelas numa pilha limitada (2026-11-26, CODEX)
+
+A pilha do compositor guarda até 32 identificadores únicos e a geometria
+correspondente. A seleção começa no topo e converte a posição absoluta
+em coordenadas locais. O desenho percorre a ordem inversa da seleção.
+A pilha usa o mesmo `Damage` que o cursor e a apresentação. Ao subir uma
+janela, regista apenas as interseções com as camadas ultrapassadas.
+Mover e remover exigem recompor os limites visíveis afetados, incluindo
+as camadas subjacentes visíveis através de regiões transparentes.

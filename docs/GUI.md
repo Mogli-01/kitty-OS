@@ -72,3 +72,23 @@ Para cada região alterada, desenha o fundo e as janelas e chama
 `Cursor::draw_in` com o mesmo retângulo. O cursor é composto sobre
 píxeis acabados de redesenhar. Por fim, apresenta as regiões com
 `DoubleBuffer::present_damage`.
+
+## Ordem e seleção de janelas
+
+`WindowStack` guarda até 32 identificadores e retângulos de janela
+em memória do compositor. `windows()` devolve a ordem de desenho,
+do fundo para o topo. `hit_test` recusa pontos fora do ecrã e devolve
+a janela mais alta que contém o ponto, com as suas coordenadas locais.
+A seleção usa os limites geométricos. O alfa é aplicado durante o
+desenho.
+
+Inserir ou remover uma janela regista a área visível. Mover regista
+os limites antigos e os novos. Subir na pilha regista apenas as
+interseções com as janelas ultrapassadas. `Damage` recorta estas
+regiões ao ecrã e conserva as suas regras de agrupamento.
+
+Usa `damage_mut()` para registar a posição do cursor e para apresentar
+as regiões recompostas com `DoubleBuffer::present_damage`. No primeiro
+frame, marca o ecrã completo. Depois, para desenhar cada janela numa
+região, calcula a interseção com `Rect::intersection` e usa os limites
+originais para converter a origem em coordenadas da superfície.

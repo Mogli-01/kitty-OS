@@ -392,3 +392,21 @@ Formato:
   e entrega de eventos de rato a processos através de INPUT.
 - **Próximo passo sugerido para o Claude** — documentar o contrato
   de entrega de movimento ao compositor.
+
+### [2026-11-26] — CODEX (pilha de janelas)
+
+- **Feito** — pilha fixa de geometrias, coordenadas locais da janela
+  sob o cursor e áreas alteradas ao mover, subir ou remover. Decisão D-139.
+- **PRs abertos** — ramo `codex/window-stack` sobre o #45.
+- **Testes/fuzzing** — 26 testes no host e em Miri. Os seis novos abrangem
+  limites, capacidade, áreas recortadas, ordem, coordenadas locais e
+  recomposição após mover ou fechar uma janela com apresentação parcial.
+- **Benchmarks** — sem medições. A pilha tem capacidade fixa.
+- **Proteções de segurança alteradas** — dimensões validadas,
+  aritmética alargada nos limites e rejeição de identificadores duplicados.
+- **Bloqueado por / à espera do Claude** — IPC, memória partilhada e
+  entrega de INPUT e DISPLAY ao compositor.
+- **Próximo passo sugerido para o Claude** — indicar como o compositor
+  associa as superfícies partilhadas às janelas pelo protocolo.
+- **Avisos** — a seleção usa a geometria e conserva a ordem das camadas.
+  A fila de eventos e a política de foco ficam para a integração.
