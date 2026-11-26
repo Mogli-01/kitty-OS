@@ -57,6 +57,7 @@ preparado para a interface gráfica (Fases 10–14).
 | API de registo de handlers de IRQ (`irq::register_isa`, EOI pelo núcleo, trait `InterruptController`) | CLAUDE | FEITO |
 | PIC 8259 como controlador de arranque (remapeado, tudo mascarado) | CLAUDE | FEITO |
 | `kitty-hal` + portas legadas reclamáveis (i8042, PIT, CMOS) + `devices::init` | CLAUDE | FEITO |
+| Descoberta ACPI (RSDP → MADT validada e copiada) + capacidades APIC filtradas (#18) | CLAUDE | FEITO |
 | Driver do Local APIC + IO APIC | CODEX | TODO |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | TODO |
 | Transporte i8042 (configuração Set 2 e leitura de bytes) | CODEX | FEITO |
@@ -90,6 +91,7 @@ preparado para a interface gráfica (Fases 10–14).
 | VFS | CODEX | TODO |
 | initrd (módulo do Limine) | CODEX | TODO |
 | Shell em userland | CODEX | TODO |
+| Entrega do módulo initrd ao VFS (`Platform::initrd`, validado, só de leitura) (#22) | CLAUDE | FEITO |
 | Syscalls de ficheiros (open/read/write/close) no núcleo | CLAUDE | TODO |
 
 ## Fase 8 — Aleatoriedade e permissões
