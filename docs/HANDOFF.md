@@ -348,3 +348,17 @@ Formato:
   framebuffer com o formato e o pitch usados pela apresentação.
 - **Avisos** — apresentação por cópia em memória. A sincronização
   com o ecrã será verificada quando o dispositivo estiver ligado.
+
+### [2026-11-26] — CODEX (zonas alteradas)
+
+- **Feito** — recorte e união de regiões alteradas com apresentação
+  parcial a partir do buffer traseiro. Decisão D-125.
+- **PRs abertos** — ramo `codex/zonas-alteradas` sobre o #26.
+- **Testes/fuzzing** — 13 testes gráficos no host e em Miri.
+- **Benchmarks** — sem medições de tempo por frame nesta sessão.
+- **Proteções de segurança alteradas** — coordenadas validadas e
+  lista de 16 regiões com fallback para o frame inteiro.
+- **Bloqueado por / à espera do Claude** — capacidades DISPLAY,
+  memória partilhada e IPC para o compositor.
+- **Próximo passo sugerido para o Claude** — documentar o acesso
+  ao framebuffer pelo compositor em user space.

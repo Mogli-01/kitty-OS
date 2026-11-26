@@ -36,3 +36,16 @@ alterado, preservando o resto da imagem apresentada.
 
 A apresentação é uma cópia de memória. A sincronização com a leitura
 do ecrã depende da futura interface de apresentação do dispositivo.
+
+## Zonas alteradas
+
+`Damage::new` cria uma lista para as dimensões do ecrã. O compositor
+regista a região antiga e a nova sempre que move ou redimensiona uma
+janela. `record` recorta as coordenadas aos limites do ecrã. Regiões
+sobrepostas são agrupadas no retângulo que as contém. Ao exceder 16
+regiões distintas, a lista passa a cobrir o ecrã inteiro.
+
+O compositor recompõe cada retângulo devolvido por `regions()` no
+buffer traseiro. Depois, `DoubleBuffer::present_damage` copia essas
+regiões para a frente e esvazia a lista. Se as dimensões forem
+incompatíveis, a lista continua disponível para corrigir e repetir.

@@ -139,7 +139,7 @@ preparado para a interface gráfica (Fases 10–14).
 | Protocolo compositor ↔ aplicações (mensagens, buffers, eventos) em `docs/INTERFACES.md` | CLAUDE | TODO |
 | Foco, encaminhamento do input e "secure attention key" (combinação de teclas que só o compositor vê) | CLAUDE | TODO |
 | Composição das janelas, cursor, cliques | CODEX | TODO |
-| Redesenhar só as zonas alteradas (dirty rectangles) | CODEX | TODO |
+| Redesenhar só as zonas alteradas (dirty rectangles) | CODEX | Registo e apresentação parcial em revisão no ramo `codex/zonas-alteradas` |
 | Revisão de segurança do compositor (isolamento entre janelas, ver SECURITY.md) | CLAUDE | TODO |
 
 ## Fase 14 — Toolkit e aplicações

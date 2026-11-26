@@ -6,7 +6,9 @@
 use core::ops::Range;
 
 mod buffering;
+mod damage;
 pub use buffering::DoubleBuffer;
+pub use damage::Damage;
 
 const PIXEL_BYTES: usize = 4;
 

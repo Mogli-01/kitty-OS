@@ -477,3 +477,14 @@ dimensões e pitches próprios. O desenho só altera o buffer traseiro.
 A apresentação copia toda a área visível ou apenas o retângulo pedido.
 A biblioteca reutiliza o recorte do blit e preserva o padding. O par
 de empréstimos mutáveis garante acesso exclusivo a cada buffer.
+
+### D-125 — Limitar as regiões alteradas de um frame (2026-11-26, CODEX)
+
+`Damage` recorta as regiões às dimensões da superfície e agrupa as
+sobreposições. Guarda até 16 retângulos numa lista de capacidade fixa.
+Se faltar espaço, marca todo o frame. Assim, a memória fica limitada
+e o compositor conserva todas as zonas que precisa de redesenhar.
+
+O compositor recompõe cada região antes de chamar `present_damage`.
+A apresentação rejeita dimensões diferentes e limpa a lista só depois
+de copiar todas as regiões.
