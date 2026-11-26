@@ -7,21 +7,33 @@
 //!
 //! - **Which device:** the local APIC base comes from the CPU's
 //!   IA32_APIC_BASE MSR (never from the driver); an I/O APIC is only granted
-//!   at an address the kernel's own validated MADT copy declares. Each
-//!   device can be claimed once. Mappings are uncached and never executable.
+//!   at an address the kernel's own validated MADT copy declares, whose
+//!   register window does not overlap the local APIC page or another I/O
+//!   APIC, and whose version register looks plausible. Each device can be
+//!   claimed once. Mappings are uncached and never executable.
 //! - **Which accesses:** 32-bit, 4-byte aligned, inside the register window.
 //!   64-bit accesses are refused (xAPIC and the I/O APIC do not support them).
-//! - **Which values:** like the i8042 (D-038), some register writes affect
-//!   the whole machine even without DMA:
+//! - **Which values** (allow-lists per register; same lesson as the i8042
+//!   A20/reset commands, D-038):
 //!   * local APIC **ICR** (0x300/0x310) sends INIT/SIPI to other CPUs, which
 //!     then run code at a low physical address — a full takeover. Not
 //!     writable (IPIs are kernel business, Phase 9).
-//!   * LVT entries and I/O APIC redirection entries with delivery mode
-//!     **SMI** (010) or **INIT** (101) would enter firmware SMM or reset a
-//!     CPU. Refused; Fixed, Lowest-priority (I/O APIC only), NMI and ExtINT
-//!     are allowed.
+//!   * delivery modes: LVT timer/error only Fixed; LINT0/LINT1 Fixed, NMI or
+//!     ExtINT; I/O APIC redirections Fixed, Lowest-priority, NMI or ExtINT.
+//!     SMI (enter firmware SMM), INIT (reset a CPU) and reserved modes are
+//!     refused.
+//!   * vectors: an unmasked Fixed/Lowest-priority entry must use a device
+//!     vector 0x20–0xEF. Vectors 0x10–0x1F would land on CPU exception stubs
+//!     (some expect an error code the hardware does not push for external
+//!     interrupts, corrupting the stack); 0xF0–0xFF are kernel-internal. The
+//!     spurious vector (SVR) must be 0xFF.
+//! - **I/O APIC selector/window**: the selector (IOREGSEL) and the window
+//!   write are done under one internal `IrqSpinLock`, and the selector is
+//!   reset on every claim, so the kernel always knows which register a
+//!   window write hits (no time-of-check/time-of-use between the check and
+//!   the write, even from an interrupt handler or another CPU).
 
-use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -33,39 +45,55 @@ use crate::mm::PhysAddr;
 use crate::mm::vmm::{self, MmioRegion};
 use crate::sync::IrqSpinLock;
 
-/// Local APIC registers a driver may write.
-const LAPIC_WRITABLE: &[u64] = &[
-    0x080, // TPR
-    0x0B0, // EOI
-    0x0F0, // spurious-interrupt vector / software enable
-    0x320, // LVT timer
-    0x350, // LVT LINT0
-    0x360, // LVT LINT1
-    0x370, // LVT error
-    0x380, // timer initial count
-    0x3E0, // timer divide configuration
-];
-/// LVT registers whose delivery mode is checked.
-const LAPIC_LVT: &[u64] = &[0x320, 0x350, 0x360, 0x370];
 /// Size of the xAPIC register page actually used.
 const LAPIC_WINDOW: u64 = 0x400;
+const LAPIC_PAGE: u64 = 0x1000;
+
+const LAPIC_TPR: u64 = 0x080;
+const LAPIC_EOI: u64 = 0x0B0;
+const LAPIC_SVR: u64 = 0x0F0;
+const LAPIC_LVT_TIMER: u64 = 0x320;
+const LAPIC_LVT_LINT0: u64 = 0x350;
+const LAPIC_LVT_LINT1: u64 = 0x360;
+const LAPIC_LVT_ERROR: u64 = 0x370;
+const LAPIC_TIMER_INITIAL: u64 = 0x380;
+const LAPIC_TIMER_DIVIDE: u64 = 0x3E0;
 
 /// I/O APIC: IOREGSEL at 0x00, IOWIN at 0x10.
 const IOAPIC_SELECT: u64 = 0x00;
 const IOAPIC_WINDOW_REG: u64 = 0x10;
 const IOAPIC_WINDOW: u64 = 0x20;
+const IOAPIC_VERSION_INDEX: u32 = 0x01;
 const IOAPIC_REDIRECTION_START: u32 = 0x10;
 
-const DELIVERY_SMI: u32 = 0b010;
-const DELIVERY_INIT: u32 = 0b101;
+const MODE_FIXED: u32 = 0b000;
+const MODE_LOWEST_PRIORITY: u32 = 0b001;
+const MODE_SMI: u32 = 0b010;
+const MODE_NMI: u32 = 0b100;
+const MODE_INIT: u32 = 0b101;
+const MODE_EXTINT: u32 = 0b111;
+const MASKED: u32 = 1 << 16;
+const SPURIOUS_VECTOR: u32 = 0xFF;
 
 /// Delivery mode field (bits 8–10) of an LVT / redirection low dword.
 fn delivery_mode(value: u32) -> u32 {
     (value >> 8) & 0b111
 }
 
-fn dangerous_delivery(value: u32) -> bool {
-    matches!(delivery_mode(value), DELIVERY_SMI | DELIVERY_INIT)
+fn device_vector(value: u32) -> bool {
+    (0x20..=0xEF).contains(&(value & 0xFF))
+}
+
+/// Checks an LVT / redirection low dword against the allowed delivery
+/// modes. Fixed and Lowest-priority entries that are not masked must use a
+/// device vector.
+fn entry_allowed(value: u32, modes: &[u32]) -> bool {
+    let mode = delivery_mode(value);
+    if !modes.contains(&mode) {
+        return false;
+    }
+    let vectored = matches!(mode, MODE_FIXED | MODE_LOWEST_PRIORITY);
+    !vectored || value & MASKED != 0 || device_vector(value)
 }
 
 /// Why a capability could not be granted.
@@ -76,8 +104,11 @@ pub enum ApicError {
     /// The CPU runs the local APIC in x2APIC mode (MSR interface, no MMIO):
     /// not supported yet; keep the 8259 PIC.
     X2Apic,
-    /// Address not declared by the validated MADT (or no MADT).
+    /// Address not declared by the validated MADT (or no MADT), or its
+    /// window overlaps the local APIC / another I/O APIC.
     NotDeclared,
+    /// The I/O APIC version register does not look like an I/O APIC.
+    Implausible,
     /// Already claimed by someone else.
     InUse,
     /// The register window could not be mapped.
@@ -116,16 +147,25 @@ pub fn local_apic() -> Result<LocalApicRegisters, ApicError> {
     Ok(LocalApicRegisters { regs })
 }
 
+fn lapic_write_allowed(offset: u64, value: u32) -> bool {
+    match offset {
+        LAPIC_TPR | LAPIC_EOI | LAPIC_TIMER_INITIAL | LAPIC_TIMER_DIVIDE => true,
+        LAPIC_SVR => value & 0xFF == SPURIOUS_VECTOR,
+        LAPIC_LVT_TIMER | LAPIC_LVT_ERROR => entry_allowed(value, &[MODE_FIXED]),
+        LAPIC_LVT_LINT0 | LAPIC_LVT_LINT1 => {
+            entry_allowed(value, &[MODE_FIXED, MODE_NMI, MODE_EXTINT])
+        }
+        _ => false, // ICR, read-only and unused registers
+    }
+}
+
 impl RegisterBlock for LocalApicRegisters {
     fn read32(&self, offset: u64) -> Option<u32> {
         aligned32(offset, LAPIC_WINDOW).then(|| self.regs.read(offset))?
     }
 
     fn write32(&self, offset: u64, value: u32) -> Option<()> {
-        if !aligned32(offset, LAPIC_WINDOW) || !LAPIC_WRITABLE.contains(&offset) {
-            return None;
-        }
-        if LAPIC_LVT.contains(&offset) && dangerous_delivery(value) {
+        if !aligned32(offset, LAPIC_WINDOW) || !lapic_write_allowed(offset, value) {
             return None;
         }
         self.regs.write(offset, value)
@@ -156,16 +196,35 @@ struct IoApicSlot {
 
 static IO_APICS: IrqSpinLock<Vec<IoApicSlot>> = IrqSpinLock::new(Vec::new());
 
+fn overlaps(a: u64, a_len: u64, b: u64, b_len: u64) -> bool {
+    a < b.saturating_add(b_len) && b < a.saturating_add(a_len)
+}
+
 /// Records the I/O APIC addresses declared by the validated MADT. Called
 /// once by the kernel after ACPI discovery; later calls are ignored.
+/// Addresses that are misaligned, whose window touches the local APIC page,
+/// or that overlap another declared I/O APIC are dropped (a hostile MADT
+/// could otherwise turn an "I/O APIC" capability into access to the local
+/// APIC ICR or to another device).
 pub fn set_declared_io_apics(addresses: &[u64]) {
     let mut slots = IO_APICS.lock();
-    if slots.is_empty() {
-        slots.extend(addresses.iter().map(|&phys| IoApicSlot {
-            phys,
-            claimed: false,
-            mapping: None,
-        }));
+    if !slots.is_empty() {
+        return;
+    }
+    let lapic = cpu::local_apic_state().base;
+    for &phys in addresses {
+        let aligned = phys.is_multiple_of(16);
+        let hits_lapic = overlaps(phys, IOAPIC_WINDOW, lapic, LAPIC_PAGE);
+        let hits_other = addresses
+            .iter()
+            .any(|&o| o != phys && overlaps(phys, IOAPIC_WINDOW, o, IOAPIC_WINDOW));
+        if aligned && !hits_lapic && !hits_other {
+            slots.push(IoApicSlot {
+                phys,
+                claimed: false,
+                mapping: None,
+            });
+        }
     }
 }
 
@@ -173,8 +232,9 @@ pub fn set_declared_io_apics(addresses: &[u64]) {
 pub struct IoApicRegisters {
     regs: &'static MmioRegion,
     phys: u64,
-    /// Last value written to IOREGSEL, to know what a window write targets.
-    selected: AtomicU32,
+    /// The value last written to IOREGSEL. The lock also serialises every
+    /// selector/window access, so check and write cannot be separated.
+    selected: IrqSpinLock<u32>,
 }
 
 /// Claims the I/O APIC whose register base is `phys`, which must be one of
@@ -196,33 +256,49 @@ pub fn io_apic(phys: u64) -> Result<IoApicRegisters, ApicError> {
             r
         }
     };
+    // The hardware selector survives previous owners: set it to a known
+    // value before trusting `selected` (found by the security review).
+    regs.write(IOAPIC_SELECT, IOAPIC_VERSION_INDEX)
+        .ok_or(ApicError::MapFailed)?;
+    let version = regs
+        .read::<u32>(IOAPIC_WINDOW_REG)
+        .ok_or(ApicError::MapFailed)?;
+    let max_redirection = (version >> 16) & 0xFF;
+    if matches!(version & 0xFF, 0x00 | 0xFF) || max_redirection >= 0xF0 {
+        return Err(ApicError::Implausible);
+    }
     slot.claimed = true;
     Ok(IoApicRegisters {
         regs,
         phys,
-        selected: AtomicU32::new(0),
+        selected: IrqSpinLock::new(IOAPIC_VERSION_INDEX),
     })
 }
 
 impl RegisterBlock for IoApicRegisters {
     fn read32(&self, offset: u64) -> Option<u32> {
+        let _serialised = self.selected.lock();
         matches!(offset, IOAPIC_SELECT | IOAPIC_WINDOW_REG).then(|| self.regs.read(offset))?
     }
 
     fn write32(&self, offset: u64, value: u32) -> Option<()> {
+        let mut selected = self.selected.lock();
         match offset {
             IOAPIC_SELECT => {
-                self.selected.store(value & 0xFF, Ordering::Relaxed);
-                self.regs.write(offset, value)
+                let index = value & 0xFF;
+                self.regs.write(IOAPIC_SELECT, index)?;
+                *selected = index;
+                Some(())
             }
             IOAPIC_WINDOW_REG => {
-                let index = self.selected.load(Ordering::Relaxed);
+                let index = *selected;
                 let redirection_low = index >= IOAPIC_REDIRECTION_START
-                    && (index - IOAPIC_REDIRECTION_START) % 2 == 0;
-                if redirection_low && dangerous_delivery(value) {
+                    && (index - IOAPIC_REDIRECTION_START).is_multiple_of(2);
+                let modes = [MODE_FIXED, MODE_LOWEST_PRIORITY, MODE_NMI, MODE_EXTINT];
+                if redirection_low && !entry_allowed(value, &modes) {
                     return None;
                 }
-                self.regs.write(offset, value)
+                self.regs.write(IOAPIC_WINDOW_REG, value)
             }
             _ => None,
         }
@@ -270,10 +346,11 @@ fn map_uncached(phys: u64, len: u64) -> Result<&'static MmioRegion, ApicError> {
         return Err(ApicError::MapFailed);
     }
     // SAFETY: the local APIC (base from the CPU MSR) and the I/O APICs
-    // (addresses from the kernel-validated MADT) cannot perform DMA, and
-    // every write that could affect other CPUs or the whole machine (ICR,
-    // SMI/INIT delivery) is filtered by the capability types above before it
-    // reaches the device. `map_mmio` additionally refuses RAM.
+    // (addresses from the kernel-validated MADT, not overlapping the local
+    // APIC page or each other) cannot perform DMA, and every write that
+    // could affect other CPUs or the whole machine (ICR, SMI/INIT/reserved
+    // delivery modes, non-device vectors) is filtered by the capability
+    // types above before it reaches the device. `map_mmio` refuses RAM.
     let region = unsafe { vmm::map_mmio(phys, len, CacheType::Uncached) }
         .map_err(|_| ApicError::MapFailed)?;
     Ok(Box::leak(Box::new(region)))
@@ -281,16 +358,22 @@ fn map_uncached(phys: u64, len: u64) -> Result<&'static MmioRegion, ApicError> {
 
 /// Boot self-test of the capabilities: claims the local APIC and the first
 /// declared I/O APIC, reads their version registers, and checks that the
-/// dangerous writes are refused **before** reaching the hardware. Returns
+/// dangerous writes are refused **before** reaching the hardware. The only
+/// real writes are to IOREGSEL (no effect by itself). Returns
 /// `(local APIC version, I/O APIC version if any)`, or `None` on failure.
 /// The capabilities are released at the end so drivers can claim them.
 pub fn selftest() -> Option<(u8, Option<u8>)> {
     let lapic = local_apic().ok()?;
     let lapic_version = lapic.read32(0x30)? as u8;
+    let masked_init = (MODE_INIT << 8) | MASKED;
     let refused = lapic.write32(0x300, 0).is_none() // ICR
         && lapic.write32(0x310, 0).is_none()
-        && lapic.write32(0x350, DELIVERY_INIT << 8).is_none()
-        && lapic.write32(0x360, DELIVERY_SMI << 8).is_none()
+        && lapic.write32(LAPIC_LVT_LINT0, masked_init).is_none()
+        && lapic.write32(LAPIC_LVT_LINT1, MODE_SMI << 8).is_none()
+        && lapic.write32(LAPIC_LVT_TIMER, 0x11).is_none() // exception vector
+        && lapic.write32(LAPIC_LVT_TIMER, 0xF0).is_none() // kernel vector
+        && lapic.write32(LAPIC_LVT_ERROR, (MODE_NMI << 8) | 0x40).is_none()
+        && lapic.write32(LAPIC_SVR, 0x1_2F).is_none() // spurious must be 0xFF
         && lapic.write32(0x30, 0).is_none() // read-only version register
         && lapic.read32(0x31).is_none() // misaligned
         && lapic.read64(0x30).is_none()
@@ -305,17 +388,21 @@ pub fn selftest() -> Option<(u8, Option<u8>)> {
         None => None,
         Some(phys) => {
             let io = io_apic(phys).ok()?;
-            io.write32(IOAPIC_SELECT, 0x01)?; // version register
-            let version = io.read32(IOAPIC_WINDOW_REG)? as u8;
-            // Select redirection entry 0 (low dword) and try INIT delivery.
-            io.write32(IOAPIC_SELECT, IOAPIC_REDIRECTION_START)?;
-            let io_refused = io
-                .write32(IOAPIC_WINDOW_REG, (DELIVERY_INIT << 8) | 0x10000)
-                .is_none()
+            let version = io.read32(IOAPIC_WINDOW_REG)? as u8; // selector reset to 1
+            io.write32(IOAPIC_SELECT, IOAPIC_REDIRECTION_START)?; // entry 0, low dword
+            let io_refused = io.write32(IOAPIC_WINDOW_REG, (MODE_INIT << 8) | MASKED).is_none()
+                && io.write32(IOAPIC_WINDOW_REG, (MODE_SMI << 8) | MASKED).is_none()
+                && io.write32(IOAPIC_WINDOW_REG, 0x11).is_none() // unmasked, exception vector
                 && io.write32(0x04, 0).is_none()
+                && io.read64(0).is_none()
                 && io_apic(phys).err() == Some(ApicError::InUse)
                 && io_apic(phys ^ 0x1000).err() == Some(ApicError::NotDeclared);
-            if !io_refused {
+            drop(io);
+            // A new owner must find the selector reset, whatever we left.
+            let again = io_apic(phys).ok()?;
+            let reset = again.read32(IOAPIC_SELECT)? == IOAPIC_VERSION_INDEX;
+            drop(again);
+            if !(io_refused && reset) {
                 return None;
             }
             Some(version)

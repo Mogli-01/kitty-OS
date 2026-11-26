@@ -1,22 +1,26 @@
 //! ACPI table discovery: RSDP → RSDT/XSDT → MADT (docs/DECISIONS.md D-041).
 //!
 //! The kernel only does what must be trusted: find the tables, check that
-//! they are internally consistent, and **copy** the MADT into kernel memory
-//! so the driver parses a stable, immutable buffer (no time-of-check /
-//! time-of-use window on firmware memory). Decoding the MADT is the job of
-//! the Codex driver (`kitty-acpi`). The kernel additionally extracts the
-//! I/O APIC register addresses, because it only grants MMIO capabilities for
+//! they are internally consistent, and hand the driver a stable, immutable
+//! **copy** of the MADT. Every table is copied out of firmware memory first
+//! (`mm::vmm::copy_from_firmware`) and validated **on the copy**, so a
+//! table that changes underneath us (firmware/SMM) cannot make us validate
+//! one version and use another. Decoding the MADT is the job of the Codex
+//! driver (`kitty-acpi`). The kernel additionally extracts the I/O APIC
+//! register addresses, because it only grants MMIO capabilities for
 //! addresses the validated MADT declares (`arch::apic`).
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use crate::mm::vmm::map_firmware_ro;
+use crate::mm::vmm::copy_from_firmware;
 
 /// Size of the common ACPI table header.
 const SDT_HEADER_LEN: usize = 36;
 /// Largest table we accept (same limit as the Codex MADT parser).
 pub const MAX_TABLE_LEN: usize = 64 * 1024;
+/// Most RSDT/XSDT entries we look at.
+const MAX_ROOT_ENTRIES: usize = 256;
 /// Most I/O APICs we track.
 const MAX_IO_APICS: usize = 16;
 
@@ -26,7 +30,7 @@ const MAX_IO_APICS: usize = 16;
 pub enum AcpiError {
     /// The bootloader did not report an RSDP.
     NoRsdp,
-    /// A firmware range could not be mapped (overlaps kernel RAM, too big…).
+    /// A range is not firmware memory, or could not be copied.
     Unmappable,
     /// Wrong signature.
     BadSignature,
@@ -40,14 +44,15 @@ pub enum AcpiError {
 
 /// What discovery found.
 pub struct AcpiTables {
-    /// Validated copy of the MADT (signature, length and checksum checked).
+    /// Validated copy of the MADT (signature, length and checksum checked
+    /// on this very copy).
     pub madt: Box<[u8]>,
     /// I/O APIC register base addresses declared by the MADT.
     pub io_apics: Vec<u64>,
 }
 
-fn read_bytes(phys: u64, len: usize) -> Result<&'static [u8], AcpiError> {
-    map_firmware_ro(phys, len as u64).map_err(|_| AcpiError::Unmappable)
+fn copy(phys: u64, len: usize) -> Result<Box<[u8]>, AcpiError> {
+    copy_from_firmware(phys, len as u64).map_err(|_| AcpiError::Unmappable)
 }
 
 fn checksum_ok(bytes: &[u8]) -> bool {
@@ -64,24 +69,30 @@ fn u64_at(bytes: &[u8], off: usize) -> Option<u64> {
     Some(u64::from_le_bytes(raw.try_into().ok()?))
 }
 
-/// Maps a whole system description table and validates its header.
-fn read_table(phys: u64, signature: &[u8; 4]) -> Result<&'static [u8], AcpiError> {
-    let header = read_bytes(phys, SDT_HEADER_LEN)?;
+/// Copies a whole system description table and validates the copy.
+fn read_table(phys: u64, signature: &[u8; 4]) -> Result<Box<[u8]>, AcpiError> {
+    let header = copy(phys, SDT_HEADER_LEN)?;
     if header.get(0..4) != Some(&signature[..]) {
         return Err(AcpiError::BadSignature);
     }
-    let len = u32_at(header, 4).ok_or(AcpiError::BadLength)? as usize;
+    let len = u32_at(&header, 4).ok_or(AcpiError::BadLength)? as usize;
     if !(SDT_HEADER_LEN..=MAX_TABLE_LEN).contains(&len) {
         return Err(AcpiError::BadLength);
     }
-    let table = read_bytes(phys, len)?;
-    if !checksum_ok(table) {
+    // Copy again at full length and re-check everything on this copy: the
+    // header we looked at first is not trusted to still be the same.
+    let table = copy(phys, len)?;
+    if table.get(0..4) != Some(&signature[..]) || u32_at(&table, 4).map(|l| l as usize) != Some(len)
+    {
+        return Err(AcpiError::BadLength);
+    }
+    if !checksum_ok(&table) {
         return Err(AcpiError::BadChecksum);
     }
     Ok(table)
 }
 
-fn read_rsdt(rsdp: &[u8]) -> Result<&'static [u8], AcpiError> {
+fn read_rsdt(rsdp: &[u8]) -> Result<Box<[u8]>, AcpiError> {
     let rsdt = u32_at(rsdp, 16)
         .filter(|&a| a != 0)
         .ok_or(AcpiError::NoMadt)?;
@@ -93,34 +104,40 @@ pub fn discover(rsdp_phys: Option<u64>) -> Result<AcpiTables, AcpiError> {
     let rsdp_phys = rsdp_phys.ok_or(AcpiError::NoRsdp)?;
 
     // RSDP v1 is 20 bytes; v2+ is `length` bytes (36) with an extended
-    // checksum and a 64-bit XSDT address.
-    let v1 = read_bytes(rsdp_phys, 20)?;
+    // checksum and a 64-bit XSDT address. One copy of the largest version
+    // is validated, so v1 and v2 fields come from the same read.
+    let v1 = copy(rsdp_phys, 20)?;
     if v1.get(0..8) != Some(b"RSD PTR ") {
         return Err(AcpiError::BadSignature);
     }
-    if !checksum_ok(v1) {
-        return Err(AcpiError::BadChecksum);
-    }
     let revision = v1.get(15).copied().unwrap_or(0);
     let (root, entry_size) = if revision >= 2 {
-        let v2 = read_bytes(rsdp_phys, 36)?;
-        let len = u32_at(v2, 20).ok_or(AcpiError::BadLength)? as usize;
+        let len = u32_at(&copy(rsdp_phys, 36)?, 20).ok_or(AcpiError::BadLength)? as usize;
         if !(36..=4096).contains(&len) {
             return Err(AcpiError::BadLength);
         }
-        if !checksum_ok(read_bytes(rsdp_phys, len)?) {
+        let rsdp = copy(rsdp_phys, len)?;
+        let first20 = rsdp.get(..20).ok_or(AcpiError::BadLength)?;
+        if rsdp.get(0..8) != Some(b"RSD PTR ")
+            || u32_at(&rsdp, 20).map(|l| l as usize) != Some(len)
+            || !checksum_ok(first20)
+            || !checksum_ok(&rsdp)
+        {
             return Err(AcpiError::BadChecksum);
         }
-        match u64_at(v2, 24).filter(|&a| a != 0) {
+        match u64_at(&rsdp, 24).filter(|&a| a != 0) {
             Some(xsdt) => (read_table(xsdt, b"XSDT")?, 8),
-            None => (read_rsdt(v1)?, 4),
+            None => (read_rsdt(&rsdp)?, 4),
         }
     } else {
-        (read_rsdt(v1)?, 4)
+        if !checksum_ok(&v1) {
+            return Err(AcpiError::BadChecksum);
+        }
+        (read_rsdt(&v1)?, 4)
     };
 
     let entries = root.get(SDT_HEADER_LEN..).unwrap_or(&[]);
-    for entry in entries.chunks_exact(entry_size) {
+    for entry in entries.chunks_exact(entry_size).take(MAX_ROOT_ENTRIES) {
         let phys = if entry_size == 8 {
             u64_at(entry, 0)
         } else {
@@ -129,18 +146,15 @@ pub fn discover(rsdp_phys: Option<u64>) -> Result<AcpiTables, AcpiError> {
         let Some(phys) = phys.filter(|&a| a != 0) else {
             continue;
         };
-        // Peek at the signature only; skip tables we cannot map.
-        let Ok(header) = read_bytes(phys, SDT_HEADER_LEN) else {
+        // Peek at the signature only; skip tables that are not firmware
+        // memory or cannot be copied.
+        let Ok(header) = copy(phys, SDT_HEADER_LEN) else {
             continue;
         };
         if header.get(0..4) == Some(b"APIC") {
             let madt = read_table(phys, b"APIC")?;
-            let copy: Box<[u8]> = madt.into();
-            let io_apics = io_apic_addresses(&copy);
-            return Ok(AcpiTables {
-                madt: copy,
-                io_apics,
-            });
+            let io_apics = io_apic_addresses(&madt);
+            return Ok(AcpiTables { madt, io_apics });
         }
     }
     Err(AcpiError::NoMadt)

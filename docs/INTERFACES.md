@@ -103,7 +103,8 @@ interrupções depois da baseline provam que o EOI funciona),
 `heap self-test passed`,
 `[irq] interrupts enabled (controller: 8259 PIC); dispatch, IrqSpinLock and port-filter self-tests passed`,
 `[acpi] MADT validated` (ou `[acpi] no usable MADT`),
-`[apic] capability self-test passed`.
+`[apic] capability self-test passed`. Em BIOS (SeaBIOS) o RSDP está na
+área 0xE0000–0xFFFFF, que a allow-list de firmware aceita.
 
 `cargo xtask test-memory [--bios] [--release]` corre o arranque normal e
 uma compilação separada para cada um dos sete autotestes de falhas. Antes
@@ -231,27 +232,33 @@ pede-o numa issue `para-claude`.
 **ACPI e APIC (issue #18):**
 ```rust
 pub struct devices::Platform<'a> {
-    pub madt: Option<&'a [u8]>,   // MADT validada (assinatura, tamanho ≤ 64 KiB,
-}                                 // checksum) e COPIADA; válida durante init()
+    pub madt: Option<&'a [u8]>,   // cópia da MADT, validada sobre a própria cópia
+}                                 // (assinatura, tamanho ≤ 64 KiB, checksum)
 pub fn devices::init(platform: &Platform<'_>);
 
 pub fn arch::apic::local_apic() -> Result<LocalApicRegisters, ApicError>;
 pub fn arch::apic::io_apic(phys: u64) -> Result<IoApicRegisters, ApicError>;
 // ambos: impl kitty_hal::RegisterBlock (32 bits; 64 bits → None)
-// ApicError: Disabled, X2Apic, NotDeclared, InUse, MapFailed
+// ApicError: Disabled, X2Apic, NotDeclared, Implausible, InUse, MapFailed
 ```
 - **Local APIC:** a base vem do MSR IA32_APIC_BASE. Se o APIC estiver
   desligado ou em **x2APIC**, devolve erro: ficar no PIC. Escrevíveis: TPR
-  0x080, EOI 0x0B0, SVR 0x0F0, LVT timer 0x320, LINT0 0x350, LINT1 0x360,
-  erro 0x370, contagem inicial 0x380, divisor 0x3E0. O **ICR** (0x300/0x310)
-  **não** é escrevível (IPIs são do núcleo). Leitura: qualquer registo
-  alinhado < 0x400.
+  0x080, EOI 0x0B0, SVR 0x0F0 (vetor espúrio tem de ser **0xFF**), LVT
+  timer 0x320 e erro 0x370 (só Fixed), LINT0 0x350 e LINT1 0x360 (Fixed,
+  NMI ou ExtINT), contagem inicial 0x380, divisor 0x3E0. O **ICR**
+  (0x300/0x310) **não** é escrevível (IPIs são do núcleo). Leitura: qualquer
+  registo alinhado < 0x400.
 - **I/O APIC:** `phys` tem de ser um dos endereços que a MADT validada pelo
-  kernel declara (entrada tipo 1); janela de 0x20 bytes: IOREGSEL (0x00) e
-  IOWIN (0x10). A sequência seletor/janela não é atómica: o driver tem de a
-  serializar (lock próprio).
-- **Modos de entrega recusados** em LVTs e redireções: SMI (010) e INIT
-  (101). Permitidos: Fixed, Lowest-priority (I/O APIC), NMI, ExtINT.
+  kernel declara (entrada tipo 1), sem sobrepor a página do local APIC nem
+  outro I/O APIC, e com versão plausível; janela de 0x20 bytes: IOREGSEL
+  (0x00) e IOWIN (0x10). **Ao reclamar, o IOREGSEL fica em 0x01 (versão).**
+  O kernel serializa seletor e janela internamente (os filtros não dependem
+  disso), mas uma sequência "seleciona, lê, modifica, escreve" do driver
+  continua a precisar do lock do próprio driver para ser coerente.
+  Redireções permitidas: Fixed, Lowest-priority, NMI, ExtINT.
+- **Vetores:** uma LVT ou redireção Fixed/Lowest-priority **não mascarada**
+  tem de usar um vetor **0x20–0xEF**. Mascarada, o vetor não é verificado
+  (é-o quando for desmascarada, porque cada escrita leva o registo inteiro).
 - Cada APIC tem um só dono de cada vez; o `Drop` liberta-o.
 
 **Transição PIC → APIC** (em `devices::init`, com interrupções desligadas):

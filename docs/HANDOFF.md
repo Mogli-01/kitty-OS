@@ -270,11 +270,17 @@ Formato:
   - Revi #16, #17, #19 e #21 do Codex (prontos; notas não bloqueantes).
   - **Issue #18** (este PR, empilhado sobre o #15): descoberta ACPI no
     núcleo (RSDP físico → XSDT/RSDT → MADT, tudo validado, MADT copiada),
-    `vmm::map_firmware_ro`, `RegisterBlock` para `MmioRegion`,
+    `vmm::copy_from_firmware`, `RegisterBlock` para `MmioRegion`,
     `devices::init(&Platform)` com a MADT, e capacidades
     `arch::apic::local_apic()` / `io_apic(phys)` com filtro de valores
     (ICR fechado, sem SMI/INIT). Transição PIC → APIC documentada em
     INTERFACES.md. Decisões D-041 e D-042.
+  - O `security-reviewer` encontrou 7 problemas na 1.ª versão, todos
+    corrigidos antes de abrir o PR: contorno **confirmado** do filtro do
+    I/O APIC (seletor herdado de outro dono), TOCTOU seletor/janela,
+    vetores não filtrados (0x10–0x1F desalinhariam a pilha), I/O APIC
+    declarado por cima do ICR, firmware lido por deny-list (aceitava
+    MMIO), `&'static [u8]` sobre memória de firmware e dupla leitura.
 - **PRs abertos:** #15 (Fase 4, pronto); este (`claude/fase4-acpi-apic`,
   base #15).
 - **Proteções de segurança alteradas:** ATIVAS — validação ACPI e cópia da

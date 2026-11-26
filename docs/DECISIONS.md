@@ -389,12 +389,20 @@ interrupções ligadas (em vez de `cli; hlt`).
 O kernel segue RSDP → XSDT/RSDT → MADT (o RSDP do Limine rev. 3 é um
 endereço **físico**) e valida cada passo: assinaturas, checksums (incluindo
 o estendido do RSDP v2), comprimentos (cabeçalho ≥ 36, tabela ≤ 64 KiB).
-A memória de firmware é lida com `vmm::map_firmware_ro`: mapeamentos **só
-de leitura e NX**, que recusam regiões de RAM do kernel (usable,
-bootloader, kernel, framebuffer) e intervalos > 1 MiB. A MADT validada é
-**copiada** para o heap e entregue aos drivers como `&[u8]` imutável:
-o parser do Codex trabalha num buffer estável, sem janela de TOCTOU sobre
-memória de firmware. Sem MADT válida, o kernel fica no PIC 8259.
+A memória de firmware é lida com `vmm::copy_from_firmware`: cada tabela
+é **copiada** (leitura volátil, byte a byte, por um mapeamento temporário
+só de leitura e NX que é removido a seguir) e **validada sobre a cópia**.
+Só aceita memória de firmware por *allow-list*: regiões ACPI/reservadas do
+mapa de memória ou a área da BIOS (0x80000–0xFFFFF); recusa RAM do kernel e
+**buracos do mapa** (normalmente MMIO: ler aí pode ter efeitos laterais, e
+um alias WB de uma página UC é comportamento indefinido). Máximo 64 KiB por
+tabela e 256 entradas da XSDT/RSDT. Não fica nenhuma referência longa a
+memória de firmware (que tem alias RW no HHDM e pode ser alterada por
+SMM/AML). Sem MADT válida, o kernel fica no PIC 8259.
+*Revisto depois do `security-reviewer`:* a 1.ª versão devolvia
+`&'static [u8]` sobre a memória de firmware (promessa de imutabilidade
+falsa), usava uma deny-list (aceitava MMIO) e validava o checksum na
+memória de firmware antes de copiar (dupla leitura).
 
 ### D-042 — Capacidades APIC com filtro de valores (2026-11-26, CLAUDE)
 `arch::apic::local_apic()` e `arch::apic::io_apic(phys)` devolvem objetos
@@ -405,10 +413,19 @@ que implementam `kitty_hal::RegisterBlock`, mapeados UC e NX, com dono único.
   pelo kernel** declara.
 - Acessos de 32 bits, alinhados, dentro da janela (LAPIC 0x400, I/O APIC
   0x20); 64 bits recusados.
-- **Valores filtrados** (mesma lição do A20, D-038): o **ICR** do local APIC
-  não é escrevível (enviaria INIT/SIPI a outros CPUs, que passariam a
-  executar código num endereço físico baixo: tomada total da máquina); só
-  são escrevíveis TPR, EOI, SVR, LVTs e o timer; LVTs e entradas de
-  redireção do I/O APIC não aceitam os modos de entrega **SMI** nem **INIT**.
-  O I/O APIC acompanha o último IOREGSEL para saber o que cada escrita em
-  IOWIN vai alterar.
+- **Valores filtrados por allow-list** (mesma lição do A20, D-038): o
+  **ICR** do local APIC não é escrevível (enviaria INIT/SIPI a outros CPUs,
+  que passariam a executar código num endereço físico baixo: tomada total
+  da máquina); modos de entrega permitidos: LVT timer/erro só Fixed,
+  LINT0/1 Fixed/NMI/ExtINT, redireções Fixed/Lowest-priority/NMI/ExtINT
+  (SMI, INIT e reservados recusados); entradas Fixed/Lowest-priority não
+  mascaradas só com **vetores 0x20–0xEF** (0x10–0x1F cairiam em stubs de
+  exceção que esperam um código de erro e desalinhariam a pilha); SVR só
+  com o vetor espúrio 0xFF.
+- **I/O APIC:** seletor e janela sob um `IrqSpinLock` interno da
+  capacidade (sem TOCTOU entre verificar e escrever, nem de um handler nem
+  de outro CPU) e o IOREGSEL é **reposto em hardware a cada novo dono**
+  (antes, um seletor deixado por outro dono permitia contornar o filtro).
+  Endereços de I/O APIC cuja janela toque na página do local APIC ou noutro
+  I/O APIC são descartados (uma MADT hostil podia apontar um "I/O APIC" para
+  o ICR); a versão lida tem de ser plausível.

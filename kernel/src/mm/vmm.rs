@@ -390,50 +390,86 @@ fn map_window(start: u64, size: u64, flags: MapFlags) -> Result<u64, MapError> {
     Ok(virt_start)
 }
 
-/// Largest firmware range `map_firmware_ro` accepts in one call.
-pub const MAX_FIRMWARE_MAP: u64 = 1024 * 1024;
+/// Largest firmware range `copy_from_firmware` accepts in one call.
+pub const MAX_FIRMWARE_COPY: u64 = 64 * 1024;
 
-/// Maps `len` bytes of **firmware memory** (ACPI tables, BIOS area) at
-/// physical `phys` read-only, never executable, and returns them as an
-/// immutable byte slice that stays valid for the rest of the kernel's life.
+/// Legacy BIOS area (EBDA + BIOS ROM) where a BIOS RSDP may live even if
+/// the memory map does not describe it.
+const LEGACY_BIOS_AREA: core::ops::Range<u64> = 0x8_0000..0x10_0000;
+
+/// Whether every page of `[start, end)` is firmware memory: inside an ACPI
+/// or reserved region of the memory map, or in the legacy BIOS area. Holes
+/// (usually MMIO: PCI BARs, APIC pages) and kernel-owned RAM are refused.
+fn is_firmware_range(start: u64, end: u64) -> bool {
+    let map = MEMORY_MAP.lock();
+    let Some(map) = map.as_ref() else {
+        return false;
+    };
+    let mut page = start;
+    while page < end {
+        let page_end = page + PAGE_SIZE;
+        let in_bios_area = LEGACY_BIOS_AREA.start <= page && page_end <= LEGACY_BIOS_AREA.end;
+        let in_firmware_region = map.iter().any(|r| {
+            matches!(
+                r.kind,
+                MemoryKind::AcpiReclaimable | MemoryKind::AcpiNvs | MemoryKind::Reserved
+            ) && r.base <= page
+                && r.base.saturating_add(r.len) >= page_end
+        });
+        if !(in_bios_area || in_firmware_region) {
+            return false;
+        }
+        page = page_end;
+    }
+    true
+}
+
+/// **Copies** `len` bytes of firmware memory (ACPI tables, BIOS area) at
+/// physical `phys` into a kernel buffer (D-041, revised after review).
 ///
-/// Refuses ranges that overlap memory the kernel owns or hands out (usable
-/// RAM, bootloader/kernel memory, the framebuffer) or bad RAM, and ranges
-/// larger than [`MAX_FIRMWARE_MAP`]. Firmware tables are input from outside
-/// the kernel: callers must still validate their contents (D-041).
-pub fn map_firmware_ro(phys: u64, len: u64) -> Result<&'static [u8], MapError> {
-    if len == 0 || len > MAX_FIRMWARE_MAP {
+/// - Only firmware memory is accepted (ACPI/reserved regions, legacy BIOS
+///   area): never kernel-owned RAM, never memory-map holes (MMIO, where a
+///   read can have side effects and a WB alias of an UC page is undefined).
+/// - The bytes are read **once**, volatile, through a temporary read-only NX
+///   mapping that is removed afterwards. Callers validate the copy, so
+///   firmware/SMM changing the table later cannot affect what was checked
+///   (no double fetch), and no long-lived reference to firmware memory
+///   exists.
+pub fn copy_from_firmware(phys: u64, len: u64) -> Result<alloc::boxed::Box<[u8]>, MapError> {
+    if len == 0 || len > MAX_FIRMWARE_COPY {
         return Err(MapError::Misaligned);
     }
     let end_exact = phys.checked_add(len).ok_or(MapError::Misaligned)?;
     let start = page_down(phys);
     let end = page_up(end_exact);
-    let owned_by_kernel = MEMORY_MAP.lock().is_some_and(|map| {
-        map.iter().any(|r| {
-            matches!(
-                r.kind,
-                MemoryKind::Usable
-                    | MemoryKind::BootloaderReclaimable
-                    | MemoryKind::KernelAndModules
-                    | MemoryKind::Framebuffer
-                    | MemoryKind::Bad
-            ) && r.base < end
-                && r.base.saturating_add(r.len) > start
-        })
-    });
-    if owned_by_kernel {
+    if !is_firmware_range(start, end) {
         return Err(MapError::AlreadyMapped);
     }
-    let virt_start = map_window(start, end - start, MapFlags::KERNEL_RO)?;
-    let ptr = core::ptr::with_exposed_provenance::<u8>((virt_start + (phys - start)) as usize);
+    let size = end - start;
+    let virt_start = map_window(start, size, MapFlags::KERNEL_RO)?;
     let len = usize::try_from(len).map_err(|_| MapError::Misaligned)?;
-    // SAFETY: `ptr .. ptr + len` was just mapped read-only in the kernel
-    // address space and is never unmapped (the MMIO window is not reused),
-    // so the bytes stay readable for `'static`. Every bit pattern is a valid
-    // `u8`. The kernel never writes this memory (the mapping is read-only)
-    // and the range is not RAM the kernel hands out (checked above), so no
-    // `&mut` alias can exist.
-    Ok(unsafe { core::slice::from_raw_parts(ptr, len) })
+    let base = virt_start + (phys - start);
+    let mut copy = alloc::vec![0u8; len].into_boxed_slice();
+    for (i, byte) in copy.iter_mut().enumerate() {
+        let ptr = core::ptr::with_exposed_provenance::<u8>(base as usize + i);
+        // SAFETY: `base .. base + len` lies inside the read-only mapping
+        // created just above and not yet removed. Volatile: firmware memory
+        // is not Rust-owned and may change; we read each byte exactly once
+        // and never create a reference to it. Any bit pattern is a `u8`.
+        *byte = unsafe { ptr.read_volatile() };
+    }
+    // Remove the temporary mapping. The frames are firmware memory, not
+    // PMM frames, so nothing is freed.
+    with_kernel_space(|space| {
+        let mut off = 0;
+        while off < size {
+            if let Some(v) = VirtAddr::new(virt_start + off) {
+                let _ = space.unmap_4k(v);
+            }
+            off += PAGE_SIZE;
+        }
+    });
+    Ok(copy)
 }
 
 /// Boot self-test of [`map_mmio`]: maps the local APIC (present on every
