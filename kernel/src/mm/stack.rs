@@ -72,14 +72,24 @@ impl KernelStack {
         }
         let slot = {
             let mut s = SLOTS.lock();
-            match s.free.pop() {
+            let slot = match s.free.pop() {
                 Some(slot) => slot,
                 None if s.next < MAX_SLOTS => {
                     s.next += 1;
                     s.next - 1
                 }
                 None => return Err(MapError::OutOfMemory),
+            };
+            // Keep room in the free list for every slot ever handed out, so
+            // that `Drop` (which can run at the end of an IRQ, when the
+            // scheduler reaps a dead thread) never allocates (review of #39).
+            let needed = usize::try_from(s.next).unwrap_or(usize::MAX);
+            let additional = needed.saturating_sub(s.free.len());
+            if s.free.try_reserve(additional).is_err() {
+                s.free.push(slot); // capacity for it already exists
+                return Err(MapError::OutOfMemory);
             }
+            slot
         };
         let stack = KernelStack { slot };
         let base = stack.base();
@@ -128,6 +138,7 @@ impl Drop for KernelStack {
                 }
             }
         });
+        // Never reallocates: `new` reserved room for every slot.
         SLOTS.lock().free.push(self.slot);
     }
 }
