@@ -29,7 +29,9 @@ reescrever o resto.
 |---|---|---|
 | `kernel/src/arch/x86_64/` | entrada do Limine, CPU, portas I/O, série inicial | Claude |
 | `kernel/src/mm/` | tipos de endereço; PMM/VMM/heap (Fase 3) | Claude |
-| `kernel/src/sync/` | spinlock (e mutex mais tarde) | Claude |
+| `kernel/src/sync/` | `SpinLock`, `IrqSpinLock` (e mutex mais tarde) | Claude |
+| `kernel/src/devices/` | cola entre os drivers e o kernel (Rust seguro), `devices::init` | Claude (núcleo) + Codex (um ficheiro por driver) |
+| `hal/` | crate `kitty-hal`: traits de acesso a hardware para drivers sem `unsafe` | Claude |
 | `kernel/src/console/` | consola do kernel (série + framebuffer) | Claude |
 | `kernel/src/sched/`, `syscall/`, `security/` | fases 5, 6, 8 | Claude |
 | `drivers/`, `fs/`, `userland/`, `tests/` | ver READMEs | Codex |
@@ -63,6 +65,19 @@ CPU deteta a exceção N
   -> exceptions::handle: #BP/NMI -> regista e volta; resto -> relatório + panic
   -> (se voltar) repõe os registos, iretq
 ```
+
+## Interrupções de hardware (Fase 4)
+
+```
+dispositivo → linha ISA (ex.: IRQ1) → controlador (PIC 8259 agora, I/O APIC depois)
+  → vetor 0x20–0xEF → stub (trap.rs) → irq::dispatch
+     → espúrio? sai sem EOI
+     → handler registado (corre com IF=0) → núcleo envia EOI ao controlador
+```
+
+Ordem do arranque: `arch::init` (GDT, IDT, PIC remapeado e mascarado) →
+memória e heap → autotestes → `devices::init()` (drivers registam IRQs) →
+`sti` → idle com `sti; hlt`.
 
 ## Mapa de memória virtual (x86_64, paginação de 4 níveis, 48 bits)
 

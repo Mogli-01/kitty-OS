@@ -9,11 +9,14 @@ use alloc::vec::Vec;
 use core::slice;
 use kitty_initrd::{Archive, Entry, EntryKind, Path};
 
+const MAX_ENTRIES: usize = 65_536;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
     Archive(kitty_initrd::Error),
     DuplicatePath,
     FileAsAncestor,
+    TooManyEntries,
     OutOfMemory,
     InvalidPath,
     NotFound,
@@ -67,14 +70,12 @@ pub struct InitrdFs<'a> {
 
 impl<'a> InitrdFs<'a> {
     /// Parses the image and creates an index ordered by canonical path.
-    /// Implicit parent directories are resolved from that index.
+    /// Accepts at most 65,536 headers. Implicit parent directories are
+    /// resolved from the same index.
     pub fn mount(bytes: &'a [u8]) -> Result<Self, Error> {
         let archive = Archive::parse(bytes).map_err(Error::Archive)?;
-        let mut entries = Vec::new();
-        for entry in archive.entries() {
-            entries.try_reserve(1).map_err(|_| Error::OutOfMemory)?;
-            entries.push(entry);
-        }
+        let mut entries = allocate_index(archive.entry_count())?;
+        entries.extend(archive.entries());
         entries.sort_unstable_by(|left, right| left.path.components().cmp(right.path.components()));
         // An ancestor sorts directly before its first descendant. Duplicate
         // canonical paths likewise appear next to one another.
@@ -136,6 +137,17 @@ impl<'a> InitrdFs<'a> {
             Err(_) => Err(Error::NotFound),
         }
     }
+}
+
+fn allocate_index<'a>(count: usize) -> Result<Vec<Entry<'a>>, Error> {
+    if count > MAX_ENTRIES {
+        return Err(Error::TooManyEntries);
+    }
+    let mut entries = Vec::new();
+    entries
+        .try_reserve_exact(count)
+        .map_err(|_| Error::OutOfMemory)?;
+    Ok(entries)
 }
 
 enum Location<'a> {

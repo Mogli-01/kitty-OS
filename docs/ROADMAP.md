@@ -53,9 +53,12 @@ preparado para a interface gráfica (Fases 10–14).
 ## Fase 4 — Interrupções de hardware
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Spinlocks que desativam interrupções (`IrqSpinLock`) | CLAUDE | TODO |
-| API de registo de handlers de IRQ | CLAUDE | TODO |
-| Descodificador MADT para endereços APIC e overrides ISA | CODEX | Em revisão no ramo `codex/acpi-madt`, integração de hardware na #18 |
+| Spinlocks que desativam interrupções (`IrqSpinLock`); todos os locks globais convertidos | CLAUDE | FEITO |
+| API de registo de handlers de IRQ (`irq::register_isa`, EOI pelo núcleo, trait `InterruptController`) | CLAUDE | FEITO |
+| PIC 8259 como controlador de arranque (remapeado, tudo mascarado) | CLAUDE | FEITO |
+| `kitty-hal` + portas legadas reclamáveis (i8042, PIT, CMOS) + `devices::init` | CLAUDE | FEITO |
+| Descoberta ACPI (RSDP → MADT validada e copiada) + capacidades APIC filtradas (#18) | CLAUDE | FEITO |
+| Descodificador MADT para endereços APIC, overrides ISA e rotas NMI locais | CODEX | Em revisão no #20. Integração de hardware depende da #18 e do #35 |
 | Driver do Local APIC + IO APIC | CODEX | TODO |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | TODO |
 | Driver do teclado PS/2 | CODEX | TODO |
@@ -85,9 +88,10 @@ preparado para a interface gráfica (Fases 10–14).
 ## Fase 7 — Sistema de ficheiros e shell
 | Tarefa | Dono | Estado |
 |---|---|---|
-| VFS | CODEX | Raiz só de leitura, pesquisa e listagem do initrd em revisão; montagem no kernel e syscalls pendentes (#22) |
-| initrd (módulo do Limine) | CODEX | Parser e opção de empacotamento em revisão; leitura pelo kernel pendente (#22) |
+| VFS | CODEX | Raiz só de leitura com índice limitado, pesquisa e listagem em revisão no #24. Montagem no arranque em preparação |
+| initrd (módulo do Limine) | CODEX | Parser USTAR (#23) e empacotamento (#31) em revisão. Entrega do módulo disponível no #38 |
 | Shell em userland | CODEX | TODO |
+| Entrega do módulo initrd ao VFS (`Platform::initrd`, validado, só de leitura) (#22) | CLAUDE | FEITO |
 | Syscalls de ficheiros (open/read/write/close) no núcleo | CLAUDE | TODO |
 
 ## Fase 8 — Aleatoriedade e permissões
