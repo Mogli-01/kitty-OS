@@ -41,6 +41,7 @@ pub struct Rect {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum Error {
     InvalidDimensions,
     InvalidPitch,

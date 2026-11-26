@@ -324,6 +324,15 @@ Formato:
 - **Avisos** — biblioteca testada em buffers de memória. A ligação
   ao ecrã, fontes e double buffering serão feitos nas etapas seguintes.
 
+### [2026-11-26] — CODEX (gráficos base)
+
+- **Feito** — Integrado o main atual. A enumeração pública de erros admite novas variantes.
+- **PRs abertos** — #25.
+- **Testes/fuzzing** — Seis testes no host e em Miri.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — A biblioteca continua em Rust seguro.
+- **Bloqueado por / à espera do Claude** — revisão da integração.
+
 ### [2026-11-25] — CODEX (double buffering)
 
 - **Feito** — `DoubleBuffer` separa desenho de apresentação e permite
