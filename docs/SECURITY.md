@@ -61,6 +61,9 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | PIC remapeado para 0x20–0x2F e mascarado por omissão (D-039) | IRQs confundidos com exceções (0x08 = double fault); interrupções de dispositivos não pedidas | ATIVA | 4 |
 | EOI enviado só pelo núcleo; IRQs espúrios filtrados (D-039) | controlador bloqueado por EOI esquecido / EOI a mais | ATIVA | 4 |
 | Drivers `forbid(unsafe_code)`; portas legadas por allow-list e reclamadas uma vez (D-038) | um driver tocar em portas/memória que não são suas | ATIVA | 4 |
+| Tabelas ACPI copiadas uma vez e validadas na cópia; só memória de firmware por allow-list (D-041) | firmware malformado, TOCTOU, leituras de MMIO | ATIVA | 4 |
+| Capacidades APIC: base do MSR, I/O APIC só se declarado na MADT, dono único, UC/NX (D-042) | driver mapear/aceder a MMIO arbitrário | ATIVA | 4 |
+| ICR do local APIC fechado; allow-list de modos de entrega e vetores 0x20–0xEF em LVTs e redireções; seletor do I/O APIC sob lock e reposto (D-042) | driver "seguro" a acordar outros CPUs com código arbitrário, resetá-los, ou entregar IRQs em vetores de exceção | ATIVA | 4 |
 | Comandos do i8042 por allow-list; bit NMI-disable do CMOS sempre limpo (D-038) | reset da máquina, A20 desligado (corrupção de memória) ou NMIs desligados por um driver "seguro" | ATIVA | 4 |
 | SMEP | o kernel executar código de user | PLANEADA | 6 |
 | SMAP | o kernel ler/escrever memória de user sem querer | PLANEADA | 6 |

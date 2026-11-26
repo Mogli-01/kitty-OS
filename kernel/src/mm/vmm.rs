@@ -251,6 +251,21 @@ pub fn is_mapped(virt: VirtAddr) -> bool {
 
 // ------------------------------------------------------------------ MMIO ---
 
+impl kitty_hal::RegisterBlock for MmioRegion {
+    fn read32(&self, offset: u64) -> Option<u32> {
+        self.read(offset)
+    }
+    fn write32(&self, offset: u64, value: u32) -> Option<()> {
+        self.write(offset, value)
+    }
+    fn read64(&self, offset: u64) -> Option<u64> {
+        self.read(offset)
+    }
+    fn write64(&self, offset: u64, value: u64) -> Option<()> {
+        self.write(offset, value)
+    }
+}
+
 mod sealed {
     pub trait Sealed {}
     impl Sealed for u8 {}
@@ -343,31 +358,156 @@ pub unsafe fn map_mmio(phys: PhysAddr, len: u64, cache: CacheType) -> Result<Mmi
         return Err(MapError::AlreadyMapped);
     }
 
-    let size = end - start;
-    let virt_start = MMIO_NEXT.fetch_add(size, Ordering::AcqRel);
-    if virt_start.checked_add(size).is_none_or(|e| e > MMIO_END) {
-        return Err(MapError::OutOfMemory);
-    }
     let flags = MapFlags {
         cache,
         ..MapFlags::KERNEL_RW
     };
+    let virt_start = map_window(start, end - start, flags)?;
+    Ok(MmioRegion {
+        base: virt_start + (phys.as_u64() - start),
+        len,
+    })
+}
+
+/// Maps physical `[start, start + size)` (page aligned) at fresh addresses of
+/// the MMIO window and returns the virtual start.
+fn map_window(start: u64, size: u64, flags: MapFlags) -> Result<u64, MapError> {
+    let virt_start = MMIO_NEXT.fetch_add(size, Ordering::AcqRel);
+    if virt_start.checked_add(size).is_none_or(|e| e > MMIO_END) {
+        return Err(MapError::OutOfMemory);
+    }
     with_kernel_space(|space| {
         let mut off = 0;
         while off < size {
-            let v = VirtAddr::new(virt_start + off).ok_or(MapError::Misaligned)?;
-            let p = PhysAddr::new(start + off).ok_or(MapError::Misaligned)?;
-            space.map_4k(v, p, flags)?;
+            let mapped = VirtAddr::new(virt_start + off)
+                .zip(PhysAddr::new(start + off))
+                .ok_or(MapError::Misaligned)
+                .and_then(|(v, p)| space.map_4k(v, p, flags));
+            if let Err(e) = mapped {
+                // Undo the pages mapped so far: no half-mapped window stays
+                // behind. They are not PMM frames, so nothing is freed.
+                let mut undo = 0;
+                while undo < off {
+                    if let Some(v) = VirtAddr::new(virt_start + undo) {
+                        let _ = space.unmap_4k(v);
+                    }
+                    undo += PAGE_SIZE;
+                }
+                return Err(e);
+            }
             off += PAGE_SIZE;
         }
         Ok(())
     })
     .ok_or(MapError::NotMapped)??;
+    Ok(virt_start)
+}
 
-    Ok(MmioRegion {
-        base: virt_start + (phys.as_u64() - start),
-        len,
-    })
+/// Largest firmware range `copy_from_firmware` accepts in one call.
+pub const MAX_FIRMWARE_COPY: u64 = 64 * 1024;
+
+/// Legacy BIOS area (EBDA + BIOS ROM) where a BIOS RSDP may live even if
+/// the memory map does not describe it.
+const LEGACY_BIOS_AREA: core::ops::Range<u64> = 0x8_0000..0x10_0000;
+
+/// Physical range conventionally used by the I/O APICs, HPET and local APIC
+/// (0xFEC00000–0xFEFFFFFF). UEFI firmware often reports such MMIO as
+/// "reserved", so it is refused explicitly.
+const APIC_MMIO_RANGE: core::ops::Range<u64> = 0xFEC0_0000..0xFF00_0000;
+
+/// Whether every page of `[start, end)` is firmware memory: inside an ACPI
+/// or reserved region of the memory map, or in the legacy BIOS area, and
+/// **never** overlapping kernel-owned RAM, the APIC/HPET MMIO range or the
+/// local APIC page. Holes (usually MMIO: PCI BARs) are refused.
+fn is_firmware_range(start: u64, end: u64) -> bool {
+    let map = MEMORY_MAP.lock();
+    let Some(map) = map.as_ref() else {
+        return false;
+    };
+    let lapic = crate::arch::x86_64::cpu::local_apic_base();
+    let mut page = start;
+    while page < end {
+        let page_end = page + PAGE_SIZE;
+        // Deny first: kernel-owned RAM (the BIOS area below 640 KiB is often
+        // ordinary RAM handed out by the PMM), APIC/HPET MMIO, LAPIC page.
+        let kernel_owned = map.iter().any(|r| {
+            matches!(
+                r.kind,
+                MemoryKind::Usable
+                    | MemoryKind::BootloaderReclaimable
+                    | MemoryKind::KernelAndModules
+                    | MemoryKind::Framebuffer
+                    | MemoryKind::Bad
+            ) && r.base < page_end
+                && r.base.saturating_add(r.len) > page
+        });
+        let apic_mmio = APIC_MMIO_RANGE.start < page_end && page < APIC_MMIO_RANGE.end
+            || (lapic..lapic.saturating_add(PAGE_SIZE)).contains(&page);
+        if kernel_owned || apic_mmio {
+            return false;
+        }
+        let in_bios_area = LEGACY_BIOS_AREA.start <= page && page_end <= LEGACY_BIOS_AREA.end;
+        let in_firmware_region = map.iter().any(|r| {
+            matches!(
+                r.kind,
+                MemoryKind::AcpiReclaimable | MemoryKind::AcpiNvs | MemoryKind::Reserved
+            ) && r.base <= page
+                && r.base.saturating_add(r.len) >= page_end
+        });
+        if !(in_bios_area || in_firmware_region) {
+            return false;
+        }
+        page = page_end;
+    }
+    true
+}
+
+/// **Copies** `len` bytes of firmware memory (ACPI tables, BIOS area) at
+/// physical `phys` into a kernel buffer (D-041, revised after review).
+///
+/// - Only firmware memory is accepted (ACPI/reserved regions, legacy BIOS
+///   area): never kernel-owned RAM, never memory-map holes (MMIO, where a
+///   read can have side effects and a WB alias of an UC page is undefined).
+/// - The bytes are read **once**, volatile, through a temporary read-only NX
+///   mapping that is removed afterwards. Callers validate the copy, so
+///   firmware/SMM changing the table later cannot affect what was checked
+///   (no double fetch), and no long-lived reference to firmware memory
+///   exists.
+pub fn copy_from_firmware(phys: u64, len: u64) -> Result<alloc::boxed::Box<[u8]>, MapError> {
+    if len == 0 || len > MAX_FIRMWARE_COPY {
+        return Err(MapError::Misaligned);
+    }
+    let end_exact = phys.checked_add(len).ok_or(MapError::Misaligned)?;
+    let start = page_down(phys);
+    let end = page_up(end_exact);
+    if !is_firmware_range(start, end) {
+        return Err(MapError::AlreadyMapped);
+    }
+    let size = end - start;
+    let virt_start = map_window(start, size, MapFlags::KERNEL_RO)?;
+    let len = usize::try_from(len).map_err(|_| MapError::Misaligned)?;
+    let base = virt_start + (phys - start);
+    let mut copy = alloc::vec![0u8; len].into_boxed_slice();
+    for (i, byte) in copy.iter_mut().enumerate() {
+        let ptr = core::ptr::with_exposed_provenance::<u8>(base as usize + i);
+        // SAFETY: `base .. base + len` lies inside the read-only mapping
+        // created just above and not yet removed. Volatile: firmware memory
+        // is not Rust-owned and may change; we read each byte exactly once
+        // and never create a reference to it. Any bit pattern is a `u8`.
+        *byte = unsafe { ptr.read_volatile() };
+    }
+    // Remove the temporary mapping. The frames are firmware memory, not
+    // PMM frames, so nothing is freed.
+    with_kernel_space(|space| {
+        let mut off = 0;
+        while off < size {
+            if let Some(v) = VirtAddr::new(virt_start + off) {
+                let _ = space.unmap_4k(v);
+            }
+            off += PAGE_SIZE;
+        }
+    });
+    Ok(copy)
 }
 
 /// Boot self-test of [`map_mmio`]: maps the local APIC (present on every

@@ -260,3 +260,41 @@ Formato:
     os drivers têm de se registar de novo depois de o APIC tomar o lugar.
   - Ainda não há timer periódico nem scheduler (Fase 5).
 
+### [2026-11-26] — CLAUDE (7.ª sessão)
+- **Feito:**
+  - PR #15 (Fase 4): respondi à revisão do Codex. Os guards dos locks
+    passaram a `!Send` e a `Sync` só com `T: Sync` (havia uma data race
+    possível em código seguro), com asserções em tempo de compilação; o
+    autoteste do PIT exige 2 IRQs depois de uma baseline (prova o EOI) e
+    pára o PIT sem deixar IRQ pendente. `security-reviewer`: OK.
+  - Revi #16, #17, #19 e #21 do Codex (prontos; notas não bloqueantes).
+  - **Issue #18** (este PR, empilhado sobre o #15): descoberta ACPI no
+    núcleo (RSDP físico → XSDT/RSDT → MADT, tudo validado, MADT copiada),
+    `vmm::copy_from_firmware`, `RegisterBlock` para `MmioRegion`,
+    `devices::init(&Platform)` com a MADT, e capacidades
+    `arch::apic::local_apic()` / `io_apic(phys)` com filtro de valores
+    (ICR fechado, sem SMI/INIT). Transição PIC → APIC documentada em
+    INTERFACES.md. Decisões D-041 e D-042.
+  - O `security-reviewer` encontrou 7 problemas na 1.ª versão, todos
+    corrigidos antes de abrir o PR: contorno **confirmado** do filtro do
+    I/O APIC (seletor herdado de outro dono), TOCTOU seletor/janela,
+    vetores não filtrados (0x10–0x1F desalinhariam a pilha), I/O APIC
+    declarado por cima do ICR, firmware lido por deny-list (aceitava
+    MMIO), `&'static [u8]` sobre memória de firmware e dupla leitura.
+- **PRs abertos:** #15 (Fase 4, pronto); este (`claude/fase4-acpi-apic`,
+  base #15).
+- **Proteções de segurança alteradas:** ATIVAS — validação ACPI e cópia da
+  MADT; capacidades APIC com dono único, UC/NX, ICR fechado e sem SMI/INIT.
+- **Bloqueado por / à espera do Codex:** nada.
+- **Próximo passo sugerido para o Codex:** ligar o `kitty-acpi` (#20) e o
+  driver de I/O APIC (#21) em `kernel/src/devices/` pela ordem descrita em
+  INTERFACES.md ("Transição PIC → APIC"), com o local APIC como
+  `InterruptController`. Testar com o IRQ0 repetido e uma tecla, como a
+  #18 propõe. **Atenção ao #20:** o `libfuzzer-sys` é um crate externo novo
+  (workspace de fuzzing só no host) e precisa de entrada em DECISIONS e de
+  aprovação humana, mesmo não entrando no kernel.
+- **Avisos:**
+  - x2APIC não é suportado: nessas máquinas o kernel fica no PIC.
+  - Os mapeamentos de firmware e MMIO não são libertados (espaço virtual
+    da janela MMIO não é reutilizado).
+  - A sequência IOREGSEL/IOWIN tem de ser serializada pelo driver.

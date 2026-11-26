@@ -29,6 +29,7 @@ pub mod arch;
 pub mod boot_info;
 pub mod console;
 pub mod devices;
+pub mod firmware;
 #[allow(unsafe_code)]
 pub mod mm;
 mod panic;
@@ -37,6 +38,8 @@ pub mod security;
 #[allow(unsafe_code)]
 pub mod sync;
 pub mod syscall;
+
+use core::sync::atomic::{AtomicU64, Ordering};
 
 use boot_info::BootInfo;
 
@@ -76,8 +79,18 @@ pub fn kmain(mut boot: BootInfo) -> ! {
         vmm.audit.user_in_kernel
     );
 
+    // The second half of boot runs on another stack and cannot see `boot`:
+    // keep what it needs. (Only a physical address; never printed.)
+    RSDP_PHYS.store(boot.rsdp_phys.unwrap_or(0), Ordering::Release);
+
     // Leave the bootloader's stack for our own, which has a guard page.
     arch::x86_64::stacks::run_on_main_stack(kmain_on_kernel_stack)
+}
+
+static RSDP_PHYS: AtomicU64 = AtomicU64::new(0);
+
+fn rsdp_phys() -> Option<u64> {
+    Some(RSDP_PHYS.load(Ordering::Acquire)).filter(|&a| a != 0)
 }
 
 /// Second half of boot, running on the guarded kernel stack.
@@ -100,7 +113,37 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         arch::legacy::selftest(),
         "legacy port filter self-test failed"
     );
-    devices::init();
+
+    // ACPI: find and validate the MADT. Without it, stay on the 8259 PIC.
+    let acpi = firmware::acpi::discover(rsdp_phys());
+    match &acpi {
+        Ok(tables) => {
+            arch::apic::set_declared_io_apics(&tables.io_apics);
+            kprintln!(
+                "[acpi] MADT validated ({} bytes, {} I/O APIC(s))",
+                tables.madt.len(),
+                tables.io_apics.len()
+            );
+        }
+        Err(e) => kprintln!("[acpi] no usable MADT ({:?}); keeping the 8259 PIC", e),
+    }
+    match arch::apic::selftest() {
+        Some((lapic, Some(io))) => kprintln!(
+            "[apic] capability self-test passed (local APIC version {:#x}, I/O APIC version {:#x})",
+            lapic,
+            io
+        ),
+        Some((lapic, None)) => kprintln!(
+            "[apic] capability self-test passed (local APIC version {:#x}, no I/O APIC)",
+            lapic
+        ),
+        None => kprintln!("[apic] capability self-test: APIC unavailable or check failed"),
+    }
+
+    let platform = devices::Platform {
+        madt: acpi.as_ref().ok().map(|t| &t.madt[..]),
+    };
+    devices::init(&platform);
     arch::enable_interrupts();
     assert!(
         sync::irq_spinlock::selftest(),
