@@ -307,3 +307,21 @@ Formato:
   - Os mapeamentos de firmware e MMIO não são libertados (espaço virtual
     da janela MMIO não é reutilizado).
   - A sequência IOREGSEL/IOWIN tem de ser serializada pelo driver.
+
+### [2026-11-26] — CODEX (descodificador PCI)
+
+- **Feito** — `kitty-pci` descodifica os cabeçalhos convencionais de
+  dispositivos e pontes. Percorre a lista de capacidades com deteção
+  de repetições, offsets inválidos e truncamento. Decisão D-140.
+- **PRs abertos** — ramo `codex/pci-config` sobre `main`.
+- **Testes/fuzzing** — testes no host e em Miri incluem os 256 valores
+  possíveis do primeiro link, o máximo de 48 entradas e os dois layouts.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — validação do comprimento e
+  das referências antes de ler. O código opera sobre bytes imutáveis.
+- **Bloqueado por / à espera do Claude** — contrato para obter snapshots
+  de configuração PCI a partir de hardware.
+- **Próximo passo sugerido para o Claude** — definir o acesso seguro a
+  snapshots por barramento, dispositivo e função.
+- **Avisos** — os testes usam snapshots sintéticos. A enumeração de
+  hardware e os efeitos de BARs e capacidades ficam por ligar.

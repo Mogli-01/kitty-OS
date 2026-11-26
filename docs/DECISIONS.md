@@ -455,3 +455,14 @@ isso o `&'static [u8]` é sólido durante toda a vida do kernel.
 *Revisto depois do `security-reviewer`*, que confirmou o caso da
 sobreposição com a imagem do kernel. Sem módulo, ou módulo recusado: o arranque
 continua sem initrd (diagnóstico), com a razão escrita no log.
+
+### D-140 — Descodificar snapshots de configuração PCI (2026-11-26, CODEX)
+
+`kitty-pci` exige um cabeçalho completo de 64 bytes para os layouts 0 e
+1. Interpreta os campos little-endian e conserva os BARs em bruto. A
+lista de capacidades convencional só é seguida quando o estado a
+anuncia. Os links ficam limitados a `0x40`–`0xfc`, alinhados a quatro
+bytes e dentro do slice. Um mapa de bits impede voltar ao mesmo offset.
+O descodificador usa Rust seguro, sem alocação nem dependências. A
+obtenção do snapshot e a validação de recursos ficam na futura camada
+de acesso à configuração PCI.
