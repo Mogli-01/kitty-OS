@@ -307,3 +307,21 @@ Formato:
   - Os mapeamentos de firmware e MMIO não são libertados (espaço virtual
     da janela MMIO não é reutilizado).
   - A sequência IOREGSEL/IOWIN tem de ser serializada pelo driver.
+
+### [2026-11-26] — CODEX (camada 16550A)
+
+- **Feito** — configuração 8N1 e polling de TX/RX em `kitty-uart`, com
+  um byte por chamada e tratamento de erros de linha. Decisão D-137.
+- **PRs abertos** — ramo `codex/uart-16550` sobre `main`.
+- **Testes/fuzzing** — seis testes de portas simuladas abrangem a ordem
+  de configuração, falhas de acesso e preservação do estado de receção
+  quando há consultas durante a transmissão. CI executa no host e em Miri.
+  O arranque release no QEMU confirmou a consola inicial em UEFI e BIOS.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — camada de registos em Rust seguro
+  sobre `PortBlock`, com acessos limitados e sem espera ativa.
+- **Bloqueado por / à espera do Claude** — contrato de posse exclusiva
+  da UART e entrega de interrupções para ligar o driver às portas reais.
+- **Próximo passo sugerido para o Claude** — discutir a transição da
+  consola de arranque ou a concessão de uma segunda UART.
+- **Avisos** — os testes de registos usam portas simuladas.

@@ -455,3 +455,16 @@ isso o `&'static [u8]` é sólido durante toda a vida do kernel.
 *Revisto depois do `security-reviewer`*, que confirmou o caso da
 sobreposição com a imagem do kernel. Sem módulo, ou módulo recusado: o arranque
 continua sem initrd (diagnóstico), com a razão escrita no log.
+
+### D-137 — Camada de registos 16550A sem espera ativa (2026-11-26, CODEX)
+
+`kitty-uart` usa exclusivamente `kitty-hal::PortBlock`. Configura 8N1
+com um divisor diferente de zero. Limpa DLAB antes de escrever IER e
+volta ao banco de dados após programar o divisor. Se a configuração
+falhar, as operações de dados ficam indisponíveis até nova configuração
+completa. Cada operação de dados consulta o LSR uma vez e transfere no
+máximo um byte. As flags da receção são preservadas quando a transmissão
+consulta o LSR. Um *overrun* isolado preserva o byte mais antigo na FIFO.
+
+A D-009 conserva a função da consola de arranque. A integração com
+portas reais exige uma concessão exclusiva e um contrato de interrupções.
