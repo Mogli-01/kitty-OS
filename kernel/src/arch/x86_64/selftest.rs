@@ -163,12 +163,11 @@ pub fn irq_pit() -> bool {
         spins += 1;
     }
     let delivered = FIRED.load(Ordering::Acquire) >= baseline + 2;
-    // 4. Mask the line again and stop the periodic timer (mode 0 with the
-    //    maximum count: at most one more terminal count, ~55 ms away, which
-    //    the masked line ignores).
+    // 4. Mask the line again and stop the timer: writing only the mode-0
+    //    control word sets OUT low and the counter does not start until a
+    //    count is written, so no further edge (and no stale IRQ0 latched in
+    //    the PIC's IRR for the next owner of line 0) is produced.
     let _ = irq::unregister_isa(0);
     let _ = pit.write8(3, 0x30);
-    let _ = pit.write8(0, 0xFF);
-    let _ = pit.write8(0, 0xFF);
     delivered
 }
