@@ -7,12 +7,13 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
-mod keyboard;
+mod input;
 mod keys;
 pub mod mouse;
 
-pub use keyboard::{Keyboard, KeyboardInput};
+pub use input::{InputEvent, Ps2Input};
 pub use keys::KeyCode;
+pub use kitty_i8042::Error as ControllerError;
 
 const EXTENDED: u8 = 0xe0;
 const PAUSE: u8 = 0xe1;

@@ -120,6 +120,7 @@ jobs:
           grep -F -- '(running on the IST double-fault stack)' build/serial-logs/double-fault.log
 
           cargo xtask test-keyboard "${flags[@]}"
+          cargo xtask test-mouse "${flags[@]}"
       - name: Upload serial logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -128,4 +129,5 @@ jobs:
           path: |
             build/serial-logs/*.log
             build/serial-keyboard.log
+            build/serial-mouse.log
           if-no-files-found: ignore

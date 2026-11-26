@@ -32,7 +32,8 @@ selftest-heap-overflow = []
 # checks it reaches its handler. Does not panic: expect exit code 33.
 selftest-irq-pit = []
 # Prints decoded events to the serial console for the automated QEMU test.
-selftest-ps2-keyboard = []
+selftest-ps2-input = []
+selftest-ps2-keyboard = ["selftest-ps2-input"]
 
 [dependencies]
 limine = "0.6.5"

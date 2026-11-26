@@ -441,3 +441,17 @@ O modo de teclado preparado antes da configuração AUX serve de
 fallback. O driver desativa a porta AUX, drena dados e repõe a
 configuração anterior. Uma falha na reposição é comunicada a quem
 regista as linhas ISA, para que as mantenha mascaradas.
+
+### D-119 — Fila PS/2 partilhada e validação em IRQ12 (2026-11-26, CODEX)
+
+IRQ1 e IRQ12 partilham o controlador. O estado do i8042 decide se cada
+byte vai para o Set 2 ou para o descodificador do rato. A fila de
+64 entradas conserva a ordem de conclusão dos eventos. Uma perda
+descarta entradas anteriores e publica `Lost` para o consumidor
+limpar o estado de teclas e botões.
+
+Se a origem AUX e a posição do byte corrompido forem conhecidas,
+o descodificador conta e descarta os restantes bytes desse pacote.
+Quando a posição deixa de ser conhecida, a leitura de relatórios
+fica suspensa até nova configuração. O teste QEMU verifica que
+o deslocamento e ambos os estados do botão chegam pelo handler de IRQ12.

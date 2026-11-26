@@ -350,3 +350,22 @@ Formato:
   garantias de afinidade das guardas e de entrega de IRQ do #15.
 - **Avisos** — a configuração corre com consumidores parados.
   O modo de três bytes exige ID zero. Sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (teclado e rato no mesmo controlador)
+
+- **Feito** — ligação de IRQ1 e IRQ12 ao controlador PS/2 e fila
+  comum de 64 eventos. Tratamento de perda e configuração só com
+  teclado quando AUX falha. Decisão D-119.
+- **PRs abertos** — ramo `codex/ps2-input` sobre o #17, com o #32
+  e o #33 como dependências.
+- **Testes/fuzzing** — 18 testes PS/2 no host e em Miri. Teclado e
+  rato passaram em QEMU 8.2.2 nos quatro perfis. O teste de IRQ12
+  verifica movimento (7, 4), pressão e libertação do botão esquerdo.
+- **Benchmarks** — sem medição de latência IRQ para input.
+- **Bloqueado por / à espera do Claude** — revisão do #15, contrato
+  de relógio monotónico e entrega ao processo com `INPUT`.
+- **Próximo passo sugerido para o Claude** — definir as capacidades
+  e o relógio que vão expor os eventos ao user space.
+- **Avisos** — testes de QEMU usam uma feature que regista os eventos
+  na série. A fila existe no kernel e a entrega ao user space fica
+  para o contrato de INPUT. Sem `unsafe` novo.

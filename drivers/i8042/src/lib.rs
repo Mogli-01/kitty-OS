@@ -131,6 +131,7 @@ impl<P: PortBlock> I8042<P> {
     /// Stops the keyboard clock and clears any pending output. The kernel
     /// masks the interrupt line before shutting down an active driver.
     pub fn stop_keyboard(&mut self) -> Result<(), Error> {
+        self.keyboard_only_config = None;
         self.write(STATUS_COMMAND, DISABLE_KEYBOARD_PORT)?;
         self.drain_output()
     }

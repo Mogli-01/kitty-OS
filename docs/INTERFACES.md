@@ -254,6 +254,21 @@ Usar para tudo o que um handler de interrupção possa tocar. **Regra:**
 guards aninhados libertam-se por ordem inversa (LIFO); um `drop` fora de
 ordem pode religar as interrupções com outro lock ainda preso.
 
+### Eventos internos do PS/2 — INSTÁVEL
+
+Fornece: CODEX (`kitty_ps2::Ps2Input`). A fila tem 64 entradas e entrega
+`InputEvent::Key(KeyEvent)` e `InputEvent::Mouse(MouseReport)` por ordem
+de descodificação. IRQ1 e IRQ12 partilham o bloco de portas. O bit AUX
+do estado identifica o dispositivo que enviou o byte. Cada handler lê no
+máximo um byte.
+
+`next_input` devolve `InputEvent::Lost` antes de retomar a entrega após
+perda. O consumidor limpa o estado de teclas e botões retidos. Um byte AUX
+corrompido, quando a posição é conhecida, descarta o restante pacote. Um
+erro que torne a posição desconhecida exige nova configuração do rato.
+A entrega a processos e os timestamps dependem das futuras interfaces de
+`INPUT` e de tempo monotónico.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |

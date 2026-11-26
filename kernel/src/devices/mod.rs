@@ -14,9 +14,9 @@
 
 #![forbid(unsafe_code)]
 
-mod keyboard;
+mod ps2;
 
 /// Starts drivers on the boot CPU before interrupts are enabled.
 pub fn init() {
-    keyboard::init();
+    ps2::init();
 }

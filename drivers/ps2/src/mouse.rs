@@ -27,6 +27,8 @@ enum State {
     Header,
     X { header: u8 },
     Y { header: u8, x: u8 },
+    Discard { remaining: u8 },
+    Unaligned,
 }
 
 /// Receives bytes from a PS/2 mouse in standard three-byte streaming mode.
@@ -57,6 +59,27 @@ impl MouseDecoder {
         self.state = State::Header;
     }
 
+    pub(crate) fn lose_alignment(&mut self) {
+        self.state = State::Unaligned;
+    }
+
+    /// The controller consumed one corrupt byte at the current packet
+    /// position. Skip the remaining bytes of this packet.
+    pub(crate) fn corrupt_byte(&mut self) {
+        let remaining = match self.state {
+            State::Header => 2,
+            State::X { .. } => 1,
+            State::Y { .. } => 0,
+            State::Discard { remaining } => remaining - 1,
+            State::Unaligned => return,
+        };
+        self.state = if remaining == 0 {
+            State::Header
+        } else {
+            State::Discard { remaining }
+        };
+    }
+
     pub fn feed(&mut self, byte: u8) -> Option<MouseReport> {
         match self.state {
             State::Header => {
@@ -81,6 +104,11 @@ impl MouseDecoder {
                     delta_y: axis(byte, header, Y_SIGN, Y_OVERFLOW).map(|delta| -delta),
                 })
             }
+            State::Discard { .. } => {
+                self.corrupt_byte();
+                None
+            }
+            State::Unaligned => None,
         }
     }
 }
@@ -191,5 +219,17 @@ mod tests {
                 assert!(motion.delta_y.is_none_or(|dy| (-255..=256).contains(&dy)));
             }
         }
+    }
+
+    #[test]
+    fn waits_for_reset_when_packet_alignment_is_unknown() {
+        let mut mouse = MouseDecoder::new();
+        mouse.lose_alignment();
+        mouse.corrupt_byte();
+        for byte in [0x09, 0, 0, 0x08, 3, 5] {
+            assert_eq!(mouse.feed(byte), None);
+        }
+        mouse.reset();
+        assert_eq!(report(&mut mouse, [0x08, 3, 5]).delta_x, Some(3));
     }
 }
