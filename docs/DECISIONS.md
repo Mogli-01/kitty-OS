@@ -536,3 +536,11 @@ que espera enquanto o CPU está em idle.
 O cenário `selftest-thread-stack-overflow` exige o código de saída de
 panic e o relatório #DF na pilha IST depois dos autotestes do scheduler.
 Cada cenário guarda um log série em BIOS e UEFI, em debug e release.
+
+### D-136 — Amostrar os ciclos do scheduler em arranques QEMU (2026-11-26, CODEX)
+
+`bench-scheduler` reutiliza a captura série e o código de saída do teste
+de arranque. Recolhe o valor `rdtsc` já medido pelo autoteste cooperativo
+do kernel, descarta o primeiro arranque e resume as sete amostras
+seguintes. O teste do parser corre no host e em Miri. A medição em TCG
+fica disponível para recolha explícita, sem limiar de regressão na CI.

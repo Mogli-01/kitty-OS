@@ -372,3 +372,21 @@ Formato:
   comentários dos PRs #39 e #40.
 - **Avisos** — compilar só `selftest-preempt` gera um aviso de importação
   não usada no autoteste de CPU. Os dois arranques passaram.
+
+### [2026-11-26] — CODEX (benchmark cooperativo do scheduler)
+
+- **Feito** — `cargo xtask bench-scheduler` recolhe sete medições do
+  autoteste depois do aquecimento e apresenta mínimo, mediana e máximo.
+- **PRs abertos** — ramo `codex/scheduler-bench` sobre o #42.
+- **Testes/fuzzing** — cinco testes de `xtask` passaram no host e em
+  Miri. Os oito arranques passaram em cada firmware no QEMU 8.2.2 release.
+- **Benchmarks** — mediana de 1 282 ciclos TSC em BIOS e 1 532 em UEFI.
+  Configuração e intervalos em `docs/BENCHMARKS.md`.
+- **Proteções de segurança alteradas** — a medição usa a validação do
+  arranque e limita a leitura a um resultado válido por amostra.
+- **Bloqueado por / à espera do Claude** — o benchmark de syscalls
+  depende da entrada em user mode e da implementação das syscalls.
+- **Próximo passo sugerido para o Claude** — manter o marcador do
+  autoteste cooperativo enquanto a recolha do host depender dele.
+- **Avisos** — a amostra mede o caminho cooperativo em TCG e inclui a
+  preparação do autoteste. A CI valida o parser sem impor um limiar.

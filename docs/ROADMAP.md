@@ -72,7 +72,7 @@ preparado para a interface gráfica (Fases 10–14).
 | DESEMPENHO: medir a troca de contexto em ciclos (rdtsc) | CLAUDE | FEITO (autoteste no arranque) |
 | SEGURANÇA: pilhas de thread com página de guarda, limpas ao libertar; sem preempção com spinlock preso | CLAUDE | FEITO |
 | GUI-PREP: filas de espera (bloquear/acordar threads) — base do IPC e dos eventos de input | CLAUDE | FEITO |
-| Benchmarks automáticos (troca de contexto, syscalls) | CODEX | TODO |
+| Benchmark de `yield` cooperativo e troca de contexto | CODEX | `cargo xtask bench-scheduler` em revisão. Resultados em [BENCHMARKS.md](BENCHMARKS.md) |
 | Testes QEMU de preempção, espera e guarda das pilhas de threads | CODEX | #42 atualizado com o #40. Arranque, espera e preempção verificados em BIOS e UEFI |
 
 ## Fase 6 — User mode
@@ -85,6 +85,7 @@ preparado para a interface gráfica (Fases 10–14).
 | GUI-PREP: objetos do kernel + tabela de handles por processo, com direitos (D-018) | CLAUDE | TODO |
 | SEGURANÇA: SMEP, SMAP, UMIP ativos | CLAUDE | TODO |
 | Biblioteca de syscalls para userland | CODEX | TODO |
+| Benchmark de ciclos por syscall | CODEX | TODO |
 | Fuzzing das syscalls | CODEX | TODO |
 
 ## Fase 7 — Sistema de ficheiros e shell

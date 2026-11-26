@@ -7,6 +7,7 @@
 //!   run   [--release] [--bios]   boot in QEMU (UEFI from build/esp, or BIOS from the ISO)
 //!   test  [--release] [--bios]   boot headless, check serial output and exit code
 //!   test-memory [--release] [--bios]   check the Phase 3 memory protections in QEMU
+//!   bench-scheduler [--release] [--bios]   sample cooperative yield+switch TSC cycles
 //!
 //! Extra options:
 //!   --features <a,b>   extra kernel cargo features (e.g. selftest-page-fault)
@@ -28,6 +29,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
 
 mod memory_tests;
+mod scheduler_bench;
 
 /// Limine binary release we boot with. Pinned to an exact commit of the
 /// official `v11.x-binary` branch so a compromised or changed branch cannot
@@ -98,11 +100,13 @@ fn main() -> ExitCode {
         "run" => run(&opts),
         "test" => test(&opts),
         "test-memory" => memory_tests::run(&opts),
+        "bench-scheduler" => scheduler_bench::run(&opts),
         _ => {
             eprintln!(
                 "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--expect-panic] [--expect text]"
             );
             eprintln!("       cargo xtask test-memory [--release] [--bios]");
+            eprintln!("       cargo xtask bench-scheduler [--release] [--bios]");
             return ExitCode::FAILURE;
         }
     };
@@ -402,7 +406,11 @@ fn test(opts: &Opts) -> Result<()> {
 
 fn boot_test(opts: &Opts, log: &Path) -> Result<String> {
     let kernel = build_kernel(opts, true)?;
-    let mut cmd = qemu_command(opts, &kernel, true)?;
+    boot_test_with_kernel(opts, &kernel, log)
+}
+
+fn boot_test_with_kernel(opts: &Opts, kernel: &Path, log: &Path) -> Result<String> {
+    let mut cmd = qemu_command(opts, kernel, true)?;
     let mode = if opts.bios { "BIOS/ISO" } else { "UEFI" };
     println!("xtask: boot test ({mode})");
 
