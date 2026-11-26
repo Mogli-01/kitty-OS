@@ -34,5 +34,6 @@ pub struct Platform<'a> {
 /// Starts every driver. Order matters (docs/INTERFACES.md, "Transição PIC
 /// para APIC"): the interrupt controller first, then the devices that
 /// register IRQ lines.
-pub fn init(_platform: &Platform<'_>) {    keyboard::init();
+pub fn init(_platform: &Platform<'_>) {
+    keyboard::init();
 }

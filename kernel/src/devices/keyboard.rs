@@ -45,15 +45,16 @@ pub(super) fn init() {
             return;
         }
     };
-    // The boot CPU still has interrupts disabled. The handler can run only
-    // after the device state has been installed and boot enables interrupts.
+    *KEYBOARD.lock() = Some(keyboard);
     match irq::register_isa(IRQ_LINE, on_irq1) {
         Ok(_) => {
-            *KEYBOARD.lock() = Some(keyboard);
             kprintln!("[kbd] PS/2 keyboard ready on IRQ1");
         }
         Err(error) => {
-            let _ = keyboard.stop();
+            let keyboard = KEYBOARD.lock().take();
+            if let Some(keyboard) = keyboard {
+                let _ = keyboard.stop();
+            }
             kprintln!("[kbd] IRQ1 registration failed: {:?}", error);
         }
     }
