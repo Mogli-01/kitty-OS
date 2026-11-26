@@ -30,7 +30,9 @@ fuzz_target!(|input: &[u8]| {
 
 fn exercise(input: &[u8]) {
     if let Ok(archive) = Archive::parse(input) {
+        let mut count = 0;
         for entry in archive.entries() {
+            count += 1;
             for part in entry.path.components() {
                 assert!(!matches!(part, "" | "." | ".."));
                 assert!(!part.contains(['/', '\\']));
@@ -40,5 +42,6 @@ fn exercise(input: &[u8]) {
                 assert!(data.len() <= input.len());
             }
         }
+        assert_eq!(count, archive.entry_count());
     }
 }

@@ -37,8 +37,7 @@ fn reads_regular_files_and_directories_without_exposing_padding() {
     let mut bytes = Vec::new();
     let data = vec![0x7a; 513];
     append(&mut bytes, &header(b"", b"./", b'5', 0), b"");
-    // Some USTAR producers put a directory capacity in its size field.
-    append(&mut bytes, &header(b"", b"./bin/", b'5', 1024), b"");
+    append(&mut bytes, &header(b"", b"./bin/", b'5', 0), b"");
     append(
         &mut bytes,
         &header(b"./bin", b"sample", b'0', data.len()),
@@ -51,7 +50,8 @@ fn reads_regular_files_and_directories_without_exposing_padding() {
 
     let archive = Archive::parse(&bytes).unwrap();
     let entries: Vec<_> = archive.entries().collect();
-    assert_eq!(entries.len(), 4);
+    assert_eq!(archive.entry_count(), 4);
+    assert_eq!(entries.len(), archive.entry_count());
     assert!(entries[0].path.is_root());
     assert_eq!(entries[0].kind, EntryKind::Directory);
     assert_eq!(entries[1].path.to_string(), "bin");
@@ -121,6 +121,23 @@ fn validates_size_syntax_and_bounds() {
             Archive::parse(&terminated(block.to_vec())).unwrap_err(),
             Error::InvalidSize
         );
+    }
+}
+
+#[test]
+fn rejects_a_directory_with_a_nonzero_size() {
+    let bytes = terminated(header(b"", b"./etc/", b'5', 512).to_vec());
+    assert_eq!(Archive::parse(&bytes).unwrap_err(), Error::InvalidSize);
+}
+
+#[test]
+fn requires_zero_padding_after_the_name_terminator() {
+    for block in [
+        header(b"", b"sample\0data", b'0', 0),
+        header(b"etc\0data", b"sample", b'0', 0),
+    ] {
+        let bytes = terminated(block.to_vec());
+        assert_eq!(Archive::parse(&bytes).unwrap_err(), Error::InvalidPath);
     }
 }
 

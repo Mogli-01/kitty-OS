@@ -500,7 +500,10 @@ o comprimento exato. Os metadados de proprietário e modo ficam fora
 da interpretação do formato inicial.
 
 Todos os cabeçalhos passam pela validação antes de devolver o arquivo.
-A política do initrd exige dois blocos a zero e padding final a zero.
+A política do initrd exige diretórios com tamanho zero, campos de nome e
+prefixo preenchidos com zeros após um NUL, dois blocos de fim a zero e
+padding final a zero. A validação conta as entradas para dimensionar o
+índice do VFS.
 Caminhos UTF-8 podem começar com `./`. O resultado canónico exclui
 componentes vazias, `.` interiores e `..`. Tipos especiais, links e
 cabeçalhos de extensão são recusados. A montagem no VFS valida conflitos

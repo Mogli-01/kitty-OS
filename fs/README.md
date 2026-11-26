@@ -13,7 +13,8 @@ tar --format=ustar -cf initrd.tar -C pasta-do-initrd .
 ```
 
 O parser valida os cabeçalhos, os tamanhos, os caminhos relativos UTF-8
-e os dois blocos de terminação. Aceita padding final a zero e devolve
-slices dos dados dos ficheiros. A validação de conflitos entre nomes
-fica a cargo da montagem no VFS. O contrato para ligar o módulo do Limine
-está em discussão na issue #22.
+e os dois blocos de terminação. Os diretórios têm tamanho zero. Quando
+há um NUL num campo de nome ou prefixo, o resto do campo contém zeros.
+O parser conta as entradas e devolve slices dos dados dos ficheiros.
+A montagem no VFS valida conflitos entre nomes. O núcleo entrega o
+módulo do Limine através do contrato da #22.

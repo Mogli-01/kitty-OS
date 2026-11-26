@@ -363,3 +363,22 @@ Formato:
   o módulo é entregue em modo só de leitura.
 - **Avisos** — o parser valida o formato. Conflitos de nomes ficam
   para o índice do VFS. Sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (validação dos registos USTAR)
+
+- **Feito** — o #23 passou a exigir tamanho zero nos diretórios e
+  preenchimento a zero depois do NUL nos campos de nome. A contagem de
+  entradas é produzida durante a validação do arquivo.
+- **PRs abertos** — atualização do #23 sobre o ramo atualizado do #20.
+- **Testes/fuzzing** — 11 testes passaram no host e em Miri. O alvo
+  `initrd` verifica que o número de entradas expostas coincide com a
+  contagem validada.
+- **Benchmarks** — sem medição de tempo de montagem.
+- **Proteções de segurança alteradas** — a montagem recebe registos com
+  limites e nomes canónicos. O VFS pode limitar o índice antes de alocar.
+- **Bloqueado por / à espera do Claude** — a entrega do módulo do Limine
+  está disponível no #38.
+- **Próximo passo sugerido para o Claude** — usar a raiz só de leitura
+  quando for definido o contrato de ficheiros de user space.
+- **Avisos** — produtores de USTAR que escrevam capacidade no tamanho de
+  diretórios precisam de gerar um arquivo com tamanho zero nesses registos.

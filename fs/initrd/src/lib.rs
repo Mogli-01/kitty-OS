@@ -82,6 +82,7 @@ pub struct Entry<'a> {
 #[derive(Debug)]
 pub struct Archive<'a> {
     records: &'a [u8],
+    entry_count: usize,
 }
 
 impl<'a> Archive<'a> {
@@ -93,6 +94,7 @@ impl<'a> Archive<'a> {
         }
 
         let mut remaining = bytes;
+        let mut entry_count = 0;
         while let Some(header) = remaining.first_chunk::<BLOCK_LEN>() {
             if all_zero(header) {
                 let (end, padding) = remaining
@@ -105,12 +107,21 @@ impl<'a> Archive<'a> {
                     return Err(Error::TrailingData);
                 }
                 let records = &bytes[..bytes.len() - remaining.len()];
-                return Ok(Self { records });
+                return Ok(Self {
+                    records,
+                    entry_count,
+                });
             }
             let (_, tail) = read_record(remaining)?;
             remaining = tail;
+            entry_count += 1;
         }
         Err(Error::MissingEnd)
+    }
+
+    /// The number of validated headers, including an explicit root entry.
+    pub const fn entry_count(&self) -> usize {
+        self.entry_count
     }
 
     /// Entries in archive order. Each file slice ends before its block padding.
@@ -155,8 +166,9 @@ fn read_record(bytes: &[u8]) -> Result<(Entry<'_>, &[u8]), Error> {
             let (data, tail) = rest.split_at_checked(padded).ok_or(Error::TruncatedFile)?;
             (EntryKind::File(&data[..length]), tail)
         }
-        // For directories the size field describes a capacity, with no payload.
-        b'5' => (EntryKind::Directory, rest),
+        // Keep directory records header-only in both the host and kernel tools.
+        b'5' if size == 0 => (EntryKind::Directory, rest),
+        b'5' => return Err(Error::InvalidSize),
         other => return Err(Error::UnsupportedType(other)),
     };
     let prefix = read_name(&header[345..500])?;
@@ -174,6 +186,9 @@ fn read_name(field: &[u8]) -> Result<&str, Error> {
         .iter()
         .position(|&byte| byte == 0)
         .unwrap_or(field.len());
+    if !all_zero(&field[end..]) {
+        return Err(Error::InvalidPath);
+    }
     str::from_utf8(&field[..end]).map_err(|_| Error::InvalidPath)
 }
 
