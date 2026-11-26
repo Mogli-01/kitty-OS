@@ -370,3 +370,20 @@ Formato:
   entre a contagem periódica do PIT e a fonte de tempo do scheduler.
 - **Avisos** — o autoteste do núcleo prova a entrega pelo PIC.
   Os testes de portas verificam a programação de `kitty-pit`.
+
+### [2026-11-26] — CODEX (PIT no scheduler)
+
+- **Feito** — PIT legado ligado a `sched::tick()` com frequência
+  pedida de 100 Hz. Decisão D-128.
+- **PRs abertos** — ramo `codex/pit-scheduler` sobre o #39 com o
+  driver do #19.
+- **Testes/fuzzing** — 20 arranques da etapa de CI passaram no QEMU
+  8.2.2, em BIOS e UEFI, debug e release. Passaram também os dois
+  ensaios release com o autoteste de preempção existente.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — só regista a linha após
+  configurar o PIT e conserva a concessão exclusiva das portas.
+- **Bloqueado por / à espera do Claude** — revisão do #39 e
+  contrato de registo do temporizador local na #36.
+- **Próximo passo sugerido para o Claude** — manter o registo de
+  IRQ0 nos autotestes e o EOI antes da preempção.

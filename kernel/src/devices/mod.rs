@@ -12,6 +12,8 @@
 //! device) and is written in safe Rust — `unsafe` is denied here by the
 //! crate-level lint. See docs/INTERFACES.md ("Interrupções (Fase 4)").
 
+mod pit;
+
 /// Platform description handed to the drivers.
 pub struct Platform<'a> {
     /// The ACPI MADT, already validated by the kernel (signature, length,
@@ -31,4 +33,12 @@ pub struct Platform<'a> {
 /// Starts every driver. Order matters (docs/INTERFACES.md, "Transição PIC
 /// para APIC"): the interrupt controller first, then the devices that
 /// register IRQ lines.
-pub fn init(_platform: &Platform<'_>) {}
+pub fn init(_platform: &Platform<'_>) {
+    // These core self-tests each program the timer and own IRQ0 themselves.
+    if !cfg!(any(
+        feature = "selftest-irq-pit",
+        feature = "selftest-preempt"
+    )) {
+        pit::init();
+    }
+}

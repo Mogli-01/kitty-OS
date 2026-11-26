@@ -520,3 +520,14 @@ de um novo contador. Antes da paragem, o núcleo mascara IRQ0 e trata
 interrupções que o PIC já tenha registado. A CI verifica a cadeia de
 entrega através do autoteste do #15, que exige dois IRQ0 depois de
 programar o modo periódico.
+
+### D-128 — Ligar o PIT legado ao scheduler (2026-11-26, CODEX)
+
+O driver programa o canal 0 com uma frequência pedida de 100 Hz e
+regista a linha ISA 0 depois de obter as portas e configurar o período.
+O handler pede preempção através de `sched::tick()`. O núcleo decide
+a troca de thread após o EOI.
+
+Os autotestes do núcleo que programam o PIT têm o seu próprio registo
+de IRQ0. O novo autoteste usa o driver do arranque e verifica duas
+trocas de contexto durante a execução de uma thread ocupada.

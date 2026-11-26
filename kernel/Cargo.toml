@@ -37,6 +37,10 @@ selftest-preempt = []
 # A kernel thread recurses into its stack guard page: expect a double fault.
 selftest-thread-stack-overflow = []
 
+# Exercises the actual boot PIT driver under QEMU's normal test exit path.
+selftest-pit-driver = []
+
 [dependencies]
 limine = "0.6.5"
 kitty-hal = { path = "../hal" }
+kitty-pit = { path = "../drivers/pit" }

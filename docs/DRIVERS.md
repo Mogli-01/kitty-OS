@@ -29,8 +29,10 @@ paragem e trate no controlador qualquer interrupção já pendente.
 
 `cargo test -p kitty-pit --locked` verifica a ordem das escritas, o
 arredondamento, os limites e as escritas recusadas através de `PortBlock`
-simulado. O PIT periódico será ligado ao scheduler quando a interface
-`sched::tick()` estiver disponível.
+simulado. No arranque, o PIT programa 100 Hz e o handler de IRQ0 chama
+`sched::tick()`. O núcleo confirma a interrupção antes de decidir se
+troca de thread. Os autotestes `selftest-irq-pit` e `selftest-preempt`
+reclamam o PIT para os seus próprios cenários.
 
 O autoteste do núcleo programa o PIT e confirma dois IRQ0 pelo PIC.
 A segunda entrega verifica que o reconhecimento da primeira libertou a
@@ -38,4 +40,5 @@ linha. A CI executa o teste em BIOS e UEFI, em debug e release.
 
 ```sh
 cargo xtask test --features selftest-irq-pit --expect 'hardware IRQ0 (PIT) delivered twice'
+cargo xtask test --features selftest-pit-driver --expect '[pit] driver preempted a busy thread twice'
 ```
