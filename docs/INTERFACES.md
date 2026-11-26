@@ -292,15 +292,18 @@ pub struct devices::Platform<'a> {
 - **Marca:** `module_string: kitty-initrd` no `limine.conf` (chega no campo
   `cmdline` do ficheiro). Comparação **exata** (`kitty-initrdX` não conta).
 - **Validação do núcleo** antes de criar o slice: um só módulo marcado
-  (dois → recusado como ambíguo); tamanho 1 B–128 MiB; o intervalo físico
-  inteiro dentro de uma única região "kernel and modules" do mapa.
+  (dois → recusado como ambíguo; mais de 64 módulos → recusado); tamanho
+  1 B–128 MiB; o intervalo físico inteiro dentro de uma única região "kernel
+  and modules" do mapa, sem tocar em nenhuma página da imagem do kernel, e
+  com todas as páginas mapeadas só de leitura.
 - **Garantias do slice:** imutável e válido para sempre (`'static`): as
   páginas estão mapeadas só de leitura e NX no HHDM e o PMM nunca as entrega.
   Não há cópia: o VFS pode guardar referências para os ficheiros do arquivo.
   O slice tem exatamente o tamanho do ficheiro reportado pelo Limine.
 - **Falhas:** sem módulo → `None` e `[initrd] no module`; módulo recusado →
-  `None` e `[initrd] module REFUSED (<razão>)` (`Ambiguous`, `BadSize`,
-  `NotInDirectMap`, `OutsideModuleMemory`). O arranque continua sem initrd.
+  `None` e `[initrd] module REFUSED (<razão>)` (`Ambiguous`,
+  `TooManyModules`, `BadSize`, `NotInDirectMap`, `OutsideModuleMemory`,
+  `OverlapsKernel`, `WritableAlias`). O arranque continua sem initrd.
 - **O que fica com o VFS (Codex):** validar o formato USTAR (cabeçalhos,
   checksums, tamanhos, nomes) antes de expor qualquer entrada.
 - Marcadores na série: `[initrd] module validated (N KiB, read-only)`,

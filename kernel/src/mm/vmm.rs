@@ -543,6 +543,13 @@ pub enum InitrdError {
     /// The bytes are not entirely inside one "kernel and modules" region of
     /// the memory map.
     OutsideModuleMemory,
+    /// The range overlaps the kernel image (same memory-map type as
+    /// modules), which has writable pages: refused.
+    OverlapsKernel,
+    /// A page of the range is mapped writable somewhere we checked.
+    WritableAlias,
+    /// More boot modules than the kernel inspects.
+    TooManyModules,
 }
 
 /// Validates the initrd module reported by the bootloader and returns it as
@@ -556,6 +563,7 @@ pub fn initrd_slice(
     let (virt, size) = match module {
         InitrdModule::Absent => return Ok(None),
         InitrdModule::Ambiguous => return Err(InitrdError::Ambiguous),
+        InitrdModule::TooManyModules => return Err(InitrdError::TooManyModules),
         InitrdModule::Found { virt, size } => (virt, size),
     };
     if size == 0 || size > MAX_INITRD {
@@ -574,16 +582,93 @@ pub fn initrd_slice(
     if !inside_modules {
         return Err(InitrdError::OutsideModuleMemory);
     }
+    // The kernel image lives in the same memory-map type as modules and
+    // has writable pages (.data/.bss): a "module" overlapping it would be an
+    // immutable alias of memory the kernel writes, and would leak kernel
+    // data to the VFS. Check every image page's *physical* target in our own
+    // tables (the image is not assumed to be physically contiguous).
+    let image_start = page_down(sym(&raw const __kernel_start));
+    let image_end = page_up(sym(&raw const __data_end));
+    let first_page = page_down(phys);
+    let last_page_end = page_up(phys_end);
+    let overlaps_kernel = with_kernel_space(|space| {
+        let mut virt = image_start;
+        while virt < image_end {
+            if let Some(p) = VirtAddr::new(virt).and_then(|v| space.translate(v)) {
+                let page = p.as_u64() & !(PAGE_SIZE - 1);
+                if (first_page..last_page_end).contains(&page) {
+                    return true;
+                }
+            }
+            virt += PAGE_SIZE;
+        }
+        false
+    })
+    .unwrap_or(true);
+    if overlaps_kernel {
+        return Err(InitrdError::OverlapsKernel);
+    }
+    // Every HHDM page of the range must be mapped read-only (a page shared
+    // with a neighbouring RW region, e.g. ACPI, could have been mapped RW
+    // first: "first mapping wins" in `map_hhdm`).
+    let writable = with_kernel_space(|space| {
+        let mut page = first_page;
+        while page < last_page_end {
+            let mapping = VirtAddr::new(page.saturating_add(hhdm))
+                .and_then(|v| paging::translate_in(space.root(), v));
+            match mapping {
+                Some((_, false)) => {}
+                _ => return true, // writable or unmapped: refuse
+            }
+            page += PAGE_SIZE;
+        }
+        false
+    })
+    .unwrap_or(true);
+    if writable {
+        return Err(InitrdError::WritableAlias);
+    }
     let start = PhysAddr::new(phys).ok_or(InitrdError::NotInDirectMap)?;
     let ptr = core::ptr::with_exposed_provenance::<u8>(
         super::hhdm::phys_to_virt(start).as_u64() as usize
     );
     let len = usize::try_from(size).map_err(|_| InitrdError::BadSize)?;
     // SAFETY: `[phys, phys + size)` lies entirely inside one
-    // KernelAndModules region (checked above). Our kernel tables map those
-    // regions in the HHDM **read-only and NX** (D-029) for the kernel's whole
-    // life, and the PMM never hands out their frames (it only manages
-    // Usable memory), so nothing can write, free or remap these bytes: an
-    // immutable `&'static [u8]` is sound. Every bit pattern is a valid `u8`.
+    // KernelAndModules region, does not overlap any physical page of the
+    // kernel image (the only other mapping of such memory, checked page by
+    // page above), and every one of its HHDM pages is mapped read-only and
+    // NX (checked above). The PMM never hands out these frames (it only
+    // manages Usable memory) and nothing remaps them, so no writable alias
+    // exists and the bytes are never freed: an immutable `&'static [u8]` is
+    // sound. Every bit pattern is a valid `u8`.
     Ok(Some(unsafe { core::slice::from_raw_parts(ptr, len) }))
+}
+
+/// Boot self-test of [`initrd_slice`] with forged modules: one pointing at
+/// the kernel's own `.text`, one too large, one outside the direct map.
+/// Every one must be refused with the right error.
+pub fn initrd_selftest() -> bool {
+    use crate::boot_info::InitrdModule;
+    let hhdm = super::hhdm::offset();
+    let text = VirtAddr::new(sym(&raw const __text_start));
+    let Some(text_phys) = text.and_then(|v| with_kernel_space(|s| s.translate(v)).flatten()) else {
+        return false;
+    };
+    let over_kernel = InitrdModule::Found {
+        virt: hhdm + text_phys.as_u64(),
+        size: PAGE_SIZE,
+    };
+    let too_big = InitrdModule::Found {
+        virt: hhdm + text_phys.as_u64(),
+        size: MAX_INITRD + 1,
+    };
+    let not_hhdm = InitrdModule::Found {
+        virt: hhdm.wrapping_sub(PAGE_SIZE),
+        size: PAGE_SIZE,
+    };
+    initrd_slice(over_kernel) == Err(InitrdError::OverlapsKernel)
+        && initrd_slice(too_big) == Err(InitrdError::BadSize)
+        && initrd_slice(not_hhdm) == Err(InitrdError::NotInDirectMap)
+        && initrd_slice(InitrdModule::Ambiguous) == Err(InitrdError::Ambiguous)
+        && initrd_slice(InitrdModule::Absent) == Ok(None)
 }

@@ -286,7 +286,10 @@ Formato:
     único, tamanho, todo em memória de módulos) e entregue em
     `Platform::initrd` como `&'static [u8]` só de leitura e NX (D-043).
     Testado à mão no QEMU: 1 módulo → validado; 2 → recusado (ambíguo);
-    marca parecida → ignorado.
+    marca parecida → ignorado. O `security-reviewer` confirmou que um
+    "módulo" por cima da imagem do kernel passava a validação: agora é
+    recusado (verificação por página), tal como páginas com alias RW e
+    mais de 64 módulos.
 - **PRs abertos:** #15 (Fase 4, pronto); #35 (`claude/fase4-acpi-apic`,
   base #15); `claude/initrd-modulo` (base #35).
 - **Proteções de segurança alteradas:** ATIVAS — validação ACPI e cópia da

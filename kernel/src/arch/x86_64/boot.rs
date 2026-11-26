@@ -240,12 +240,16 @@ fn is_initrd_tag(ptr: u64) -> bool {
         return false;
     }
     for i in 0..MAX_TAG_SCAN {
-        let p = core::ptr::with_exposed_provenance::<u8>(ptr as usize + i);
-        // SAFETY: Limine places module strings in bootloader-reclaimable
-        // memory mapped by its HHDM (still active: we run on Limine's page
-        // tables here) and terminates them with NUL; we stop at the first
-        // NUL or after MAX_TAG_SCAN bytes, whichever comes first, and only
-        // read bytes (any value is a valid `u8`).
+        let Some(addr) = (ptr as usize).checked_add(i) else {
+            return false;
+        };
+        let p = core::ptr::with_exposed_provenance::<u8>(addr);
+        // SAFETY: we trust the bootloader's string pointer (Limine is in the
+        // trusted computing base, docs/SECURITY.md): Limine places module
+        // strings in bootloader-reclaimable memory mapped by its HHDM (still
+        // active: we run on Limine's page tables here) and terminates them
+        // with NUL. We stop at the first NUL or after MAX_TAG_SCAN bytes and
+        // only read bytes (any value is a valid `u8`).
         let byte = unsafe { p.read_volatile() };
         match (INITRD_TAG.get(i), byte) {
             (None, 0) => return true, // matched the whole tag, then NUL
@@ -262,8 +266,12 @@ fn find_initrd() -> InitrdModule {
     let Some(response) = MODULES_REQUEST.response() else {
         return InitrdModule::Absent;
     };
+    let modules = response.modules();
+    if modules.len() > MAX_MODULES {
+        return InitrdModule::TooManyModules;
+    }
     let mut found = InitrdModule::Absent;
-    for file in response.modules().iter().take(MAX_MODULES) {
+    for file in modules {
         if !is_initrd_tag(file_field(file, FILE_CMDLINE)) {
             continue;
         }

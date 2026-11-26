@@ -443,7 +443,15 @@ compara a string **exatamente** (no máximo 64 bytes lidos), e recusa se
 houver mais do que um módulo marcado (ambíguo). Depois das nossas tabelas
 de páginas estarem ativas, `vmm::initrd_slice` exige tamanho 1 B–128 MiB e
 que **todo** o intervalo físico esteja numa única região "kernel and
-modules" do mapa. Essas regiões estão mapeadas no HHDM **só de leitura e
-NX** (D-029) e o PMM nunca as entrega, por isso o `&'static [u8]` é sólido
-durante toda a vida do kernel. Sem módulo, ou módulo recusado: o arranque
+modules" do mapa, que **não se sobreponha a nenhuma página física da imagem
+do kernel** (verificado página a página nas nossas tabelas: a imagem tem o
+mesmo tipo no mapa e páginas `.data`/`.bss` escrevíveis — um "módulo" por
+cima dela seria um alias imutável de memória que o kernel escreve e uma
+fuga de dados do kernel para o VFS), e que todas as suas páginas do HHDM
+estejam mapeadas **só de leitura** (uma página partilhada com uma região
+ACPI podia ter ficado RW). Mais de 64 módulos → recusado (não se sabe se
+há outro `kitty-initrd` escondido). O PMM nunca entrega estas páginas, por
+isso o `&'static [u8]` é sólido durante toda a vida do kernel.
+*Revisto depois do `security-reviewer`*, que confirmou o caso da
+sobreposição com a imagem do kernel. Sem módulo, ou módulo recusado: o arranque
 continua sem initrd (diagnóstico), com a razão escrita no log.

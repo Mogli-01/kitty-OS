@@ -142,6 +142,10 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         None => kprintln!("[apic] capability self-test: APIC unavailable or check failed"),
     }
 
+    assert!(
+        mm::vmm::initrd_selftest(),
+        "initrd validation self-test failed"
+    );
     let module = INITRD
         .lock()
         .take()

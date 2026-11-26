@@ -43,6 +43,9 @@ pub enum InitrdModule {
     },
     /// More than one module carries it: refused (which one is meant?).
     Ambiguous,
+    /// More modules than the kernel inspects: a second tagged module could
+    /// be hidden among the uninspected ones, so this is refused too.
+    TooManyModules,
 }
 
 /// Physical and virtual load address of the kernel image.
