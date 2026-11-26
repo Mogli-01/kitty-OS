@@ -16,6 +16,18 @@ O handler pode entregar os bytes do teclado ao descodificador do #14 e
 reiniciá-lo quando a porta reportar um erro de paridade ou timeout. O
 núcleo trata o EOI através do contrato do #15.
 
+`I8042::initialize_mouse` prepara a porta AUX depois do teclado, com
+IRQ1 e IRQ12 ainda mascarados. O comando `0xD4` em `0x64` encaminha a
+escrita seguinte de `0x60` para o rato. Cada resposta tem de trazer o
+bit AUX no registo de estado. O driver repõe os valores de fábrica e
+confirma o ID zero antes de aceitar relatórios de três bytes.
+
+Se a configuração AUX falhar, o driver fecha a porta, drena os bytes
+pendentes e repõe o modo de teclado. Um erro `KeyboardRestoreFailed`
+significa que a ligação ao kernel deve manter ambos os IRQs mascarados.
+`stop_mouse` permite restaurar o modo de teclado se o registo de IRQ12
+falhar durante o arranque.
+
 ```sh
 cargo test --locked -p kitty-i8042
 cargo miri test --locked -p kitty-i8042

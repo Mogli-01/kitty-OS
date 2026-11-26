@@ -395,3 +395,15 @@ da validação de paridade e timeout.
 O transporte é partilhável com a futura porta auxiliar. O descodificador
 do teclado recebe só bytes validados da sua porta e pode limpar o estado
 quando o controlador sinaliza uma perda.
+
+### D-118 — Respostas AUX e recuperação do teclado no i8042 (2026-11-26, CODEX)
+
+O mesmo bloco de portas serve o teclado e o rato. Durante a preparação,
+o driver fecha as portas e drena a saída. Reencaminha cada comando do
+rato com `0xD4` e aceita apenas respostas com o bit AUX. Confirma o
+ID padrão zero antes de habilitar a produção de relatórios e o IRQ12.
+
+O modo de teclado preparado antes da configuração AUX serve de
+fallback. O driver desativa a porta AUX, drena dados e repõe a
+configuração anterior. Uma falha na reposição é comunicada a quem
+regista as linhas ISA, para que as mantenha mascaradas.
