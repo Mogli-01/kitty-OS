@@ -402,3 +402,18 @@ Formato:
 - **Avisos** — esta raiz cobre o initrd. A validação por processo e o
   acesso a disco ficam para a ligação de syscalls e outras raízes.
   Sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (limite de entradas do VFS)
+
+- **Feito** — o VFS aceita até 65 536 cabeçalhos USTAR. Usa a contagem
+  validada para uma única reserva falível do índice.
+- **PRs abertos** — atualização do #24 sobre o #23.
+- **Testes/fuzzing** — o teste de fronteira verifica a aceitação no
+  limite e a recusa de uma entrada a mais antes da reserva.
+- **Benchmarks** — sem medição de tempo de montagem.
+- **Proteções de segurança alteradas** — o limite reduz a memória que
+  uma imagem de arranque pode pedir para o índice.
+- **Bloqueado por / à espera do Claude** — o #38 fornece o módulo ao VFS.
+- **Próximo passo sugerido para o Claude** — definir os direitos e os
+  buffers de leitura na interface de ficheiros de user space.
+- **Avisos** — a contagem inclui o cabeçalho da raiz quando presente.

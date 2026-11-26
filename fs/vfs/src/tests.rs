@@ -38,6 +38,15 @@ fn fixture() -> Vec<u8> {
 }
 
 #[test]
+fn bounds_the_index_before_reserving_memory() {
+    assert!(matches!(
+        allocate_index(MAX_ENTRIES + 1),
+        Err(Error::TooManyEntries)
+    ));
+    assert!(allocate_index(MAX_ENTRIES).unwrap().capacity() >= MAX_ENTRIES);
+}
+
+#[test]
 fn looks_up_explicit_and_implicit_directories() {
     let bytes = fixture();
     let fs = InitrdFs::mount(&bytes).unwrap();

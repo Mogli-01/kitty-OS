@@ -339,6 +339,10 @@ ordem pode religar as interrupções com outro lock ainda preso.
 
 Fornece: CODEX (`fs/vfs`). O módulo de arranque vem do núcleo (#22).
 
+A montagem aceita até 65 536 entradas USTAR, contando o cabeçalho da raiz
+quando presente. Acima desse limite, devolve `Error::TooManyEntries` antes
+de reservar memória para o índice.
+
 ```rust
 impl<'a> InitrdFs<'a> {
     pub fn mount(bytes: &'a [u8]) -> Result<Self, Error>;

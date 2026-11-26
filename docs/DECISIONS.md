@@ -522,5 +522,7 @@ montagem recusa ambos os conflitos antes de disponibilizar a raiz.
 
 A pesquisa usa busca binária. Os nomes com um prefixo comum formam um
 intervalo pelo qual se listam os filhos de um diretório, incluindo os
-implícitos. O índice é criado com reserva de memória falível. A leitura
-por offset copia apenas bytes do ficheiro para um buffer já validado.
+implícitos. O índice aceita até 65 536 cabeçalhos. O VFS usa a contagem
+da validação USTAR para fazer uma reserva de memória falível antes de
+preencher o índice. A leitura por offset copia apenas bytes do ficheiro
+para um buffer já validado.

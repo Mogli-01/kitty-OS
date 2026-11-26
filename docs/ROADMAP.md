@@ -88,8 +88,8 @@ preparado para a interface gráfica (Fases 10–14).
 ## Fase 7 — Sistema de ficheiros e shell
 | Tarefa | Dono | Estado |
 |---|---|---|
-| VFS | CODEX | Raiz só de leitura, pesquisa e listagem do initrd em revisão; montagem no kernel e syscalls pendentes (#22) |
-| initrd (módulo do Limine) | CODEX | Parser USTAR em revisão no ramo `codex/initrd-ustar`; ligação ao Limine na #22 |
+| VFS | CODEX | Raiz só de leitura com índice limitado, pesquisa e listagem em revisão no #24. Montagem no arranque em preparação |
+| initrd (módulo do Limine) | CODEX | Parser USTAR em revisão no #23. Entrega do módulo disponível no #38 |
 | Shell em userland | CODEX | TODO |
 | Entrega do módulo initrd ao VFS (`Platform::initrd`, validado, só de leitura) (#22) | CLAUDE | FEITO |
 | Syscalls de ficheiros (open/read/write/close) no núcleo | CLAUDE | TODO |
