@@ -82,12 +82,14 @@ pub fn kmain(mut boot: BootInfo) -> ! {
     // The second half of boot runs on another stack and cannot see `boot`:
     // keep what it needs. (Only a physical address; never printed.)
     RSDP_PHYS.store(boot.rsdp_phys.unwrap_or(0), Ordering::Release);
+    *INITRD.lock() = Some(boot.initrd);
 
     // Leave the bootloader's stack for our own, which has a guard page.
     arch::x86_64::stacks::run_on_main_stack(kmain_on_kernel_stack)
 }
 
 static RSDP_PHYS: AtomicU64 = AtomicU64::new(0);
+static INITRD: sync::IrqSpinLock<Option<boot_info::InitrdModule>> = sync::IrqSpinLock::new(None);
 
 fn rsdp_phys() -> Option<u64> {
     Some(RSDP_PHYS.load(Ordering::Acquire)).filter(|&a| a != 0)
@@ -140,8 +142,31 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         None => kprintln!("[apic] capability self-test: APIC unavailable or check failed"),
     }
 
+    let module = INITRD
+        .lock()
+        .take()
+        .unwrap_or(boot_info::InitrdModule::Absent);
+    let initrd = match mm::vmm::initrd_slice(module) {
+        Ok(Some(bytes)) => {
+            kprintln!(
+                "[initrd] module validated ({} KiB, read-only)",
+                bytes.len().div_ceil(1024)
+            );
+            Some(bytes)
+        }
+        Ok(None) => {
+            kprintln!("[initrd] no module (booting without initrd)");
+            None
+        }
+        Err(e) => {
+            kprintln!("[initrd] module REFUSED ({:?}); booting without initrd", e);
+            None
+        }
+    };
+
     let platform = devices::Platform {
         madt: acpi.as_ref().ok().map(|t| &t.madt[..]),
+        initrd,
     };
     devices::init(&platform);
     arch::enable_interrupts();

@@ -432,3 +432,18 @@ que implementam `kitty_hal::RegisterBlock`, mapeados UC e NX, com dono único.
   Endereços de I/O APIC cuja janela toque na página do local APIC ou noutro
   I/O APIC são descartados (uma MADT hostil podia apontar um "I/O APIC" para
   o ICR); a versão lida tem de ser plausível.
+
+### D-043 — Módulo initrd: validado pelo núcleo, entregue só de leitura (2026-11-26, CLAUDE)
+O initrd é o módulo do Limine com a string `kitty-initrd`
+(`module_string: kitty-initrd` no `limine.conf`). No arranque, o kernel lê
+diretamente o endereço, o tamanho e a string de cada módulo (o
+`File::cmdline()` do crate `limine` faz `unwrap()` a UTF-8 inválido e daria
+panic; o `File::data()` cria um slice a partir de valores não verificados),
+compara a string **exatamente** (no máximo 64 bytes lidos), e recusa se
+houver mais do que um módulo marcado (ambíguo). Depois das nossas tabelas
+de páginas estarem ativas, `vmm::initrd_slice` exige tamanho 1 B–128 MiB e
+que **todo** o intervalo físico esteja numa única região "kernel and
+modules" do mapa. Essas regiões estão mapeadas no HHDM **só de leitura e
+NX** (D-029) e o PMM nunca as entrega, por isso o `&'static [u8]` é sólido
+durante toda a vida do kernel. Sem módulo, ou módulo recusado: o arranque
+continua sem initrd (diagnóstico), com a razão escrita no log.

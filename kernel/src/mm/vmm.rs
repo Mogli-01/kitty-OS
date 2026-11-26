@@ -525,3 +525,65 @@ pub fn mmio_selftest() -> Option<u8> {
     }
     apic.read::<u32>(0x30).map(|v| (v & 0xFF) as u8)
 }
+
+// --------------------------------------------------------------- initrd ---
+
+/// Largest initrd we accept.
+pub const MAX_INITRD: u64 = 128 * 1024 * 1024;
+
+/// Why the initrd module was refused (docs/INTERFACES.md, "initrd").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InitrdError {
+    /// More than one module is tagged `kitty-initrd`.
+    Ambiguous,
+    /// Size is 0 or larger than [`MAX_INITRD`].
+    BadSize,
+    /// The address is not inside the HHDM.
+    NotInDirectMap,
+    /// The bytes are not entirely inside one "kernel and modules" region of
+    /// the memory map.
+    OutsideModuleMemory,
+}
+
+/// Validates the initrd module reported by the bootloader and returns it as
+/// an immutable slice valid for the rest of the kernel's life (D-043).
+///
+/// `Ok(None)` means "no module" (a boot without initrd is allowed).
+pub fn initrd_slice(
+    module: crate::boot_info::InitrdModule,
+) -> Result<Option<&'static [u8]>, InitrdError> {
+    use crate::boot_info::InitrdModule;
+    let (virt, size) = match module {
+        InitrdModule::Absent => return Ok(None),
+        InitrdModule::Ambiguous => return Err(InitrdError::Ambiguous),
+        InitrdModule::Found { virt, size } => (virt, size),
+    };
+    if size == 0 || size > MAX_INITRD {
+        return Err(InitrdError::BadSize);
+    }
+    let hhdm = super::hhdm::offset();
+    let phys = virt.checked_sub(hhdm).ok_or(InitrdError::NotInDirectMap)?;
+    let phys_end = phys.checked_add(size).ok_or(InitrdError::BadSize)?;
+    let inside_modules = MEMORY_MAP.lock().is_some_and(|map| {
+        map.iter().any(|r| {
+            r.kind == MemoryKind::KernelAndModules
+                && r.base <= phys
+                && r.base.saturating_add(r.len) >= phys_end
+        })
+    });
+    if !inside_modules {
+        return Err(InitrdError::OutsideModuleMemory);
+    }
+    let start = PhysAddr::new(phys).ok_or(InitrdError::NotInDirectMap)?;
+    let ptr = core::ptr::with_exposed_provenance::<u8>(
+        super::hhdm::phys_to_virt(start).as_u64() as usize
+    );
+    let len = usize::try_from(size).map_err(|_| InitrdError::BadSize)?;
+    // SAFETY: `[phys, phys + size)` lies entirely inside one
+    // KernelAndModules region (checked above). Our kernel tables map those
+    // regions in the HHDM **read-only and NX** (D-029) for the kernel's whole
+    // life, and the PMM never hands out their frames (it only manages
+    // Usable memory), so nothing can write, free or remap these bytes: an
+    // immutable `&'static [u8]` is sound. Every bit pattern is a valid `u8`.
+    Ok(Some(unsafe { core::slice::from_raw_parts(ptr, len) }))
+}

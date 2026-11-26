@@ -282,6 +282,30 @@ pub fn arch::apic::io_apic(phys: u64) -> Result<IoApicRegisters, ApicError>;
 6. O kernel liga as interrupções (`sti`) depois de `devices::init`.
 O EOI do APIC é a escrita em 0x0B0 feita por `InterruptController::eoi`.
 
+**initrd (issue #22):**
+```rust
+pub struct devices::Platform<'a> {
+    pub madt: Option<&'a [u8]>,
+    pub initrd: Option<&'static [u8]>,   // módulo `kitty-initrd`, validado
+}
+```
+- **Marca:** `module_string: kitty-initrd` no `limine.conf` (chega no campo
+  `cmdline` do ficheiro). Comparação **exata** (`kitty-initrdX` não conta).
+- **Validação do núcleo** antes de criar o slice: um só módulo marcado
+  (dois → recusado como ambíguo); tamanho 1 B–128 MiB; o intervalo físico
+  inteiro dentro de uma única região "kernel and modules" do mapa.
+- **Garantias do slice:** imutável e válido para sempre (`'static`): as
+  páginas estão mapeadas só de leitura e NX no HHDM e o PMM nunca as entrega.
+  Não há cópia: o VFS pode guardar referências para os ficheiros do arquivo.
+  O slice tem exatamente o tamanho do ficheiro reportado pelo Limine.
+- **Falhas:** sem módulo → `None` e `[initrd] no module`; módulo recusado →
+  `None` e `[initrd] module REFUSED (<razão>)` (`Ambiguous`, `BadSize`,
+  `NotInDirectMap`, `OutsideModuleMemory`). O arranque continua sem initrd.
+- **O que fica com o VFS (Codex):** validar o formato USTAR (cabeçalhos,
+  checksums, tamanhos, nomes) antes de expor qualquer entrada.
+- Marcadores na série: `[initrd] module validated (N KiB, read-only)`,
+  `[initrd] no module`, `[initrd] module REFUSED`.
+
 **Onde ligar um driver:** em `kernel::devices::init()`
 (`kernel/src/devices/`), que corre depois do heap e do núcleo de
 interrupções e **antes** de as interrupções serem ligadas (D-040). Ex. para

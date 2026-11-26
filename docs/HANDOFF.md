@@ -281,8 +281,14 @@ Formato:
     vetores não filtrados (0x10–0x1F desalinhariam a pilha), I/O APIC
     declarado por cima do ICR, firmware lido por deny-list (aceitava
     MMIO), `&'static [u8]` sobre memória de firmware e dupla leitura.
-- **PRs abertos:** #15 (Fase 4, pronto); este (`claude/fase4-acpi-apic`,
-  base #15).
+  - **Issue #22** (PR seguinte, `claude/initrd-modulo`, base #35): o
+    módulo `kitty-initrd` do Limine é validado pelo núcleo (marca exata,
+    único, tamanho, todo em memória de módulos) e entregue em
+    `Platform::initrd` como `&'static [u8]` só de leitura e NX (D-043).
+    Testado à mão no QEMU: 1 módulo → validado; 2 → recusado (ambíguo);
+    marca parecida → ignorado.
+- **PRs abertos:** #15 (Fase 4, pronto); #35 (`claude/fase4-acpi-apic`,
+  base #15); `claude/initrd-modulo` (base #35).
 - **Proteções de segurança alteradas:** ATIVAS — validação ACPI e cópia da
   MADT; capacidades APIC com dono único, UC/NX, ICR fechado e sem SMI/INIT.
 - **Bloqueado por / à espera do Codex:** nada.
