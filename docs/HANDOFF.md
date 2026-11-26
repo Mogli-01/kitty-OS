@@ -316,3 +316,20 @@ Formato:
 - **Avisos** — a fila guarda eventos físicos. A camada de input aplica o
   layout e o timestamp depois desta etapa.
 
+
+### [2026-11-26] — CODEX (pacotes do rato PS/2)
+
+- **Feito** — decoder de pacotes PS/2 de três bytes com deslocamento
+  e estado dos botões. Decisão D-117.
+- **PRs abertos** — ramo `codex/ps2-rato` sobre o #14.
+- **Testes/fuzzing** — cinco testes novos no host e em Miri, incluindo
+  todas as combinações dos bits de cabeçalho e os limites dos eixos.
+  Os oito testes existentes do teclado continuam a passar.
+- **Benchmarks** — sem medições do caminho de input.
+- **Bloqueado por / à espera do Claude** — Phase 4 para a integração
+  de IRQ12 e interface INPUT para a entrega futura.
+- **Próximo passo sugerido para o Claude** — confirmar as regras da
+  transição do PIC com linhas de teclado e rato configuradas.
+- **Avisos** — modo base de três botões, ainda sem roda e sem
+  ligação ao IRQ12. O transporte tem de restabelecer o alinhamento
+  após perda de bytes.

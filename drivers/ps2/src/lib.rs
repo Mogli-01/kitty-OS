@@ -9,6 +9,7 @@
 
 mod keyboard;
 mod keys;
+pub mod mouse;
 
 pub use keyboard::{Keyboard, KeyboardInput};
 pub use keys::KeyCode;

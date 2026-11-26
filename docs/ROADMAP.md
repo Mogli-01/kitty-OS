@@ -120,7 +120,7 @@ preparado para a interface gráfica (Fases 10–14).
 ## Fase 11 — Input
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Driver de rato PS/2 | CODEX | TODO |
+| Driver de rato PS/2 | CODEX | Pacotes de três bytes em revisão no ramo `codex/ps2-rato`; transporte AUX e IRQ12 pendentes |
 | Driver USB HID (teclado e rato) | CODEX | TODO |
 | Sistema de eventos de input unificado (`InputEvent`: teclado + rato) | CODEX | TODO |
 | Entrega dos eventos ao user space só ao processo com a capacidade `INPUT` (D-019) | CLAUDE | TODO |
