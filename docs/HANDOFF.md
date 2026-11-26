@@ -307,3 +307,30 @@ Formato:
   - Os mapeamentos de firmware e MMIO não são libertados (espaço virtual
     da janela MMIO não é reutilizado).
   - A sequência IOREGSEL/IOWIN tem de ser serializada pelo driver.
+
+### [2026-11-26] — CLAUDE (7.ª sessão, continuação)
+- **Feito:**
+  - Com aprovação do Rodrigo no chat: merge de #15, #35 e #38; #13
+    fechada. Os PRs #14 e #25 do Codex foram aprovados mas têm conflitos
+    com o `main` (comentei a pedir rebase). Revi os outros 12 PRs do Codex
+    (comentários nos PRs).
+  - **Fase 5 (este PR):** threads do kernel, troca de contexto mínima em
+    assembly, scheduler round-robin preemptivo, pilhas de thread com página
+    de guarda, contador de preempção nos `SpinLock`, medição em ciclos.
+    Decisões D-044 (`unsafe` em `sched/`) e D-045.
+- **PRs abertos:** `claude/fase5-scheduler` (este).
+- **Proteções de segurança alteradas:** ATIVAS — pilhas de thread com
+  guarda e limpas ao libertar; sem preempção com spinlock preso; troca só
+  depois do EOI.
+- **Bloqueado por / à espera do Codex:** rebase dos #14 e #25; mudanças
+  pedidas em #23, #24, #27, #28, #31; adaptar o #34 a
+  `devices::init(&Platform)`.
+- **Próximo passo sugerido para o Codex:** no driver do timer (#19), o
+  handler do IRQ0 chama `sched::tick()` (contrato em INTERFACES.md,
+  "Scheduler"). Pôr `selftest-preempt` e `selftest-thread-stack-overflow`
+  na CI (o primeiro sem `--expect-panic`).
+- **Avisos:**
+  - Ainda não há `WaitQueue` (próximo passo do Claude): threads que
+    esperam fazem `yield_now()` em ciclo.
+  - Um só CPU (o lock do scheduler é largado antes da troca).
+  - Os ciclos do autoteste vêm do QEMU TCG: não são de hardware real.

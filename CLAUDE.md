@@ -25,7 +25,7 @@ Crates permitidos: `limine`, `bitflags`. Tudo o resto é nosso.
 - Topo do crate: `deny(unsafe_code)`, `deny(unsafe_op_in_unsafe_fn)`,
   `deny(clippy::undocumented_unsafe_blocks)`, `deny(clippy::missing_safety_doc)`,
   `deny(clippy::multiple_unsafe_ops_per_block)`.
-- `unsafe` só em `arch/`, `mm/`, `sync/` e camadas de acesso a hardware, com
+- `unsafe` só em `arch/`, `mm/`, `sync/`, `sched/` (D-044) e camadas de acesso a hardware, com
   API segura por cima. Cada bloco tem `// SAFETY:`. Drivers (`drivers/`)
   são `forbid(unsafe_code)` e só usam `kitty-hal` (D-038).
 - Atualizar `docs/UNSAFE.md` sempre que entra ou sai unsafe.

@@ -66,9 +66,11 @@ preparado para a interface gráfica (Fases 10–14).
 ## Fase 5 — Scheduler
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Threads do kernel + troca de contexto mínima em assembly | CLAUDE | TODO |
-| Scheduler preemptivo round-robin, depois prioridades | CLAUDE | TODO |
-| DESEMPENHO: medir a troca de contexto em ciclos (rdtsc) | CLAUDE | TODO |
+| Threads do kernel + troca de contexto mínima em assembly | CLAUDE | FEITO |
+| Scheduler preemptivo round-robin | CLAUDE | FEITO |
+| Prioridades no scheduler | CLAUDE | TODO |
+| DESEMPENHO: medir a troca de contexto em ciclos (rdtsc) | CLAUDE | FEITO (autoteste no arranque) |
+| SEGURANÇA: pilhas de thread com página de guarda, limpas ao libertar; sem preempção com spinlock preso | CLAUDE | FEITO |
 | GUI-PREP: filas de espera (bloquear/acordar threads) — base do IPC e dos eventos de input | CLAUDE | TODO |
 | Benchmarks automáticos (troca de contexto, syscalls) | CODEX | TODO |
 

@@ -455,3 +455,38 @@ isso o `&'static [u8]` é sólido durante toda a vida do kernel.
 *Revisto depois do `security-reviewer`*, que confirmou o caso da
 sobreposição com a imagem do kernel. Sem módulo, ou módulo recusado: o arranque
 continua sem initrd (diagnóstico), com a razão escrita no log.
+
+### D-044 — `unsafe` permitido em `sched/` (2026-11-26, CLAUDE)
+Trocar de pilha (chamar `arch::x86_64::context::switch`) e voltar a fazer
+de um endereço um `fn()` não se consegue em Rust seguro, e o scheduler é o
+único dono dessas operações. Tal como o `sync/` (D-008), o `sched/` entra na
+lista de módulos com `#[allow(unsafe_code)]`. Cada bloco tem `// SAFETY:` e
+está em `docs/UNSAFE.md`.
+
+### D-045 — Threads do kernel e scheduler preemptivo round-robin (2026-11-26, CLAUDE)
+- **Troca de contexto mínima** (`context.rs`): guarda os 6 registos
+  callee-saved e o RSP, carrega o RSP da outra thread e faz `ret` para
+  dentro dela (14 instruções). Os caller-saved já são guardados pelo
+  compilador à volta da chamada; o kernel não usa SSE (sem estado de FPU);
+  a troca é sempre feita com interrupções desligadas. Uma thread parada é
+  só o seu RSP.
+- **Pilhas** (`mm/stack.rs`): slots de 64 KiB na região
+  `0xFFFF_E000_0000_0000`, com 32 KiB de pilha RW+NX, **página de guarda**
+  por baixo e espaço por mapear por cima; slots reutilizados; frames limpos
+  pelo PMM ao libertar.
+- **Preempção:** o timer chama `sched::tick()`, que só marca um pedido
+  (atómico, sem lock). A troca acontece no fim de `irq::dispatch`, **depois
+  do EOI** e sem nenhum lock da tabela preso. **Nunca preempta** com um
+  `SpinLock` simples preso (contador em `sync::preempt`): no mesmo CPU, a
+  thread seguinte podia girar para sempre num lock cujo dono não corre. Com
+  `IrqSpinLock` o problema nem se põe (as interrupções estão desligadas).
+- **Saída e recolha:** uma thread que volta da função de entrada morre; a
+  pilha dela é libertada pela próxima decisão do scheduler, fora do lock e
+  nunca enquanto ainda se está a correr nela.
+- **Um CPU:** o lock do scheduler é largado *antes* da troca, com as
+  interrupções ainda desligadas, o que chega num só CPU. O SMP (Fase 9)
+  exige filas por CPU e o lock preso durante a troca.
+- **Medição:** autoteste no arranque com 2 threads em ping-pong
+  (`yield_now`), que mostra os ciclos (TSC) por yield+troca. No QEMU TCG
+  os "ciclos" não são de hardware real: o número serve para comparar
+  versões, não como valor absoluto.
