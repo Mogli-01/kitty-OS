@@ -373,9 +373,15 @@ pub fn wake_all(&self) -> usize;                       // também em handlers de
   `wake_one`. O consumidor chama `wait_until(|| há_dados())`.
 - `ready` tem de ser barato e não pode bloquear nem tomar um `SpinLock`
   simples (pode ler atómicos ou tomar um `IrqSpinLock` curto).
+- **Só em contexto de thread**, com interrupções ligadas e sem nenhum lock
+  preso: **nunca num handler de IRQ** (lá usa-se `wake_one`/`wake_all`). O
+  uso errado dá panic logo à entrada. Volta sempre com as interrupções
+  ligadas.
 - Não há wake-ups perdidos (D-046); um wake-up espúrio só faz a condição ser
   verificada de novo.
-- Marcador: `[sched] wait queue self-test passed`.
+- Marcadores: `[sched] wait queue self-test passed`; com `selftest-preempt`,
+  `idle + wake from IRQ work` (a thread de arranque dorme na thread idle e é
+  acordada pelo handler do timer).
 
 ## Planeadas (assinaturas propostas, podem mudar)
 

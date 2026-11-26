@@ -203,7 +203,9 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
             arch::x86_64::selftest::preempt(),
             "preemption self-test failed"
         );
-        kprintln!("[sched] preemption self-test passed: busy threads were preempted by the timer");
+        kprintln!(
+            "[sched] preemption self-test passed: busy threads were preempted, idle + wake from IRQ work"
+        );
     }
 
     #[cfg(feature = "selftest-thread-stack-overflow")]

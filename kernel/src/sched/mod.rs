@@ -33,8 +33,8 @@ use crate::mm::paging::MapError;
 use crate::mm::stack::KernelStack;
 use crate::sync::{IrqSpinLock, preempt};
 
-/// Identifier of a kernel thread. 0 is the boot thread (it becomes the
-/// idle thread).
+/// Identifier of a kernel thread. 0 is the boot thread; a dedicated idle
+/// thread is created by [`init`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ThreadId(pub u64);
 
@@ -81,6 +81,9 @@ struct Scheduler {
     /// every `schedule` reaps the previous one first, so no allocation is
     /// needed on the switch path.
     dead: Option<Box<Thread>>,
+    /// The idle thread: never in `ready`, never blocks or exits; chosen when
+    /// the current thread blocks or exits and nothing else is ready.
+    idle: Option<ThreadId>,
 }
 
 static SCHED: IrqSpinLock<Option<Scheduler>> = IrqSpinLock::new(None);
@@ -112,7 +115,7 @@ pub fn init() {
     threads.insert(
         ThreadId(0),
         Box::new(Thread {
-            name: "boot/idle",
+            name: "boot",
             state: State::Running,
             rsp: 0,
             stack: None,
@@ -124,7 +127,36 @@ pub fn init() {
         current: ThreadId(0),
         next_id: 1,
         dead: None,
+        idle: None,
     });
+    drop(guard);
+
+    // The idle thread. Created like any thread, then taken out of the
+    // ready queue: `schedule` only picks it when nothing else can run.
+    if let Ok(id) = spawn("idle", idle_loop) {
+        let mut guard = SCHED.lock();
+        if let Some(s) = guard.as_mut() {
+            s.ready.retain(|&t| t != id);
+            s.idle = Some(id);
+        }
+    }
+}
+
+/// Body of the idle thread: run whatever becomes ready, otherwise sleep
+/// until the next interrupt. The ready check and `sti; hlt` happen with
+/// interrupts off, so a wake-up from an IRQ cannot slip in between and
+/// leave the CPU asleep with work pending.
+fn idle_loop() {
+    loop {
+        cpu::disable_interrupts();
+        let work = SCHED.lock().as_ref().is_some_and(|s| !s.ready.is_empty());
+        if work {
+            cpu::enable_interrupts();
+            yield_now();
+        } else {
+            cpu::enable_interrupts_and_halt();
+        }
+    }
 }
 
 /// Creates a kernel thread that runs `entry` and is queued as ready.
@@ -187,7 +219,8 @@ pub fn is_blocked(id: ThreadId) -> bool {
         .is_some_and(|t| t.state == State::Blocked)
 }
 
-/// Number of threads that exist (running, ready or not yet reaped).
+/// Number of threads that exist (running, ready or not yet reaped),
+/// including the idle thread.
 pub fn thread_count() -> usize {
     SCHED.lock().as_ref().map_or(0, |s| s.threads.len())
 }
@@ -269,13 +302,23 @@ fn schedule(how: Leave) -> bool {
             return false;
         };
         let reap = core::mem::take(&mut s.dead);
-        let Some(next) = s.ready.pop_front() else {
+        let cur = s.current;
+        if s.idle == Some(cur) {
+            // The idle thread only ever yields; it must not block or exit.
+            assert!(
+                how == Leave::Requeue,
+                "sched: idle thread tried to block/exit"
+            );
+        }
+        // Blocking or exiting with nothing ready falls back to the idle
+        // thread; a plain yield with nothing ready just keeps running.
+        let fallback = if how == Leave::Requeue { None } else { s.idle };
+        let Some(next) = s.ready.pop_front().or(fallback) else {
             drop(guard);
             drop(reap);
             restore(were_enabled);
             return false;
         };
-        let cur = s.current;
         s.current = next;
 
         let save: *mut u64 = if how == Leave::Die {
@@ -291,7 +334,8 @@ fn schedule(how: Leave) -> bool {
                 None => core::ptr::null_mut(),
             }
         } else {
-            if how == Leave::Requeue {
+            // The idle thread is never queued: it is the fallback.
+            if how == Leave::Requeue && s.idle != Some(cur) {
                 s.ready.push_back(cur);
             }
             match s.threads.get_mut(&cur) {

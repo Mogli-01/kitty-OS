@@ -512,3 +512,11 @@ não fazem mal). `wake_one`/`wake_all` podem ser chamados de handlers de
 interrupção e ignoram entradas obsoletas. Se nenhuma outra thread puder
 correr, o waiter dorme com `sti; hlt` em vez de girar. SMP (Fase 9): a
 verificação e o registo passam a ser feitos sob o lock da fila.
+**Revisto depois do `security-reviewer`:** (1) uma thread acordada voltava
+com as interrupções **desligadas** (a troca não transporta o RFLAGS): agora
+`wait_until` exige IF=1 e nenhum lock à entrada (panic sempre que for mal
+usado, não só quando a condição é falsa) e liga sempre as interrupções ao
+sair; o autoteste verifica-o. (2) Há uma **thread idle dedicada**, que nunca
+está na fila de prontas, nunca bloqueia nem sai: é escolhida quando a thread
+atual bloqueia ou sai sem mais nada pronto. Antes, se a thread de arranque
+estivesse bloqueada, o `exit` da última thread dava panic.

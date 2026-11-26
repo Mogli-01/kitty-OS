@@ -21,7 +21,7 @@ use alloc::collections::VecDeque;
 
 use super::ThreadId;
 use crate::arch::x86_64::cpu;
-use crate::sync::IrqSpinLock;
+use crate::sync::{IrqSpinLock, preempt};
 
 /// A queue of threads waiting for something.
 pub struct WaitQueue {
@@ -46,16 +46,19 @@ impl WaitQueue {
     /// be cheap and must not block or take a plain `SpinLock`; it may read
     /// atomics or take short `IrqSpinLock`s.
     ///
-    /// If no other thread is runnable, the CPU idles with interrupts enabled
-    /// (`sti; hlt`) instead of spinning, until an interrupt arrives.
+    /// Must be called from thread context with interrupts **enabled** and no
+    /// lock held — never from an interrupt handler. Violations panic on
+    /// entry, every time (not only when the condition happens to be false).
+    /// Always returns with interrupts enabled.
     pub fn wait_until(&self, mut ready: impl FnMut() -> bool) {
+        assert!(
+            cpu::interrupts_enabled() && preempt::enabled(),
+            "WaitQueue::wait_until: needs interrupts enabled and no lock held"
+        );
         loop {
-            let were_enabled = cpu::interrupts_enabled();
             cpu::disable_interrupts();
             if ready() {
-                if were_enabled {
-                    cpu::enable_interrupts();
-                }
+                cpu::enable_interrupts();
                 return;
             }
             let me = super::current();
@@ -65,15 +68,15 @@ impl WaitQueue {
                     q.push_back(me);
                 }
             }
-            let switched = super::block_current();
-            if !switched {
-                // Nobody else can run: sleep until an interrupt (which may
-                // be the one that makes `ready` true) and re-check.
+            if super::block_current() {
+                // Woken. The switch does not carry RFLAGS, so interrupts are
+                // still off here: turn them back on (we required them on).
+                cpu::enable_interrupts();
+            } else {
+                // Only before the idle thread exists: nobody else can run.
+                // Sleep until an interrupt (it may make `ready` true).
                 self.remove(me);
                 cpu::enable_interrupts_and_halt();
-            }
-            if !were_enabled {
-                cpu::disable_interrupts();
             }
         }
     }
@@ -122,8 +125,11 @@ pub fn selftest() -> bool {
     static QUEUE: WaitQueue = WaitQueue::new();
     static VALUE: AtomicU64 = AtomicU64::new(0);
     static SEEN: AtomicU64 = AtomicU64::new(0);
+    static IF_AFTER_WAKE: AtomicU64 = AtomicU64::new(0);
     fn consumer() {
         QUEUE.wait_until(|| VALUE.load(Ordering::Acquire) != 0);
+        // A woken thread must have interrupts enabled again (review bug).
+        IF_AFTER_WAKE.store(u64::from(cpu::interrupts_enabled()), Ordering::Release);
         SEEN.store(VALUE.load(Ordering::Acquire), Ordering::Release);
     }
 
@@ -152,6 +158,8 @@ pub fn selftest() -> bool {
     blocked
         && still_blocked
         && woke
+        && IF_AFTER_WAKE.load(Ordering::Acquire) == 1
+        && cpu::interrupts_enabled()
         && SEEN.load(Ordering::Acquire) == 0x006b_6974_7479
         && QUEUE.is_empty()
         && !QUEUE.wake_one()
