@@ -16,7 +16,7 @@ use core::fmt::{self, Write};
 
 use crate::arch::x86_64::serial::SerialPort;
 use crate::boot_info::FrameBuffer;
-use crate::sync::SpinLock;
+use crate::sync::IrqSpinLock;
 use framebuffer::FbConsole;
 
 /// A text output device. Implemented by kernel consoles and, later, by
@@ -55,7 +55,7 @@ impl Write for Consoles {
     }
 }
 
-static CONSOLES: SpinLock<Consoles> = SpinLock::new(Consoles {
+static CONSOLES: IrqSpinLock<Consoles> = IrqSpinLock::new(Consoles {
     serial: None,
     fb: None,
     extra: Vec::new(),

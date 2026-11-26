@@ -28,6 +28,8 @@ extern crate alloc;
 pub mod arch;
 pub mod boot_info;
 pub mod console;
+pub mod devices;
+pub mod firmware;
 #[allow(unsafe_code)]
 pub mod mm;
 mod panic;
@@ -36,6 +38,8 @@ pub mod security;
 #[allow(unsafe_code)]
 pub mod sync;
 pub mod syscall;
+
+use core::sync::atomic::{AtomicU64, Ordering};
 
 use boot_info::BootInfo;
 
@@ -75,8 +79,20 @@ pub fn kmain(mut boot: BootInfo) -> ! {
         vmm.audit.user_in_kernel
     );
 
+    // The second half of boot runs on another stack and cannot see `boot`:
+    // keep what it needs. (Only a physical address; never printed.)
+    RSDP_PHYS.store(boot.rsdp_phys.unwrap_or(0), Ordering::Release);
+    *INITRD.lock() = Some(boot.initrd);
+
     // Leave the bootloader's stack for our own, which has a guard page.
     arch::x86_64::stacks::run_on_main_stack(kmain_on_kernel_stack)
+}
+
+static RSDP_PHYS: AtomicU64 = AtomicU64::new(0);
+static INITRD: sync::IrqSpinLock<Option<boot_info::InitrdModule>> = sync::IrqSpinLock::new(None);
+
+fn rsdp_phys() -> Option<u64> {
+    Some(RSDP_PHYS.load(Ordering::Acquire)).filter(|&a| a != 0)
 }
 
 /// Second half of boot, running on the guarded kernel stack.
@@ -94,6 +110,85 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         None => panic!("MMIO self-test failed"),
     }
 
+    assert!(arch::irq::selftest(), "interrupt dispatch self-test failed");
+    assert!(
+        arch::legacy::selftest(),
+        "legacy port filter self-test failed"
+    );
+
+    // ACPI: find and validate the MADT. Without it, stay on the 8259 PIC.
+    let acpi = firmware::acpi::discover(rsdp_phys());
+    match &acpi {
+        Ok(tables) => {
+            arch::apic::set_declared_io_apics(&tables.io_apics);
+            kprintln!(
+                "[acpi] MADT validated ({} bytes, {} I/O APIC(s))",
+                tables.madt.len(),
+                tables.io_apics.len()
+            );
+        }
+        Err(e) => kprintln!("[acpi] no usable MADT ({:?}); keeping the 8259 PIC", e),
+    }
+    match arch::apic::selftest() {
+        Some((lapic, Some(io))) => kprintln!(
+            "[apic] capability self-test passed (local APIC version {:#x}, I/O APIC version {:#x})",
+            lapic,
+            io
+        ),
+        Some((lapic, None)) => kprintln!(
+            "[apic] capability self-test passed (local APIC version {:#x}, no I/O APIC)",
+            lapic
+        ),
+        None => kprintln!("[apic] capability self-test: APIC unavailable or check failed"),
+    }
+
+    assert!(
+        mm::vmm::initrd_selftest(),
+        "initrd validation self-test failed"
+    );
+    let module = INITRD
+        .lock()
+        .take()
+        .unwrap_or(boot_info::InitrdModule::Absent);
+    let initrd = match mm::vmm::initrd_slice(module) {
+        Ok(Some(bytes)) => {
+            kprintln!(
+                "[initrd] module validated ({} KiB, read-only)",
+                bytes.len().div_ceil(1024)
+            );
+            Some(bytes)
+        }
+        Ok(None) => {
+            kprintln!("[initrd] no module (booting without initrd)");
+            None
+        }
+        Err(e) => {
+            kprintln!("[initrd] module REFUSED ({:?}); booting without initrd", e);
+            None
+        }
+    };
+
+    let platform = devices::Platform {
+        madt: acpi.as_ref().ok().map(|t| &t.madt[..]),
+        initrd,
+    };
+    devices::init(&platform);
+    arch::enable_interrupts();
+    assert!(
+        sync::irq_spinlock::selftest(),
+        "IrqSpinLock self-test failed"
+    );
+    kprintln!(
+        "[irq] interrupts enabled (controller: {}); dispatch, IrqSpinLock and port-filter self-tests passed",
+        arch::irq::controller_name()
+    );
+
+    #[cfg(feature = "selftest-irq-pit")]
+    {
+        assert!(arch::x86_64::selftest::irq_pit(), "PIT IRQ0 never arrived");
+        kprintln!("[irq] hardware IRQ0 (PIT) delivered twice through the 8259 PIC (EOI works)");
+    }
+
     #[cfg(feature = "selftest-page-fault")]
     arch::x86_64::selftest::page_fault();
     #[cfg(feature = "selftest-double-fault")]
@@ -109,11 +204,12 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     #[cfg(feature = "selftest-heap-overflow")]
     arch::x86_64::selftest::heap_overflow();
 
-    kprintln!("[boot] boot complete, halting");
+    kprintln!("[boot] boot complete, idling with interrupts enabled");
 
     #[cfg(feature = "qemu-exit")]
     arch::qemu::exit(arch::qemu::ExitCode::Success);
 
+    // Idle with interrupts enabled so drivers keep receiving IRQs.
     #[cfg(not(feature = "qemu-exit"))]
-    arch::halt_forever()
+    arch::idle_forever()
 }

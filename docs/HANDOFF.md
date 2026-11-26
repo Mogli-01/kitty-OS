@@ -214,6 +214,100 @@ Formato:
 - **Avisos:** os ficheiros em `.claude/agents/` são do Claude (não editar);
   o `test-writer` assume a infraestrutura de autotestes da Fase 3 (#9).
 
+### [2026-11-25] — CLAUDE (6.ª sessão)
+- **Feito (Fase 4, parte do núcleo):**
+  - `IrqSpinLock`; todos os locks globais convertidos. `cli`/`sti`/`hlt`
+    deixaram de ter `nomem` (D-037); idle com `sti; hlt` atómico.
+  - Núcleo de interrupções: stubs e gates para os 256 vetores,
+    `irq::register_isa`/`unregister_isa`, dispatch com **EOI pelo núcleo**,
+    filtragem de IRQs espúrios, trait `InterruptController` +
+    `set_controller` (D-039).
+  - PIC 8259 como controlador de arranque (remapeado para 0x20–0x2F, tudo
+    mascarado até haver registo).
+  - Crate `kitty-hal` (`PortBlock`, `RegisterBlock`) e
+    `arch::legacy::claim` (i8042, PIT, CMOS) para drivers sem `unsafe`
+    (D-038); `devices::init()` antes do `sti` (D-040).
+  - Autotestes: dispatch por `int 0xF0`, `IrqSpinLock` e um IRQ0 real do
+    PIT através do PIC (`selftest-irq-pit`).
+  - Respondi à #13 em `docs/INTERFACES.md` ("Interrupções (Fase 4)").
+  - Primeiro uso do `security-reviewer`: encontrou 4 pontos, todos
+    corrigidos — comandos perigosos do i8042 (reset/A20) e bit NMI do CMOS
+    filtrados; vetores de controladores limitados a 0x20–0xEF; EOI decidido
+    pela origem do vetor; regra LIFO dos `IrqSpinLock` documentada.
+  - Revisão do Codex ao #15 (2 pontos, corrigidos): os guards dos locks
+    passaram a `!Send` e só `Sync` com `T: Sync` (antes, um guard de
+    `Cell` era `Sync`: data race em código seguro), com asserções em tempo
+    de compilação; o autoteste do PIT programa o timer antes de
+    desmascarar e exige 2 interrupções depois de uma baseline (prova o
+    EOI).
+- **PRs abertos:** `claude/fase4-irq` (este).
+- **Proteções de segurança alteradas:** ATIVAS — locks que desligam
+  interrupções, PIC remapeado/mascarado, EOI só pelo núcleo, portas legadas
+  por allow-list com dono único, drivers sem `unsafe`.
+- **Bloqueado por / à espera do Codex:** nada.
+- **Próximo passo sugerido para o Codex:**
+  1. Transporte i8042 + teclado: `kernel/src/devices/keyboard.rs` com
+     `legacy::claim(LegacyDevice::I8042)` e `irq::register_isa(1, …)` (exemplo
+     em INTERFACES.md). Atualizar o `AGENTS.md` para permitir ficheiros em
+     `kernel/src/devices/` (Rust seguro).
+  2. Driver de I/O APIC + local APIC como `InterruptController` e timer.
+  3. Pôr `selftest-irq-pit` no `test-memory`/CI (sem `--expect-panic`).
+- **Avisos:**
+  - Os handlers correm com interrupções desligadas e **não** enviam EOI.
+  - O transporte i8042 só pode enviar os comandos de
+    `I8042_ALLOWED_COMMANDS`; se faltar algum, pedir numa issue.
+  - `set_controller` esquece as linhas ligadas pelo controlador anterior:
+    os drivers têm de se registar de novo depois de o APIC tomar o lugar.
+  - Ainda não há timer periódico nem scheduler (Fase 5).
+
+### [2026-11-26] — CLAUDE (7.ª sessão)
+- **Feito:**
+  - PR #15 (Fase 4): respondi à revisão do Codex. Os guards dos locks
+    passaram a `!Send` e a `Sync` só com `T: Sync` (havia uma data race
+    possível em código seguro), com asserções em tempo de compilação; o
+    autoteste do PIT exige 2 IRQs depois de uma baseline (prova o EOI) e
+    pára o PIT sem deixar IRQ pendente. `security-reviewer`: OK.
+  - Revi #16, #17, #19 e #21 do Codex (prontos; notas não bloqueantes).
+  - **Issue #18** (este PR, empilhado sobre o #15): descoberta ACPI no
+    núcleo (RSDP físico → XSDT/RSDT → MADT, tudo validado, MADT copiada),
+    `vmm::copy_from_firmware`, `RegisterBlock` para `MmioRegion`,
+    `devices::init(&Platform)` com a MADT, e capacidades
+    `arch::apic::local_apic()` / `io_apic(phys)` com filtro de valores
+    (ICR fechado, sem SMI/INIT). Transição PIC → APIC documentada em
+    INTERFACES.md. Decisões D-041 e D-042.
+  - O `security-reviewer` encontrou 7 problemas na 1.ª versão, todos
+    corrigidos antes de abrir o PR: contorno **confirmado** do filtro do
+    I/O APIC (seletor herdado de outro dono), TOCTOU seletor/janela,
+    vetores não filtrados (0x10–0x1F desalinhariam a pilha), I/O APIC
+    declarado por cima do ICR, firmware lido por deny-list (aceitava
+    MMIO), `&'static [u8]` sobre memória de firmware e dupla leitura.
+  - **Issue #22** (PR seguinte, `claude/initrd-modulo`, base #35): o
+    módulo `kitty-initrd` do Limine é validado pelo núcleo (marca exata,
+    único, tamanho, todo em memória de módulos) e entregue em
+    `Platform::initrd` como `&'static [u8]` só de leitura e NX (D-043).
+    Testado à mão no QEMU: 1 módulo → validado; 2 → recusado (ambíguo);
+    marca parecida → ignorado. O `security-reviewer` confirmou que um
+    "módulo" por cima da imagem do kernel passava a validação: agora é
+    recusado (verificação por página), tal como páginas com alias RW e
+    mais de 64 módulos.
+- **PRs abertos:** #15 (Fase 4, pronto); #35 (`claude/fase4-acpi-apic`,
+  base #15); `claude/initrd-modulo` (base #35).
+- **Proteções de segurança alteradas:** ATIVAS — validação ACPI e cópia da
+  MADT; capacidades APIC com dono único, UC/NX, ICR fechado e sem SMI/INIT.
+- **Bloqueado por / à espera do Codex:** nada.
+- **Próximo passo sugerido para o Codex:** ligar o `kitty-acpi` (#20) e o
+  driver de I/O APIC (#21) em `kernel/src/devices/` pela ordem descrita em
+  INTERFACES.md ("Transição PIC → APIC"), com o local APIC como
+  `InterruptController`. Testar com o IRQ0 repetido e uma tecla, como a
+  #18 propõe. **Atenção ao #20:** o `libfuzzer-sys` é um crate externo novo
+  (workspace de fuzzing só no host) e precisa de entrada em DECISIONS e de
+  aprovação humana, mesmo não entrando no kernel.
+- **Avisos:**
+  - x2APIC não é suportado: nessas máquinas o kernel fica no PIC.
+  - Os mapeamentos de firmware e MMIO não são libertados (espaço virtual
+    da janela MMIO não é reutilizado).
+  - A sequência IOREGSEL/IOWIN tem de ser serializada pelo driver.
+
 ### [2026-11-25] — CODEX (descodificador MADT)
 
 - **Feito** — parser sem alocação para a MADT xAPIC/ISA e primeira
