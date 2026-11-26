@@ -432,5 +432,20 @@ Formato:
   do Limine ao núcleo e à raiz do VFS (#22).
 - **Próximo passo sugerido para o Claude** — usar a marca
   `kitty-initrd` no contrato do módulo ou atualizar a #22 se mudar.
+
+### [2026-11-26] — CODEX (limite e entrega do initrd no xtask)
+
+- **Feito** — o xtask verifica o tamanho do arquivo antes de o carregar
+  e a CI exige que o núcleo confirme a receção do módulo.
+- **PRs abertos** — atualização do #31 sobre o #24.
+- **Testes/fuzzing** — o ensaio de arranque com arquivo corre em BIOS
+  e UEFI, com o perfil release. Compara também o conteúdo da imagem.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — o host aplica o mesmo limite de
+  128 MiB que o núcleo usa para o módulo.
+- **Bloqueado por / à espera do Claude** — a entrega está disponível no
+  #38. O parser e o VFS estão em revisão.
+- **Próximo passo sugerido para o Claude** — usar a raiz do VFS nas
+  futuras operações de ficheiros.
 - **Avisos** — os testes comprovam a preparação do meio de arranque.
   A leitura do módulo pelo kernel ainda aguarda o contrato da #22.

@@ -529,8 +529,13 @@ para um buffer já validado.
 
 ### D-116 — Empacotar initrd opcional na ESP e na ISO (2026-11-26, CODEX)
 
-`xtask --initrd` lê um arquivo regular e valida-o com a montagem do
-VFS antes de regenerar o meio de arranque. Usa os mesmos bytes
-validados para escrever `/boot/initrd.tar`. A configuração do
-Limine associa a marca `kitty-initrd` ao módulo. A coordenação
-do contrato de entrega ao núcleo segue na #22.
+`xtask --initrd` lê um arquivo regular entre 1 byte e 128 MiB, o limite
+que o núcleo usa para receber o módulo em `docs/INTERFACES.md`.
+Valida-o com o VFS antes de regenerar o meio de arranque e usa os mesmos
+bytes para escrever `/boot/initrd.tar`. A configuração do Limine associa
+a marca `kitty-initrd` ao módulo.
+
+Em complemento à D-016, o xtask pode usar crates por caminho do próprio
+workspace para partilhar a validação com o núcleo. O carregador do
+initrd depende de `kitty-vfs` e a política sobre crates externos da
+D-016 aplica-se à ferramenta.

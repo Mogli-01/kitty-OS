@@ -91,7 +91,7 @@ jobs:
             mkdir -p build/initrd-smoke/etc
             printf 'kitty-OS initrd smoke test\n' > build/initrd-smoke/etc/kitty.txt
             tar --format=ustar -cf build/initrd-smoke.tar -C build/initrd-smoke .
-            run_case initrd --initrd build/initrd-smoke.tar
+            run_case initrd --initrd build/initrd-smoke.tar --expect '[initrd] module validated'
             media=build/esp
             if [[ "$FIRMWARE" == bios ]]; then media=build/iso_root; fi
             cmp build/initrd-smoke.tar "$media/boot/initrd.tar"

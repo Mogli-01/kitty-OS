@@ -43,7 +43,7 @@ cargo xtask iso --release --initrd initrd.tar
 cargo xtask run --release --initrd initrd.tar
 ```
 
-O xtask valida a imagem com o VFS antes de a incorporar como
-`/boot/initrd.tar` no meio de arranque. A entrada Limine identifica o
-módulo como `kitty-initrd`. A disponibilização do módulo à raiz do VFS
-no kernel depende do contrato em discussão na issue #22.
+O xtask aceita arquivos entre 1 byte e 128 MiB e valida-os com o VFS
+antes de os incorporar como `/boot/initrd.tar`. A configuração do Limine
+identifica o módulo como `kitty-initrd`. O núcleo confirma a receção do
+módulo com `[initrd] module validated` na consola série.

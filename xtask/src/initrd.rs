@@ -8,6 +8,9 @@ use kitty_vfs::InitrdFs;
 
 use crate::{LIMINE_CONF, Result};
 
+// Match the kernel module limit documented in docs/INTERFACES.md.
+const MAX_INITRD_BYTES: u64 = 128 * 1024 * 1024;
+
 pub(crate) fn load(path: &Path) -> Result<Vec<u8>> {
     let file_error = |e: std::io::Error| format!("reading initrd {}: {e}", path.display());
     if !fs::metadata(path).map_err(file_error)?.is_file() {
@@ -17,6 +20,12 @@ pub(crate) fn load(path: &Path) -> Result<Vec<u8>> {
     let metadata = file.metadata().map_err(file_error)?;
     if !metadata.is_file() {
         return Err(format!("initrd {} changed before opening", path.display()));
+    }
+    if !(1..=MAX_INITRD_BYTES).contains(&metadata.len()) {
+        return Err(format!(
+            "initrd {} must be between 1 byte and 128 MiB",
+            path.display()
+        ));
     }
     let length = usize::try_from(metadata.len()).map_err(|_| "initrd length overflows usize")?;
     let mut bytes = Vec::new();
