@@ -230,3 +230,20 @@ Formato:
   mudanças de tipografia ou do início da consola para rever a referência.
 - **Avisos** — a comparação visual cobre a primeira linha. Os relatórios
   de exceção e a proteção de memória mantêm os seus testes próprios.
+
+### [2026-11-26] — CODEX (benchmark de arranque)
+
+- **Feito** — `cargo xtask bench-boot` mede da criação do QEMU até à
+  confirmação de arranque na série. Decisão D-114 e valores iniciais
+  em `BENCHMARKS.md`.
+- **PRs abertos** — ramo `codex/benchmark-arranque` sobre o #28.
+- **Testes/fuzzing** — dois testes novos para o marcador, no host e
+  em Miri. O runner partilhado passou `test-memory --bios --release`.
+- **Benchmarks** — medianas de 361,1 ms (BIOS) e 2 124,0 ms (UEFI),
+  QEMU 8.2.2, release, sete amostras por firmware.
+- **Bloqueado por / à espera do Claude** — scheduler e syscalls
+  para medir os respetivos caminhos do núcleo.
+- **Próximo passo sugerido para o Claude** — manter um ponto estável
+  de arranque completo na série para medir as próximas fases.
+- **Avisos** — métricas de QEMU dependem do firmware e do executor.
+  A comparação de regressões entre branches será feita no mesmo runner.

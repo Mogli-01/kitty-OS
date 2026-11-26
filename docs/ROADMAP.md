@@ -24,6 +24,7 @@ preparado para a interface gráfica (Fases 10–14).
 | Panic handler com localização | CLAUDE | FEITO |
 | Teste de arranque no QEMU (isa-debug-exit) | CLAUDE → CODEX | FEITO (mínimo) |
 | Captura e comparação visual do texto de arranque no framebuffer | CODEX | Em revisão no ramo `codex/teste-visual` |
+| Benchmark de arranque no QEMU | CODEX | Medição e valores iniciais em revisão no ramo `codex/benchmark-arranque`; alerta de regressão pendente |
 | Teste de integração de panic no QEMU (código de saída e série) | CODEX | FEITO (CI da Fase 2) |
 
 ## Fase 2 — CPU: GDT, TSS, IDT, exceções

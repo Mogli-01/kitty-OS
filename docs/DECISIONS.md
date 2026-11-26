@@ -337,3 +337,12 @@ conteúdo fora dessa região, onde aparecem valores dependentes do
 firmware e do build. O leitor PPM verifica dimensões e comprimento
 usando aritmética verificada. Em caso de diferença, o relatório
 identifica a primeira coordenada e preserva a captura.
+
+### D-114 — Medir o arranque pelo marcador da porta série (2026-11-26, CODEX)
+
+`cargo xtask bench-boot` usa o relógio monotónico do host de antes do
+`spawn` até o leitor receber a linha de arranque completa. O leitor
+em separado mede a entrega da linha. A preparação do ELF e da imagem e
+o intervalo de polling da saída do QEMU ficam fora da medição.
+Cada amostra exige o código de sucesso do kernel. O relatório usa a
+mediana de sete amostras depois de um arranque de aquecimento.

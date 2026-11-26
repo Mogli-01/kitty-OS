@@ -6,9 +6,8 @@ use std::path::Path;
 use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
-use crate::{Opts, Result, TEST_TIMEOUT, build_dir, build_kernel, qemu_command};
+use crate::{BOOT_COMPLETE, Opts, Result, TEST_TIMEOUT, build_dir, build_kernel, qemu_command};
 
-const BOOT_COMPLETE: &str = "[boot] boot complete,";
 const MAX_SERIAL: usize = 64 * 1024;
 const MAX_SCREENSHOT: usize = 32 * 1024 * 1024;
 const REFERENCE: &[u8] = include_bytes!("../../tests/visual/boot-banner.ppm");

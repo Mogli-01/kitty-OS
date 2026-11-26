@@ -8,6 +8,7 @@
 //!   test  [--release] [--bios]   boot headless, check serial output and exit code
 //!   test-memory [--release] [--bios]   check the Phase 3 memory protections in QEMU
 //!   test-visual [--release] [--bios]   check the framebuffer banner against a reference
+//!   bench-boot [--release] [--bios]    sample time to the boot-complete serial line
 //!
 //! Extra options:
 //!   --features <a,b>   extra kernel cargo features (e.g. selftest-page-fault)
@@ -23,11 +24,12 @@
 
 use std::env;
 use std::fs;
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, Stdio};
-use std::time::{Duration, Instant};
+use std::process::{Command, ExitCode};
+use std::time::Duration;
 
+mod boot_bench;
+mod boot_trace;
 mod memory_tests;
 mod visual_test;
 
@@ -39,6 +41,7 @@ const LIMINE_COMMIT: &str = "5be26a73d7b7b4d4477d18be94e1d16e615adf56";
 
 const KERNEL_NAME: &str = "kitty-kernel";
 const BOOT_MESSAGE: &str = "Hello from kitty-OS";
+const BOOT_COMPLETE: &str = "[boot] boot complete,";
 /// isa-debug-exit: kernel writes 0x10 -> QEMU exits with (0x10 << 1) | 1.
 const QEMU_SUCCESS: i32 = 33;
 /// Kernel panicked under the `qemu-exit` feature: (0x11 << 1) | 1.
@@ -101,12 +104,14 @@ fn main() -> ExitCode {
         "test" => test(&opts),
         "test-memory" => memory_tests::run(&opts),
         "test-visual" => visual_test::run(&opts),
+        "bench-boot" => boot_bench::run(&opts),
         _ => {
             eprintln!(
                 "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--expect-panic] [--expect text]"
             );
             eprintln!("       cargo xtask test-memory [--release] [--bios]");
             eprintln!("       cargo xtask test-visual [--release] [--bios]");
+            eprintln!("       cargo xtask bench-boot [--release] [--bios]");
             return ExitCode::FAILURE;
         }
     };
@@ -398,51 +403,28 @@ fn test(opts: &Opts) -> Result<()> {
     boot_test(opts, &build_dir().join("serial-test.log")).map(|_| ())
 }
 
+fn debug_exit_command(opts: &Opts, kernel: &Path) -> Result<Command> {
+    let mut command = qemu_command(opts, kernel)?;
+    command.args(["-display", "none", "-monitor", "none", "-serial", "stdio"]);
+    command.args(["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04"]);
+    Ok(command)
+}
+
 fn boot_test(opts: &Opts, log: &Path) -> Result<String> {
     let kernel = build_kernel(opts, true)?;
-    let mut cmd = qemu_command(opts, &kernel)?;
-    cmd.args(["-display", "none", "-monitor", "none", "-serial", "stdio"]);
-    cmd.args(["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04"]);
+    let mut command = debug_exit_command(opts, &kernel)?;
     let mode = if opts.bios { "BIOS/ISO" } else { "UEFI" };
     println!("xtask: boot test ({mode})");
 
-    let mut child = cmd
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(|e| format!("cannot start QEMU: {e}"))?;
-
-    // Read serial output on a thread so a chatty kernel cannot block QEMU on
-    // a full pipe while we wait for the timeout.
-    let mut stdout = child.stdout.take().ok_or("no QEMU stdout")?;
-    let reader = std::thread::spawn(move || {
-        let mut out = Vec::new();
-        let _ = stdout.read_to_end(&mut out);
-        out
-    });
-
-    let start = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break Some(status),
-            Ok(None) if start.elapsed() > TEST_TIMEOUT => {
-                let _ = child.kill();
-                let _ = child.wait();
-                break None;
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(50)),
-            Err(e) => return Err(format!("waiting for QEMU: {e}")),
-        }
-    };
-    let serial = String::from_utf8_lossy(&reader.join().unwrap_or_default()).into_owned();
+    let output = boot_trace::run(&mut command)?;
+    let serial = String::from_utf8_lossy(&output.serial).into_owned();
     println!(
         "----- serial output -----\n{}\n-------------------------",
         serial.trim_end()
     );
     fs::write(log, &serial).map_err(|e| format!("writing {}: {e}", log.display()))?;
 
-    let Some(status) = status else {
+    let Some(status) = output.status else {
         return Err(format!("timed out after {}s", TEST_TIMEOUT.as_secs()));
     };
     if !serial.contains(BOOT_MESSAGE) {
