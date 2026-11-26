@@ -69,7 +69,7 @@ pub const INITIAL_FRAME_WORDS: usize = 7;
 
 /// The words to place at the very top of a new thread's stack so that the
 /// first `switch` to it starts `entry` (an address passed to
-/// `sched::thread_start`). Returns the words in memory order (lowest
+/// `sched::thread_start` as its `fn()` argument). Returns the words in memory order (lowest
 /// address first); the thread's initial saved RSP is
 /// `top - 8 * INITIAL_FRAME_WORDS`.
 pub fn initial_frame(entry: u64) -> [u64; INITIAL_FRAME_WORDS] {

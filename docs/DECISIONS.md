@@ -483,6 +483,16 @@ está em `docs/UNSAFE.md`.
 - **Saída e recolha:** uma thread que volta da função de entrada morre; a
   pilha dela é libertada pela próxima decisão do scheduler, fora do lock e
   nunca enquanto ainda se está a correr nela.
+- **Ordem dos locks** (do exterior para o interior): `SCHED` → heap →
+  espaço do kernel → PMM, e `stack::SLOTS` → heap. `SCHED` nunca é pedido
+  com um destes presos. O caminho da troca não aloca (a thread que morre
+  vai para um `Option`, não para um `Vec`).
+- **Revisto depois do `security-reviewer`:** o contador de preempção passou
+  a incrementar *antes* do CAS do `SpinLock`; uma troca cooperativa com um
+  lock preso é um `assert!`; o panic handler desliga as interrupções logo à
+  entrada (sem preempção durante um panic); `exit` da última thread
+  executável é um panic explícito; e acabou o `transmute` do endereço de
+  entrada (o trampolim passa o `fn()` diretamente).
 - **Um CPU:** o lock do scheduler é largado *antes* da troca, com as
   interrupções ainda desligadas, o que chega num só CPU. O SMP (Fase 9)
   exige filas por CPU e o lock preso durante a troca.

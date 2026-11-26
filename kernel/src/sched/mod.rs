@@ -19,7 +19,6 @@
 
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, VecDeque};
-use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::arch::x86_64::{context, cpu};
@@ -57,11 +56,11 @@ struct Scheduler {
     ready: VecDeque<ThreadId>,
     current: ThreadId,
     next_id: u64,
-    /// Threads that died; freed by a later `schedule` (never the running one).
-    /// Boxed on purpose: `schedule` keeps a raw pointer to the dying
-    /// thread's `rsp` while moving it here, so the `Thread` must not move.
-    #[allow(clippy::vec_box)]
-    dead: Vec<Box<Thread>>,
+    /// The thread that died last; freed by the next `schedule` (by then it
+    /// is no longer running). At most one is pending at any time, because
+    /// every `schedule` reaps the previous one first, so no allocation is
+    /// needed on the switch path.
+    dead: Option<Box<Thread>>,
 }
 
 static SCHED: IrqSpinLock<Option<Scheduler>> = IrqSpinLock::new(None);
@@ -104,14 +103,14 @@ pub fn init() {
         ready: VecDeque::new(),
         current: ThreadId(0),
         next_id: 1,
-        dead: Vec::new(),
+        dead: None,
     });
 }
 
 /// Creates a kernel thread that runs `entry` and is queued as ready.
 /// When `entry` returns, the thread exits.
 pub fn spawn(name: &'static str, entry: fn()) -> Result<ThreadId, SpawnError> {
-    let frame = context::initial_frame(entry as usize as u64);
+    let frame = context::initial_frame(entry as *const () as usize as u64);
     let stack = KernelStack::new(&frame)?;
     let rsp = stack.top() - (context::INITIAL_FRAME_WORDS as u64) * 8;
     let thread = Box::new(Thread {
@@ -164,30 +163,39 @@ pub fn thread_count() -> usize {
     SCHED.lock().as_ref().map_or(0, |s| s.threads.len())
 }
 
-/// First Rust code of every new thread (called by the assembly trampoline
-/// with the entry address placed by `spawn`).
-pub extern "C" fn thread_start(entry: u64) -> ! {
+/// First Rust code of every new thread, called by the assembly trampoline
+/// with the entry function placed by `spawn` (in RDI, as the C ABI passes a
+/// pointer-sized argument; `fn()` is a non-null function pointer).
+// `fn()` is a plain, non-null code pointer: the assembly only moves it
+// (r12 -> rdi) and it is only *called* from Rust, with the Rust ABI.
+#[allow(improper_ctypes_definitions)]
+pub extern "C" fn thread_start(entry: fn()) -> ! {
     // A new thread starts inside `schedule`'s critical section, with
     // interrupts disabled; it is now a normal running thread.
     cpu::enable_interrupts();
-    // SAFETY: `entry` was produced in `spawn` from a `fn()` (`entry as
-    // usize as u64`) and travelled unchanged through the initial stack
-    // frame (r12) to here, so it is a valid `fn()` pointer.
-    let f: fn() = unsafe { core::mem::transmute::<usize, fn()>(entry as usize) };
-    f();
+    entry();
     exit()
 }
 
 /// Ends the current thread. Its stack is freed later, by another thread.
+///
+/// Panics if no other thread is ready (the boot/idle thread must never
+/// exit): stopping silently with interrupts off would hide the bug.
 pub fn exit() -> ! {
     schedule(true);
-    // `schedule(true)` never returns to a dead thread.
-    cpu::halt_forever()
+    panic!("sched: the last runnable thread exited");
 }
 
 /// Picks the next thread and switches to it. `dying`: the current thread
 /// exits instead of being re-queued.
 fn schedule(dying: bool) {
+    // A cooperative switch with a lock held would carry that lock (and the
+    // global "no preemption" state) into another thread: forbid it. The
+    // preemption path already checks this before calling us.
+    assert!(
+        preempt::enabled(),
+        "sched: context switch while holding a spinlock"
+    );
     let were_enabled = cpu::interrupts_enabled();
     // Interrupts stay off from here until the switch is complete. Because
     // they are already off when the lock is taken, dropping the guard below
@@ -215,9 +223,11 @@ fn schedule(dying: bool) {
             match s.threads.remove(&cur) {
                 Some(mut t) => {
                     t.state = State::Dead;
-                    let ptr: *mut u64 = &raw mut t.rsp;
-                    s.dead.push(t); // the Box keeps `rsp` at the same address
-                    ptr
+                    // Move the Box into its final place *first*, then take
+                    // the pointer from there (a pointer derived before the
+                    // move would be invalidated by it).
+                    let slot = s.dead.insert(t);
+                    &raw mut slot.rsp
                 }
                 None => core::ptr::null_mut(),
             }
@@ -252,7 +262,8 @@ fn schedule(dying: bool) {
     SWITCHES.fetch_add(1, Ordering::Relaxed);
     // SAFETY: interrupts are disabled (single CPU: nothing else touches the
     // scheduler until we resume). `save` points into a live boxed `Thread`
-    // (in `threads` or `dead`, neither freed before the next `schedule`,
+    // (in `threads` or the `dead` slot, neither freed before the next
+    // `schedule`,
     // which cannot run before this switch completes). `resume` is the saved
     // RSP of a thread suspended by `switch` or a fresh stack built by
     // `spawn`, whose stack is still mapped, and that thread is not running.
