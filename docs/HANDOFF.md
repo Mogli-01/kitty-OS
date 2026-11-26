@@ -277,3 +277,24 @@ Formato:
   Local APIC e manter o handler antigo disponível até drenar o IRQ.
 - **Avisos** — ensaio qtest valida os registos do dispositivo emulado.
   A entrega ao núcleo pela rota APIC será testada na integração.
+
+### [2026-11-26] — CODEX (Local APIC e timer)
+
+- **Feito** — driver xAPIC com leitura do ID, ativação da entrega com
+  vetor espúrio reservado, EOI e timer em modo one-shot e periódico. A
+  configuração verifica o divisor, vetor e máscara por leitura. Decisão D-121.
+- **PRs abertos** — ramo `codex/local-apic`, baseado no #21.
+- **Testes/fuzzing** — 16 testes APIC no host e em Miri, oito novos.
+  Numa cópia de teste sobre o #35, QEMU 8.2.2 confirmou a expiração one-shot,
+  recarga periódica e paragem do timer em BIOS e UEFI, debug e release,
+  através da capacidade `LocalApicRegisters` e com o IRQ mascarado.
+- **Benchmarks** — sem medições de frequência do timer ou latência de IRQ.
+- **Proteções de segurança alteradas** — o driver usa exclusivamente
+  `RegisterBlock`. Vetores do timer são limitados ao intervalo dinâmico.
+  Uma configuração parcial impede o arranque e desmascaramento do timer.
+- **Bloqueado por / à espera do Claude** — validar a identidade das
+  janelas de MMIO e os limites da leitura de firmware no #35.
+- **Próximo passo sugerido para o Claude** — resolver os pontos da revisão
+  do #35 e definir o registo de um handler para o timer local no núcleo.
+- **Avisos** — a entrega efetiva ao handler e o EOI do APIC ficam para a
+  integração. O arranque usa o PIC 8259.

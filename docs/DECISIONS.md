@@ -404,3 +404,25 @@ O núcleo fornece o mapeamento UC e valida a topologia antes da mudança de
 controlador (#18). A ligação futura confirma que o destino é um APIC ID
 válido, que os intervalos GSI não se sobrepõem e que o handler está
 instalado antes de desmascarar.
+
+### D-121 — Programar o timer do Local APIC com a entrada mascarada (2026-11-26, CODEX)
+
+O driver acede a registos de 32 bits por um `RegisterBlock` xAPIC UC do
+CPU em execução. Lê a revisão e o limite da tabela LVT em `0x030` e obtém
+o destino físico unicast em `0x020`. Ativa a entrega em `0x0f0` com o vetor
+espúrio `0xff` e difusão de EOI. Antes de ativar, verifica as entradas LVT
+presentes na revisão. Aceita entradas mascaradas e LINT já configurado
+para NMI. O controlador confirma as fontes e o estado do PIC antes da
+transição. Para vetores de dispositivo, escreve zero em `0x0b0` depois
+de o handler devolver. Um vetor espúrio dispensa EOI.
+
+O timer mascara a sua entrada LVT (`0x320`) e escreve zero na contagem
+inicial (`0x380`) antes de mudar o divisor (`0x3e0`) e o modo. O divisor
+usa os bits 0, 1 e 3. O driver confirma por leitura o divisor, o modo e
+o vetor. A contagem inicial de 32 bits é positiva e `0x390` devolve os
+ticks restantes após divisão. A calibração pode observar a contagem
+enquanto a entrada está mascarada. O modo periódico recarrega a contagem
+ao expirar. O chamador instala o handler antes de desmascarar e trata
+eventuais interrupções já aceites pelo CPU quando pára o timer.
+
+[Intel SDM, vol. 3A, §§12.4.8, 12.5.4 e 12.8.5](https://cdrdv2-public.intel.com/835754/253668-sdm-vol-3a.pdf)
