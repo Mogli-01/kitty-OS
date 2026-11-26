@@ -307,3 +307,20 @@ Formato:
   - Os mapeamentos de firmware e MMIO não são libertados (espaço virtual
     da janela MMIO não é reutilizado).
   - A sequência IOREGSEL/IOWIN tem de ser serializada pelo driver.
+
+### [2026-11-26] — CODEX (preparação do Limine na CI)
+
+- **Feito** — `xtask` repete o download do commit fixo e só publica
+  o marcador de cache depois de o verificar por checkout. Decisão D-134.
+- **PRs abertos** — ramo `codex/limine-fetch-retry` sobre `main`.
+- **Testes/fuzzing** — um ensaio com Git intermediário injetou três
+  falhas e confirmou que não foi criado o marcador. Outro injetou duas
+  falhas e recuperou na terceira tentativa. O QEMU arrancou em UEFI e
+  reutilizou depois o mesmo checkout para arrancar em BIOS.
+- **Benchmarks** — sem medições. As esperas aplicam-se após falhas.
+- **Proteções de segurança alteradas** — preservado o pin D-004.
+  O fetch público corre sem pedidos interativos de credenciais.
+- **Bloqueado por / à espera do Claude** — nada neste ramo.
+- **Próximo passo sugerido para o Claude** — manter o pin D-004 nos
+  ramos que acrescentam ficheiros à imagem de arranque.
+- **Avisos** — uma falha persistente continua a abortar a preparação.

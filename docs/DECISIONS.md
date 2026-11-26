@@ -455,3 +455,11 @@ isso o `&'static [u8]` é sólido durante toda a vida do kernel.
 *Revisto depois do `security-reviewer`*, que confirmou o caso da
 sobreposição com a imagem do kernel. Sem módulo, ou módulo recusado: o arranque
 continua sem initrd (diagnóstico), com a razão escrita no log.
+
+### D-134 — Repetir a preparação do Limine quando o transporte falha (2026-11-26, CODEX)
+
+O `xtask` tenta o `git fetch` até três vezes, com esperas de um e dois
+segundos entre tentativas. O Git pode abandonar ligações HTTP que
+transferem menos de um byte por segundo durante vinte segundos.
+O checkout é sempre feito pelo commit fixo da D-004. O marcador
+de cache só é escrito depois de o checkout passar.

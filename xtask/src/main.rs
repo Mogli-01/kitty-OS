@@ -34,6 +34,7 @@ mod memory_tests;
 /// silently change our bootloader (supply-chain safety). Bump deliberately.
 const LIMINE_REPO: &str = "https://github.com/limine-bootloader/limine.git";
 const LIMINE_COMMIT: &str = "5be26a73d7b7b4d4477d18be94e1d16e615adf56";
+const LIMINE_FETCH_ATTEMPTS: u64 = 3;
 
 const KERNEL_NAME: &str = "kitty-kernel";
 const BOOT_MESSAGE: &str = "Hello from kitty-OS";
@@ -187,10 +188,36 @@ fn limine_dir() -> Result<PathBuf> {
     println!("xtask: fetching Limine {LIMINE_COMMIT}");
     let git = |args: &[&str]| run_cmd(Command::new("git").current_dir(&dir).args(args));
     git(&["init", "-q"])?;
-    git(&["fetch", "-q", "--depth=1", LIMINE_REPO, LIMINE_COMMIT])?;
-    git(&["checkout", "-q", "FETCH_HEAD"])?;
+    fetch_limine(&dir)?;
+    git(&["checkout", "-q", "--detach", LIMINE_COMMIT])?;
     fs::write(&stamp, LIMINE_COMMIT).map_err(|e| format!("writing stamp: {e}"))?;
     Ok(dir)
+}
+
+fn fetch_limine(dir: &Path) -> Result<()> {
+    let mut git = Command::new("git");
+    git.current_dir(dir).env("GIT_TERMINAL_PROMPT", "0").args([
+        "-c",
+        "http.lowSpeedLimit=1",
+        "-c",
+        "http.lowSpeedTime=20",
+        "fetch",
+        "-q",
+        "--depth=1",
+        LIMINE_REPO,
+        LIMINE_COMMIT,
+    ]);
+    for attempt in 1..LIMINE_FETCH_ATTEMPTS {
+        match run_cmd(&mut git) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                eprintln!("xtask: fetching Limine failed ({error}); retrying in {attempt}s");
+                std::thread::sleep(Duration::from_secs(attempt));
+            }
+        }
+    }
+    run_cmd(&mut git)
+        .map_err(|error| format!("fetching Limine after {LIMINE_FETCH_ATTEMPTS} attempts: {error}"))
 }
 
 /// Path of the `limine` host tool (used for `bios-install`). The binary

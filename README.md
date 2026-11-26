@@ -50,6 +50,10 @@ A saída da porta série aparece no terminal; o ecrã do QEMU mostra a consola
 do framebuffer. Se o QEMU ou o OVMF não forem encontrados automaticamente,
 usa as variáveis `KITTY_QEMU`, `KITTY_OVMF` e `KITTY_XORRISO`.
 
+Na primeira preparação do suporte de arranque, o `xtask` descarrega o
+commit fixo do Limine para `build/limine`. Se o pedido falhar, tenta até
+três vezes. O `xtask` reutiliza o mesmo checkout nos arranques seguintes.
+
 Antes de abrir um PR:
 
 ```sh
