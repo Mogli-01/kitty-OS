@@ -384,3 +384,31 @@ e **antes** do `sti`. Um driver pode alocar, reclamar o hardware e registar
 o seu IRQ sem correr o risco de receber a primeira interrupção a meio da
 inicialização. O kernel passou a terminar o arranque em idle com as
 interrupções ligadas (em vez de `cli; hlt`).
+
+### D-041 — Descoberta ACPI no núcleo: validar e copiar a MADT (2026-11-26, CLAUDE)
+O kernel segue RSDP → XSDT/RSDT → MADT (o RSDP do Limine rev. 3 é um
+endereço **físico**) e valida cada passo: assinaturas, checksums (incluindo
+o estendido do RSDP v2), comprimentos (cabeçalho ≥ 36, tabela ≤ 64 KiB).
+A memória de firmware é lida com `vmm::map_firmware_ro`: mapeamentos **só
+de leitura e NX**, que recusam regiões de RAM do kernel (usable,
+bootloader, kernel, framebuffer) e intervalos > 1 MiB. A MADT validada é
+**copiada** para o heap e entregue aos drivers como `&[u8]` imutável:
+o parser do Codex trabalha num buffer estável, sem janela de TOCTOU sobre
+memória de firmware. Sem MADT válida, o kernel fica no PIC 8259.
+
+### D-042 — Capacidades APIC com filtro de valores (2026-11-26, CLAUDE)
+`arch::apic::local_apic()` e `arch::apic::io_apic(phys)` devolvem objetos
+que implementam `kitty_hal::RegisterBlock`, mapeados UC e NX, com dono único.
+- A base do local APIC vem **só** do MSR IA32_APIC_BASE (nunca do driver);
+  em modo x2APIC (registos por MSR) devolve `X2Apic` e o kernel fica no PIC.
+- Um I/O APIC só é concedido num endereço que a **cópia da MADT validada
+  pelo kernel** declara.
+- Acessos de 32 bits, alinhados, dentro da janela (LAPIC 0x400, I/O APIC
+  0x20); 64 bits recusados.
+- **Valores filtrados** (mesma lição do A20, D-038): o **ICR** do local APIC
+  não é escrevível (enviaria INIT/SIPI a outros CPUs, que passariam a
+  executar código num endereço físico baixo: tomada total da máquina); só
+  são escrevíveis TPR, EOI, SVR, LVTs e o timer; LVTs e entradas de
+  redireção do I/O APIC não aceitam os modos de entrega **SMI** nem **INIT**.
+  O I/O APIC acompanha o último IOREGSEL para saber o que cada escrita em
+  IOWIN vai alterar.

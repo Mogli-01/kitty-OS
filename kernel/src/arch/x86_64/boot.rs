@@ -15,7 +15,8 @@ use limine::BaseRevision;
 use limine::framebuffer::FRAMEBUFFER_RGB;
 use limine::memmap::{self, Entry};
 use limine::request::{
-    BootloaderInfoRequest, ExecutableAddressRequest, FramebufferRequest, HhdmRequest, MemmapRequest,
+    BootloaderInfoRequest, ExecutableAddressRequest, FramebufferRequest, HhdmRequest,
+    MemmapRequest, RsdpRequest,
 };
 use limine::{RequestsEndMarker, RequestsStartMarker};
 
@@ -61,6 +62,10 @@ static MEMMAP_REQUEST: MemmapRequest = MemmapRequest::new();
 static EXECUTABLE_ADDRESS_REQUEST: ExecutableAddressRequest = ExecutableAddressRequest::new();
 
 #[used]
+#[unsafe(link_section = ".requests")]
+static RSDP_REQUEST: RsdpRequest = RsdpRequest::new();
+
+#[used]
 #[unsafe(link_section = ".requests_end_marker")]
 static REQUESTS_END: RequestsEndMarker = RequestsEndMarker::new();
 
@@ -100,6 +105,13 @@ extern "C" fn kernel_entry() -> ! {
             phys_base: image.physical_base,
             virt_base: image.virtual_base,
         },
+        // Base revision 3: the RSDP address is *physical* (not an HHDM
+        // pointer). It is only a hint; `firmware::acpi` validates
+        // everything it points to.
+        rsdp_phys: RSDP_REQUEST
+            .response()
+            .map(|r| r.address.addr() as u64)
+            .filter(|&a| a != 0),
         framebuffer: take_framebuffer(),
         bootloader: BOOTLOADER_INFO_REQUEST.response().map(|r| BootloaderInfo {
             name: r.name(),

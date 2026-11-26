@@ -101,7 +101,9 @@ interrupções depois da baseline provam que o EOI funciona),
 `selftest-heap-overflow`
 (`non-present page on write`). Arranque normal: `[mm] kernel heap ready`,
 `heap self-test passed`,
-`[irq] interrupts enabled (controller: 8259 PIC); dispatch, IrqSpinLock and port-filter self-tests passed`.
+`[irq] interrupts enabled (controller: 8259 PIC); dispatch, IrqSpinLock and port-filter self-tests passed`,
+`[acpi] MADT validated` (ou `[acpi] no usable MADT`),
+`[apic] capability self-test passed`.
 
 `cargo xtask test-memory [--bios] [--release]` corre o arranque normal e
 uma compilação separada para cada um dos sete autotestes de falhas. Antes
@@ -225,6 +227,51 @@ i8042 (offset 4) só passam `0x20, 0x60, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAD,
 `0xF0`–`0xFF` (pulsos/reset) devolvem `None`. No CMOS, o bit 7 do índice
 (desliga NMIs) é sempre escrito a 0. Se um driver precisar de outro comando,
 pede-o numa issue `para-claude`.
+
+**ACPI e APIC (issue #18):**
+```rust
+pub struct devices::Platform<'a> {
+    pub madt: Option<&'a [u8]>,   // MADT validada (assinatura, tamanho ≤ 64 KiB,
+}                                 // checksum) e COPIADA; válida durante init()
+pub fn devices::init(platform: &Platform<'_>);
+
+pub fn arch::apic::local_apic() -> Result<LocalApicRegisters, ApicError>;
+pub fn arch::apic::io_apic(phys: u64) -> Result<IoApicRegisters, ApicError>;
+// ambos: impl kitty_hal::RegisterBlock (32 bits; 64 bits → None)
+// ApicError: Disabled, X2Apic, NotDeclared, InUse, MapFailed
+```
+- **Local APIC:** a base vem do MSR IA32_APIC_BASE. Se o APIC estiver
+  desligado ou em **x2APIC**, devolve erro: ficar no PIC. Escrevíveis: TPR
+  0x080, EOI 0x0B0, SVR 0x0F0, LVT timer 0x320, LINT0 0x350, LINT1 0x360,
+  erro 0x370, contagem inicial 0x380, divisor 0x3E0. O **ICR** (0x300/0x310)
+  **não** é escrevível (IPIs são do núcleo). Leitura: qualquer registo
+  alinhado < 0x400.
+- **I/O APIC:** `phys` tem de ser um dos endereços que a MADT validada pelo
+  kernel declara (entrada tipo 1); janela de 0x20 bytes: IOREGSEL (0x00) e
+  IOWIN (0x10). A sequência seletor/janela não é atómica: o driver tem de a
+  serializar (lock próprio).
+- **Modos de entrega recusados** em LVTs e redireções: SMI (010) e INIT
+  (101). Permitidos: Fixed, Lowest-priority (I/O APIC), NMI, ExtINT.
+- Cada APIC tem um só dono de cada vez; o `Drop` liberta-o.
+
+**Transição PIC → APIC** (em `devices::init`, com interrupções desligadas):
+1. Estado à entrada: PIC remapeado e com **todas** as linhas mascaradas;
+   MADT validada; endereços dos I/O APIC registados no kernel.
+2. Sem `platform.madt`, ou `local_apic()` com erro (`X2Apic`, `Disabled`):
+   **ficar no PIC** (não fazer nada).
+3. Driver de APIC: `io_apic(addr)` para cada I/O APIC da MADT →
+   `mask_all()` (apaga as rotas do firmware) → local APIC: SVR com software
+   enable e vetor espúrio **0xFF**, TPR = 0, LVT timer/erro **mascarados**,
+   LINT0 **mascarado** (o ExtINT do PIC deixa de ser usado), LINT1 = **NMI**
+   segundo as entradas "Local APIC NMI" da MADT (a configuração de NMI é
+   separada do encaminhamento de IRQs).
+4. `arch::irq::set_controller(&APIC)`: o núcleo mascara o PIC por completo
+   e esquece as linhas ligadas por ele.
+5. Só depois os outros drivers fazem `register_isa`: `connect_isa` aplica os
+   overrides da MADT (ex.: no QEMU q35 o IRQ0 vai para a GSI 2), deixa a rota
+   **mascarada**, o núcleo instala o handler e só então desmascara.
+6. O kernel liga as interrupções (`sti`) depois de `devices::init`.
+O EOI do APIC é a escrita em 0x0B0 feita por `InterruptController::eoi`.
 
 **Onde ligar um driver:** em `kernel::devices::init()`
 (`kernel/src/devices/`), que corre depois do heap e do núcleo de

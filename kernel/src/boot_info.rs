@@ -16,6 +16,8 @@ pub struct BootInfo {
     pub memory_map: MemoryMap,
     /// Where the kernel image was loaded.
     pub kernel_image: KernelImage,
+    /// Physical address of the ACPI RSDP, if the firmware has one.
+    pub rsdp_phys: Option<u64>,
     /// The first usable linear framebuffer, if any.
     pub framebuffer: Option<FrameBuffer>,
     /// Bootloader name and version, if reported.

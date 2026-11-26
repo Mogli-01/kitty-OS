@@ -251,6 +251,21 @@ pub fn is_mapped(virt: VirtAddr) -> bool {
 
 // ------------------------------------------------------------------ MMIO ---
 
+impl kitty_hal::RegisterBlock for MmioRegion {
+    fn read32(&self, offset: u64) -> Option<u32> {
+        self.read(offset)
+    }
+    fn write32(&self, offset: u64, value: u32) -> Option<()> {
+        self.write(offset, value)
+    }
+    fn read64(&self, offset: u64) -> Option<u64> {
+        self.read(offset)
+    }
+    fn write64(&self, offset: u64, value: u64) -> Option<()> {
+        self.write(offset, value)
+    }
+}
+
 mod sealed {
     pub trait Sealed {}
     impl Sealed for u8 {}
@@ -343,15 +358,24 @@ pub unsafe fn map_mmio(phys: PhysAddr, len: u64, cache: CacheType) -> Result<Mmi
         return Err(MapError::AlreadyMapped);
     }
 
-    let size = end - start;
-    let virt_start = MMIO_NEXT.fetch_add(size, Ordering::AcqRel);
-    if virt_start.checked_add(size).is_none_or(|e| e > MMIO_END) {
-        return Err(MapError::OutOfMemory);
-    }
     let flags = MapFlags {
         cache,
         ..MapFlags::KERNEL_RW
     };
+    let virt_start = map_window(start, end - start, flags)?;
+    Ok(MmioRegion {
+        base: virt_start + (phys.as_u64() - start),
+        len,
+    })
+}
+
+/// Maps physical `[start, start + size)` (page aligned) at fresh addresses of
+/// the MMIO window and returns the virtual start.
+fn map_window(start: u64, size: u64, flags: MapFlags) -> Result<u64, MapError> {
+    let virt_start = MMIO_NEXT.fetch_add(size, Ordering::AcqRel);
+    if virt_start.checked_add(size).is_none_or(|e| e > MMIO_END) {
+        return Err(MapError::OutOfMemory);
+    }
     with_kernel_space(|space| {
         let mut off = 0;
         while off < size {
@@ -363,11 +387,53 @@ pub unsafe fn map_mmio(phys: PhysAddr, len: u64, cache: CacheType) -> Result<Mmi
         Ok(())
     })
     .ok_or(MapError::NotMapped)??;
+    Ok(virt_start)
+}
 
-    Ok(MmioRegion {
-        base: virt_start + (phys.as_u64() - start),
-        len,
-    })
+/// Largest firmware range `map_firmware_ro` accepts in one call.
+pub const MAX_FIRMWARE_MAP: u64 = 1024 * 1024;
+
+/// Maps `len` bytes of **firmware memory** (ACPI tables, BIOS area) at
+/// physical `phys` read-only, never executable, and returns them as an
+/// immutable byte slice that stays valid for the rest of the kernel's life.
+///
+/// Refuses ranges that overlap memory the kernel owns or hands out (usable
+/// RAM, bootloader/kernel memory, the framebuffer) or bad RAM, and ranges
+/// larger than [`MAX_FIRMWARE_MAP`]. Firmware tables are input from outside
+/// the kernel: callers must still validate their contents (D-041).
+pub fn map_firmware_ro(phys: u64, len: u64) -> Result<&'static [u8], MapError> {
+    if len == 0 || len > MAX_FIRMWARE_MAP {
+        return Err(MapError::Misaligned);
+    }
+    let end_exact = phys.checked_add(len).ok_or(MapError::Misaligned)?;
+    let start = page_down(phys);
+    let end = page_up(end_exact);
+    let owned_by_kernel = MEMORY_MAP.lock().is_some_and(|map| {
+        map.iter().any(|r| {
+            matches!(
+                r.kind,
+                MemoryKind::Usable
+                    | MemoryKind::BootloaderReclaimable
+                    | MemoryKind::KernelAndModules
+                    | MemoryKind::Framebuffer
+                    | MemoryKind::Bad
+            ) && r.base < end
+                && r.base.saturating_add(r.len) > start
+        })
+    });
+    if owned_by_kernel {
+        return Err(MapError::AlreadyMapped);
+    }
+    let virt_start = map_window(start, end - start, MapFlags::KERNEL_RO)?;
+    let ptr = core::ptr::with_exposed_provenance::<u8>((virt_start + (phys - start)) as usize);
+    let len = usize::try_from(len).map_err(|_| MapError::Misaligned)?;
+    // SAFETY: `ptr .. ptr + len` was just mapped read-only in the kernel
+    // address space and is never unmapped (the MMIO window is not reused),
+    // so the bytes stay readable for `'static`. Every bit pattern is a valid
+    // `u8`. The kernel never writes this memory (the mapping is read-only)
+    // and the range is not RAM the kernel hands out (checked above), so no
+    // `&mut` alias can exist.
+    Ok(unsafe { core::slice::from_raw_parts(ptr, len) })
 }
 
 /// Boot self-test of [`map_mmio`]: maps the local APIC (present on every
