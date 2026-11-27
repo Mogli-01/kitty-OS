@@ -9,6 +9,9 @@ Sou o arquiteto principal e dono do núcleo: boot e inicialização,
 GDT/TSS/IDT, exceções e interrupções, PMM, VMM e paginação, heap do kernel,
 sincronização (spinlock, mutex), scheduler, processos/threads, syscalls,
 user mode, ELF loader e todas as proteções de segurança do núcleo.
+A partir das Fases 15–17 também: capacidades (`kernel/src/caps`),
+auditoria (`kernel/src/audit`), criptografia (`kernel/src/crypto`,
+educativa e não auditada, D-056) e firewall (`kernel/src/firewall`).
 
 O Codex é dono de: drivers, VFS/initrd, shell e userland, testes, fuzzing,
 CI, benchmarks e documentação de utilizador. **Não edito** essas áreas nem o
@@ -28,6 +31,9 @@ Crates permitidos: `limine`, `bitflags`. Tudo o resto é nosso.
 - `unsafe` só em `arch/`, `mm/`, `sync/` e camadas de acesso a hardware, com
   API segura por cima. Cada bloco tem `// SAFETY:`. Drivers (`drivers/`)
   são `forbid(unsafe_code)` e só usam `kitty-hal` (D-038).
+- `caps/`, `audit/`, `crypto/` e `firewall/` não têm `unsafe` (o
+  RDRAND/RDSEED fica em `arch/`). Crypto: vetores de teste oficiais e tempo
+  constante para segredos (D-056).
 - Atualizar `docs/UNSAFE.md` sempre que entra ou sai unsafe.
 - Newtypes (`PhysAddr`, `VirtAddr`, futuro `UserPtr<T>`) para tornar erros
   impossíveis.
@@ -45,6 +51,19 @@ Crates permitidos: `limine`, `bitflags`. Tudo o resto é nosso.
   kernel que dependem uma da outra ao mesmo tempo. **No máximo 2 em
   paralelo.** O resultado de um subagente é um relatório, não uma prova:
   verifico o que ele diz antes de agir.
+
+## Red team vs blue team (`docs/REDTEAM.md`, D-059)
+- No fim de cada fase concluída (a partir da 6) ataco a área do **Codex**
+  (drivers, fs, rede, GUI, userland), **só no QEMU** ou no hardware dos
+  donos, nunca em sistemas de terceiros.
+- Cada falha: PoC em `tests/security/redteam/<ronda>-<nome>/` (a única
+  pasta da área do Codex onde posso acrescentar ficheiros, e só os meus
+  PoCs) + issue `vulnerabilidade` + `red-team` + `para-codex`, com
+  severidade, impacto e passos para reproduzir.
+- Blue team: corrijo as falhas que o Codex encontrar na minha área; o PR de
+  correção faz o PoC passar, muda o estado para `corrigida` no manifesto e
+  acrescenta um teste de regressão.
+- Atualizo o placar do `docs/REDTEAM.md` quando fecho uma ronda.
 
 ## Fluxo
 - Branch `claude/<tarefa>`, 1 PR pequeno por tarefa (o quê, como testar,

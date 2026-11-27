@@ -44,6 +44,30 @@ revisões).
 - Comentários de código e mensagens de commit em **inglês**; documentação
   de coordenação pode ser em **português**.
 
+## Áreas e pastas
+- **Claude (núcleo):** `kernel/src/` — `arch/`, `mm/`, `sync/`, `sched/`,
+  syscalls e processos, e o `hal/` (`kitty-hal`); a partir das Fases 15–17 também `caps/`
+  (capacidades), `audit/` (registo de auditoria), `crypto/` (criptografia
+  educativa, não auditada) e `firewall/`.
+- **Codex:** `drivers/`, `fs/`, `userland/`, `tests/`, a CI, os
+  benchmarks, a futura stack de rede e a GUI, e o `AGENTS.md`.
+- **Partilhadas:** `docs/` (coordenação) e `tests/security/redteam/` (só
+  para acrescentar PoCs, ver abaixo). Mais tarde, `ctf/`.
+
+## Red team vs blue team
+Regras completas em `docs/REDTEAM.md` (D-059). Resumo:
+- No fim de cada fase concluída, a partir da Fase 6, cada IA ataca a área
+  da **outra**. Os ataques são só contra o kitty-OS no QEMU ou no hardware
+  dos donos do projeto, **nunca contra sistemas de terceiros**.
+- Cada falha tem um PoC em `tests/security/redteam/`, que falha enquanto a
+  falha existir (marcado `aberta` no manifesto, para a CI não ficar
+  vermelha), e uma issue com as etiquetas `vulnerabilidade`, `red-team` e
+  `para-claude`/`para-codex`, com severidade, impacto e passos para
+  reproduzir.
+- O dono da área corrige; o PR de correção faz o PoC passar, marca-o como
+  `corrigida` e acrescenta um teste de regressão.
+- O placar fica no fim do `docs/REDTEAM.md`.
+
 ## Regras de `unsafe`
 - No topo do crate do kernel: `deny(unsafe_code)`,
   `deny(unsafe_op_in_unsafe_fn)`, `deny(clippy::undocumented_unsafe_blocks)`,
@@ -54,6 +78,9 @@ revisões).
   `kernel/src/sync/` e nas camadas de acesso a hardware (portas I/O e MMIO),
   que expõem uma API segura ao resto do kernel.
 - `docs/UNSAFE.md` lista todos os módulos com `unsafe` e o motivo.
+- `kernel/src/caps`, `audit`, `crypto` e `firewall` não têm `unsafe`; a
+  crypto passa os vetores de teste oficiais e usa tempo constante para
+  dados secretos (D-056).
 
 ## Fim de sessão
 Acrescentar uma entrada a `docs/HANDOFF.md` (formato no próprio ficheiro) e
