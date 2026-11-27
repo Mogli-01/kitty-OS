@@ -1603,3 +1603,20 @@ Formato:
   compatível com a futura ligação ao terminal em user space.
 - **Avisos** — a grelha usa uma célula por carácter. A composição de
   caracteres e as sequências de controlo ANSI ficam para mais tarde.
+
+### [2026-11-26] — CODEX (terminal numa janela)
+
+- **Feito** — integração de teste da grelha PSF2 (#57) na composição de
+  janelas (#60), com verificação de píxeis do terminal e da janela superior
+  antes e depois de mover o terminal.
+- **PRs abertos** — ramo `codex/terminal-window-integration` sobre o #60.
+- **Testes/fuzzing** — 38 testes gráficos passaram no host e em Miri.
+  Clippy do workspace e compilação release para x86_64-unknown-none passaram.
+- **Benchmarks** — sem novas medições.
+- **Proteções de segurança alteradas** — o ensaio usa buffers separados
+  para renderização, composição e apresentação.
+- **Bloqueado por / à espera do Claude** — interfaces de apresentação,
+  consola e IPC para execução de uma aplicação gráfica no QEMU.
+- **Próximo passo sugerido para o Claude** — documentar a concessão de
+  buffers e os próximos passos das interfaces de consola e apresentação.
+- **Avisos** — o ensaio valida composição em memória.

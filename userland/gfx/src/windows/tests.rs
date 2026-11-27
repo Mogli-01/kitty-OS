@@ -197,3 +197,80 @@ fn partial_recomposition_follows_stack_order_without_leaving_old_pixels() {
     assert_eq!(surface.pixel(Point { x: 4, y: 0 }), Some(BACKGROUND));
     assert!(stack.damage().regions().is_empty());
 }
+
+#[test]
+fn presents_terminal_glyphs_in_window_order_after_moving() {
+    use core::fmt::Write;
+
+    use crate::{TextGrid, font::Psf2Font};
+
+    let mut file = [0; 36];
+    file[..4].copy_from_slice(&[0x72, 0xb5, 0x4a, 0x86]);
+    for offset in [12, 16, 20, 24, 28] {
+        file[offset] = 1;
+    }
+    file[8] = 32;
+    file[32..35].copy_from_slice(&[0x80, b'A', 0xff]);
+    let font = Psf2Font::parse(&file[..35]).unwrap();
+
+    let mut cells = [' '; 3];
+    let mut terminal = TextGrid::new(&mut cells, 3, 1).unwrap();
+    terminal.write_str(" AA").unwrap();
+    let mut terminal_pixels = [0; 12];
+    let mut terminal_canvas = Canvas::new(&mut terminal_pixels, 3, 1, 12).unwrap();
+    terminal.draw_psf2(
+        &mut terminal_canvas,
+        Point { x: 0, y: 0 },
+        font,
+        LOWER,
+        BACKGROUND,
+    );
+
+    let mut front = [0; 20];
+    let mut back = [0; 20];
+    let mut stack = WindowStack::new(5, 1).unwrap();
+    stack.damage_mut().invalidate_all();
+    stack.insert(1, rect(0, 0, 3, 1)).unwrap();
+    stack.insert(2, rect(2, 0, 1, 1)).unwrap();
+    let mut present = |stack: &mut WindowStack| {
+        let mut frame = DoubleBuffer::new(
+            Canvas::new(&mut front, 5, 1, 20).unwrap(),
+            Canvas::new(&mut back, 5, 1, 20).unwrap(),
+        )
+        .unwrap();
+        for &changed in stack.damage().regions() {
+            frame.draw().fill_rect(changed, BACKGROUND);
+            for window in stack.windows() {
+                if let Some(visible) = window.bounds.intersection(changed) {
+                    if window.id == 1 {
+                        frame.draw().blend(
+                            terminal_canvas.as_surface(),
+                            rect(
+                                visible.origin.x - window.bounds.origin.x,
+                                0,
+                                visible.width,
+                                1,
+                            ),
+                            visible.origin,
+                        );
+                    } else {
+                        frame.draw().fill_rect(visible, UPPER);
+                    }
+                }
+            }
+        }
+        frame.present_damage(stack.damage_mut()).unwrap();
+        let surface = Surface::new(&front, 5, 1, 20).unwrap();
+        core::array::from_fn(|x| surface.pixel(Point { x: x as i32, y: 0 }).unwrap())
+    };
+
+    assert_eq!(
+        present(&mut stack),
+        [BACKGROUND, LOWER, UPPER, BACKGROUND, BACKGROUND]
+    );
+    stack.move_to(1, Point { x: 2, y: 0 }).unwrap();
+    assert_eq!(
+        present(&mut stack),
+        [BACKGROUND, BACKGROUND, UPPER, LOWER, LOWER]
+    );
+}
