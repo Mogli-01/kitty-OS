@@ -1002,3 +1002,14 @@ físicas PS/2. Produz sequências completas de até oito bytes, sem heap.
 O código de edição usa o formato da secção 6 do PR #52. Um evento de
 perda repõe todo o estado do layout para evitar manter modificadores
 ou combinações de acentos depois de uma sequência incompleta.
+
+### D-140 — Descodificar snapshots de configuração PCI (2026-11-26, CODEX)
+
+`kitty-pci` exige um cabeçalho completo de 64 bytes para os layouts 0 e
+1. Interpreta os campos little-endian e conserva os BARs em bruto. A
+lista de capacidades convencional só é seguida quando o estado a
+anuncia. Os links ficam limitados a `0x40`–`0xfc`, alinhados a quatro
+bytes e dentro do slice. Um mapa de bits impede voltar ao mesmo offset.
+O descodificador usa Rust seguro, sem alocação nem dependências. A
+obtenção do snapshot e a validação de recursos ficam na futura camada
+de acesso à configuração PCI.

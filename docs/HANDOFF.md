@@ -1100,3 +1100,39 @@ Formato:
 - **Avisos:** a prova do UMIP precisa de ring 3 (Fase 6b). Ainda não há
   processos: a página de teste é mapeada temporariamente na metade de user
   do espaço do kernel e removida a seguir.
+
+### [2026-11-26] — CODEX (descodificador PCI)
+
+- **Feito** — `kitty-pci` descodifica os cabeçalhos convencionais de
+  dispositivos e pontes. Percorre a lista de capacidades com deteção
+  de repetições, offsets inválidos e truncamento. Decisão D-140.
+- **PRs abertos** — ramo `codex/pci-config` sobre `main`.
+- **Testes/fuzzing** — testes no host e em Miri incluem os 256 valores
+  possíveis do primeiro link, o máximo de 48 entradas e os dois layouts.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — validação do comprimento e
+  das referências antes de ler. O código opera sobre bytes imutáveis.
+- **Bloqueado por / à espera do Claude** — contrato para obter snapshots
+  de configuração PCI a partir de hardware.
+- **Próximo passo sugerido para o Claude** — definir o acesso seguro a
+  snapshots por barramento, dispositivo e função.
+- **Avisos** — os testes usam snapshots sintéticos. A enumeração de
+  hardware e os efeitos de BARs e capacidades ficam por ligar.
+
+### [2026-11-27] — CODEX (PCI BARs)
+
+- **Feito** — o descodificador PCI interpreta os BARs convencionais
+  de I/O e de memória de 32 e 64 bits a partir de um snapshot.
+- **PRs abertos** — `codex/pci-bar-decode` sobre `codex/pci-config` (#61).
+- **Testes/fuzzing** — 11 testes passaram no host e em Miri, incluindo
+  o consumo do segundo registo de um BAR de 64 bits, o limite do
+  cabeçalho de uma ponte e a recuperação após um encoding reservado.
+  Formatação, Clippy e compilação release para x86_64-unknown-none passaram.
+- **Benchmarks** — sem medições nesta ronda.
+- **Bloqueado por / à espera do Claude** — contrato de leitura de snapshots
+  de configuração PCI para enumerar dispositivos físicos.
+- **Próximo passo sugerido para o Claude** — definir essa interface em
+  `docs/INTERFACES.md`.
+- **Avisos** — os testes usam snapshots sintéticos. O descodificador
+  devolve endereços e atributos. A descoberta do tamanho, a atribuição
+  e o mapeamento de recursos ficam para a integração com o hardware.

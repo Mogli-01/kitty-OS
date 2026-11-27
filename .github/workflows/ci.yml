@@ -113,6 +113,23 @@ jobs:
       - run: cargo miri test --locked -p kitty-i8042
       - run: cargo build --locked --release -p kitty-i8042 --target x86_64-unknown-none
 
+  pci:
+    name: PCI decoder (host and Miri)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain and Miri
+        run: |
+          rustup toolchain install
+          rustup component add miri
+      - run: cargo clippy -p kitty-pci --locked --all-targets -- -D warnings
+      - run: cargo test -p kitty-pci --locked
+      - run: cargo miri test -p kitty-pci --locked
+      - run: cargo build -p kitty-pci --target x86_64-unknown-none --release --locked
+
   boot:
     name: QEMU (${{ matrix.firmware }}, ${{ matrix.profile }})
     needs: lint
