@@ -1543,7 +1543,7 @@ Formato:
   «Serão de Inverno», `Canvas` em índices de paleta com elipses,
   triângulos, linhas, contorno automático e blits, fonte 5×7, o Pantufa
   (sentado, enrolado, a espreguiçar-se, em bola) e a animação de arranque
-  completa (`BootSplash`), mais `present_bgra` para BGRA8888. 11 testes no
+  completa (`BootSplash`), mais `present_bgra` para BGRA8888. 12 testes no
   host; compila para `x86_64-unknown-none`. O exemplo `boot_png` grava
   frames em PNG. A referência visual de todos os ecrãs (login, janelas,
   ícones, alertas do IDS, kernel panic, proteção de ecrã, sons) está em
