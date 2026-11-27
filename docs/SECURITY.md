@@ -2,8 +2,9 @@
 
 ## Modelo de ameaça
 
-**O que protegemos:** a integridade e a confidencialidade do kernel, e o
-isolamento entre processos.
+**O que protegemos:** a integridade e a confidencialidade do kernel; o
+isolamento entre processos, janelas e utilizadores; os dados guardados no
+disco; e a confiança no que é executado (programas e pacotes assinados).
 
 **Atacantes considerados:**
 1. **Programa malicioso em user space** (o principal). Pode chamar qualquer
@@ -15,10 +16,36 @@ isolamento entre processos.
    confiáveis: validação completa, sem `unwrap`, sem confiar em tamanhos.
 3. **Bugs no próprio kernel**: reduzimos o impacto com W^X, páginas de
    guarda, SMEP/SMAP e o mínimo de `unsafe`.
+4. **Atacante local sem privilégios** (Fase 15): uma conta normal com
+   sessão aberta. Quer ler ficheiros, ecrã ou input de outro utilizador,
+   tornar-se admin, apagar os seus rastos do registo de auditoria, ou
+   adivinhar passwords à força (o login limita tentativas e regista falhas).
+5. **App maliciosa instalada** (Fases 15 e 18): instalada pelo próprio
+   utilizador com `kpkg`. Só tem as capacidades que o manifesto declarou e o
+   utilizador aprovou; tenta usar objetos que não lhe foram dados, enganar o
+   utilizador com janelas falsas, ou fazer DoS. Um pacote alterado depois de
+   assinado é recusado.
+6. **Atacante na rede** (Fase 17): controla os pacotes que chegam (scans,
+   floods, pacotes malformados, respostas DHCP/DNS falsas). A entrada nega
+   tudo por defeito; a stack trata cada pacote como não confiável; o IDS
+   deteta padrões e só pode **apertar** regras. Sem TLS, o tráfego HTTP é
+   legível e alterável: o mini browser deve dizê-lo ao utilizador.
+7. **Acesso físico ao disco** (Fase 16): alguém tira o disco ou a pen e lê-a
+   noutra máquina. O disco encriptado (ChaCha20-Poly1305, chave derivada com
+   Argon2id) protege os dados **em repouso**, com a máquina desligada.
+   Atenção: a crypto é educativa e não auditada (D-056), por isso não se
+   deve guardar no kitty-OS nada que precise mesmo de proteção.
 
-**Fora de âmbito (por agora):** ataques físicos (DMA por Thunderbolt,
-cold boot), firmware comprometido, canais laterais micro-arquiteturais
-(Spectre/Meltdown — revisitar depois da Fase 6), Secure Boot.
+**Fora de âmbito (por agora):** outros ataques físicos (DMA por
+Thunderbolt, cold boot, "evil maid" que altere o kernel ou o Limine numa
+máquina sem Secure Boot: a verificação de assinaturas só protege os
+programas carregados **pelo** kernel), firmware comprometido, canais
+laterais micro-arquiteturais (Spectre/Meltdown — revisitar depois da
+Fase 6), Secure Boot (revisitar na Fase 19, com hardware real).
+
+**Testes ofensivos:** a partir da Fase 6, cada fase acaba com uma ronda de
+red team vs blue team (`docs/REDTEAM.md`). As falhas encontradas são
+provadas por PoCs que correm só no QEMU e ficam como testes de regressão.
 
 **Confiamos em:** firmware, Limine (fixado por commit, D-004), CPU e o
 compilador Rust fixado.
@@ -56,6 +83,8 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | Deteção de double free e overflow de referências no PMM | dois donos para a mesma memória | ATIVA | 3 |
 | Heap: pedaços limpos ao libertar, links codificados e validados, deteção de double free (D-035) | fuga de dados antigos; use-after-free a corromper o alocador | ATIVA | 3 |
 | Heap: página de guarda depois de cada alocação grande | overflow de um buffer grande a corromper outro | ATIVA | 3 |
+| Pilhas das threads do kernel com página de guarda e espaço por mapear por cima; frames limpos ao libertar (D-045) | stack overflow silencioso entre threads; fuga de dados de uma thread morta | ATIVA | 5 |
+| Sem preempção com `SpinLock` preso; troca só depois do EOI (D-045) | deadlocks e IRQs presos por preempção no sítio errado | ATIVA | 5 |
 | Locks que desativam interrupções em todos os globais (D-037) | deadlocks em handlers de interrupção | ATIVA | 4 |
 | `cli`/`sti`/`hlt` como barreiras de memória do compilador (D-037) | acessos movidos para fora de secções críticas | ATIVA | 4 |
 | PIC remapeado para 0x20–0x2F e mascarado por omissão (D-039) | IRQs confundidos com exceções (0x08 = double fault); interrupções de dispositivos não pedidas | ATIVA | 4 |
@@ -76,11 +105,23 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | RNG do kernel (RDRAND/RDSEED + entropia) | aleatoriedade previsível | PLANEADA | 8 |
 | KASLR | saber onde está o kernel | PLANEADA | 8 |
 | ASLR em user space | ROP com endereços fixos | PLANEADA | 8 |
-| Capacidades / permissões por processo | escalada de privilégios | PLANEADA | 8 |
-| Objetos do kernel só por handle com direitos (D-018) | acesso a buffers/canais que ninguém nos deu | PLANEADA | 6/12 |
+| Objetos do kernel só por handle com direitos (D-018, D-051) | acesso a buffers/canais que ninguém nos deu | PLANEADA | 6/12 |
+| Sem autoridade ambiente: syscalls "capability-first", sem nomes/caminhos globais, processo novo começa sem handles (D-055, D-058) | apps que acedem a tudo o que o utilizador pode; "confused deputy" | PLANEADA | 6 |
+| Direitos só diminuem (`dup`, transferência por canal); handles com geração | aumentar direitos; usar um handle reciclado | PLANEADA | 6/12 |
 | Filas de IPC limitadas | DoS da memória do kernel por user space | PLANEADA | 12 |
 | Compositor em user space (D-017) | bug no compositor comprometer o kernel | PLANEADA | 13 |
 | Isolamento entre janelas (ver secção abaixo) | ler o ecrã, o input ou os buffers de outra aplicação | PLANEADA | 10–13 |
+| UIDs/GIDs e permissões em ficheiros e processos; sem "root" que salte as verificações (o admin é um conjunto de handles, D-055) | um utilizador ler ou alterar dados de outro; utilizador → admin | PLANEADA | 15 |
+| Registo de auditoria no kernel: só acrescentar, lido só com o handle `AUDIT`, limite por processo, contador de eventos perdidos, sem endereços do kernel | apagar rastos; encher o registo para esconder um ataque | PLANEADA | 15 |
+| Login: passwords guardadas só como Argon2id com sal; tentativas limitadas e auditadas | roubo de passwords; força bruta | PLANEADA | 15 |
+| Crypto própria com vetores oficiais (RFC 8439, RFC 8032, FIPS 180-4, RFC 9106) e tempo constante para segredos (D-056) | erros de implementação; ataques de timing | PLANEADA (educativa, não auditada) | 16 |
+| CSPRNG (ChaCha20) semeado por RDSEED/RDRAND + entropia; recusa arrancar sem entropia mínima | chaves, nonces e ASLR previsíveis | PLANEADA | 16 |
+| ELF loader só aceita programas com assinatura Ed25519 válida; o modo de desenvolvimento é explícito e anunciado no arranque | executar programas alterados ou não confiáveis | PLANEADA | 16 |
+| Disco encriptado (ChaCha20-Poly1305, nonce único por bloco, chave por Argon2id) | ler ou alterar o disco com a máquina desligada | PLANEADA | 16 |
+| Firewall no kernel, entrada nega tudo por defeito, regras por processo/porta/endereço (D-057) | serviços expostos sem querer; apps a falar com a rede sem a capacidade | PLANEADA | 17 |
+| IDS em user space: só pode apertar regras (nunca abrir portas) | scans e floods não detetados; IDS comprometido a abrir o firewall | PLANEADA | 17 |
+| Stack de rede `forbid(unsafe_code)`, pacotes tratados como não confiáveis, filas limitadas | corrupção de memória por pacotes; DoS por flood | PLANEADA | 17 |
+| Pacotes `kpkg` assinados (Ed25519) com manifesto de capacidades aprovado pelo utilizador | instalar pacotes alterados; apps com mais acesso do que o declarado | PLANEADA | 18 |
 
 ## Isolamento entre janelas (Fases 10–13)
 

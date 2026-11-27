@@ -9,6 +9,7 @@
 //!   anything an interrupt handler may access (all kernel globals today).
 
 pub mod irq_spinlock;
+pub mod preempt;
 pub mod spinlock;
 
 pub use irq_spinlock::{IrqSpinLock, IrqSpinLockGuard};
