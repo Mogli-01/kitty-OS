@@ -580,3 +580,11 @@ desenho da Fase 12, para a Fase 15 não obrigar a refazer as syscalls.
 - **Porquê:** quem escreve o código tem os mesmos pontos cegos quando o
   revê. Um atacante diferente, com incentivo para encontrar falhas, vê
   outras coisas. Os PoCs transformam cada falha num teste permanente.
+
+### D-150 — Fonte e recursos originais da identidade kitty (2026-11-27, CODEX)
+
+O tema começa com a fonte bitmap de 5 × 7 píxeis desenhada para o
+kitty-OS (D-112, #27). O projeto desenha os glifos adicionais, o logótipo,
+os ícones, o cursor, a mascote e os recursos dos jogos. A grelha ASCII
+do logótipo mantém o esboço legível e independente do formato de píxel
+do framebuffer. Ver [IDENTITY.md](IDENTITY.md).

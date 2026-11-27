@@ -1,0 +1,63 @@
+name: Security and crypto
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  protection-regressions:
+    name: QEMU protection regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Validate the security register
+        run: python3 tests/security/redteam/run.py --validate-only
+      - name: Install QEMU and OVMF
+        shell: bash
+        run: |
+          sources=/etc/apt/sources.list.d/ubuntu.sources
+          test -r "$sources"
+          opts=(-o "Dir::Etc::sourcelist=$sources" -o 'Dir::Etc::sourceparts=-' -o 'Acquire::Retries=3')
+          sudo apt-get "${opts[@]}" -o 'APT::Update::Error-Mode=any' update
+          sudo apt-get "${opts[@]}" install -y --no-install-recommends qemu-system-x86 ovmf
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - name: Run QEMU protection checks
+        shell: bash
+        run: |
+          launcher="$RUNNER_TEMP/kitty-qemu-isolated"
+          printf '%s\n' '#!/usr/bin/env bash' 'exec qemu-system-x86_64 -nic none "$@"' > "$launcher"
+          chmod +x "$launcher"
+          KITTY_QEMU="$launcher" python3 tests/security/redteam/run.py
+
+  crypto-vectors:
+    name: Official crypto vectors
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Validate official vector fixtures
+        run: python3 tests/crypto/validate_vectors.py
+      - name: Test the crypto implementation when present
+        shell: bash
+        run: |
+          if [[ -d kernel/src/crypto || -f kernel/src/crypto.rs ]]; then
+            adapter=tests/crypto/host/Cargo.toml
+            if [[ ! -f "$adapter" ]]; then
+              printf 'Missing crypto host test adapter: %s\n' "$adapter" >&2
+              exit 1
+            fi
+            rustup toolchain install
+            cargo test --manifest-path "$adapter" --locked --test official_vectors
+          else
+            printf '%s\n' 'Phase 16 crypto implementation is pending.'
+          fi

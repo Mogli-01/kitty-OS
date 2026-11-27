@@ -125,7 +125,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Double buffering | CODEX | TODO |
 | Framebuffer mapeado com write-combining (usa a API de PAT da Fase 3) | CODEX | TODO |
 | Objeto `DISPLAY`: `display_map(h)` exige um handle com `MAP`, que o `init` dá só ao compositor; a consola do kernel larga o ecrã (D-058) | CLAUDE | TODO |
-| Identidade "kitty": ecrã de arranque com o logótipo do gato e uma animação simples | CODEX | TODO |
+| Identidade "kitty": ecrã de arranque com o logótipo do gato e uma animação simples | CODEX | Planeamento em `docs/IDENTITY.md`. Implementação pendente |
 
 ## Fase 11 — Input
 | Tarefa | Dono | Estado |
@@ -159,8 +159,8 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Terminal gráfico | CODEX | TODO |
 | Explorador de ficheiros | CODEX | TODO |
 | Ambiente de trabalho com barra de tarefas e tema "kitty" | CODEX | TODO |
-| Identidade "kitty": tema de cores, ícones e cursor próprios; mascote no ambiente de trabalho; comando `meow` e outros easter eggs | CODEX | TODO |
-| Jogos feitos de raiz: snake e tetris (servem também para testar gráficos, input e desempenho) | CODEX | TODO |
+| Identidade "kitty": tema de cores, ícones e cursor próprios; mascote no ambiente de trabalho; comando `meow` e outros easter eggs | CODEX | Planeamento em `docs/IDENTITY.md`. Implementação pendente |
+| Jogos feitos de raiz: snake e tetris (servem também para testar gráficos, input e desempenho) | CODEX | Ensaios de input, gráficos e temporizador planeados em `docs/IDENTITY.md` |
 
 > **Gráficos da identidade "kitty":** todos originais, criados por nós
 > (logótipo, ícones, cursor, mascote, jogos). Nada de imagens, fontes ou
@@ -178,16 +178,16 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 ## Fase 16 — Criptografia, arranque verificado e disco encriptado
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Biblioteca de criptografia própria (`kernel/src/crypto`, educativa e não auditada, D-056): SHA-256, ChaCha20-Poly1305, Ed25519, Argon2id, com os vetores de teste oficiais | CLAUDE | TODO |
+| Biblioteca de criptografia própria (`kernel/src/crypto`, educativa e não auditada, D-056): SHA-256, ChaCha20-Poly1305, Ed25519, Argon2id, com os vetores de teste oficiais | CLAUDE | Implementação pendente. Vetores oficiais e CI inicial em `tests/crypto/` |
 | CSPRNG sobre RDRAND/RDSEED + entropia (evolui o RNG da Fase 8) | CLAUDE | TODO |
 | Binários assinados: o ELF loader recusa programas sem uma assinatura Ed25519 válida (`E_BADSIG`), com um modo de desenvolvimento explícito para testes | CLAUDE | TODO |
 | Ferramenta no xtask para gerar chaves e assinar o kernel e os programas (a chave privada nunca entra no repositório) | CODEX | TODO |
-| Camada de disco encriptado no sistema de ficheiros: password pedida no arranque, chave derivada com Argon2id | CODEX | TODO |
+| Camada de disco encriptado no sistema de ficheiros: password pedida no arranque, chave derivada com Argon2id | CODEX | Implementação pendente. Fuzzing do formato listado em `tests/fuzz-targets.md` |
 
 ## Fase 17 — Rede, firewall e IDS
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Driver virtio-net e stack de rede própria: Ethernet, ARP, IPv4, ICMP, UDP, TCP, DHCP e DNS | CODEX | TODO |
+| Driver virtio-net e stack de rede própria: Ethernet, ARP, IPv4, ICMP, UDP, TCP, DHCP e DNS | CODEX | Implementação pendente. Fuzzing de parsers em `tests/fuzz-targets.md` |
 | Firewall no kernel: regras por processo, porta e endereço; negar tudo por defeito na entrada (D-057) | CLAUDE | TODO |
 | IDS em user space, ligado ao firewall: deteção de scans de portas, floods e padrões suspeitos, com alertas na interface gráfica e no registo de auditoria | CODEX | TODO |
 | Mini browser só de texto (HTTP primeiro; HTTPS só quando houver TLS) | CODEX | TODO |
@@ -196,7 +196,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Tarefa | Dono | Estado |
 |---|---|---|
 | Driver Intel HDA (QEMU: `-device intel-hda`), sons do sistema e um leitor de música simples | CODEX | TODO |
-| Gestor de pacotes `kpkg` (install, remove, list, update): pacotes assinados e verificados com Ed25519; as capacidades de cada pacote vêm num manifesto que o utilizador aprova na instalação | CODEX | TODO |
+| Gestor de pacotes `kpkg` (install, remove, list, update): pacotes assinados e verificados com Ed25519; as capacidades de cada pacote vêm num manifesto que o utilizador aprova na instalação | CODEX | Implementação pendente. Fuzzing do manifesto em `tests/fuzz-targets.md` |
 
 ## Fase 19 — Hardware real
 **Objetivo:** arrancar a partir de uma pen USB num portátil real (ThinkPad
