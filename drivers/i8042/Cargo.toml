@@ -1,0 +1,8 @@
+[package]
+name = "kitty-i8042"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+kitty-hal = { path = "../../hal" }
