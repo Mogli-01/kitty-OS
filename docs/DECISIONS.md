@@ -895,7 +895,6 @@ está em `docs/UNSAFE.md`.
   (`yield_now`), que mostra os ciclos (TSC) por yield+troca. No QEMU TCG
   os "ciclos" não são de hardware real: o número serve para comparar
   versões, não como valor absoluto.
-
 ### D-105 — PIT legado em modo periódico (2026-11-25, CODEX)
 
 O crate `kitty-pit` programa o canal 0 do PIT 8254 em modo 2 através de

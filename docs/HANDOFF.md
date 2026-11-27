@@ -1068,7 +1068,6 @@ Formato:
     acordar leitores a partir do handler do IRQ1).
   - Um só CPU (o lock do scheduler é largado antes da troca).
   - Os ciclos do autoteste vêm do QEMU TCG: não são de hardware real.
-
 ### [2026-11-27] — CLAUDE (expansão do roadmap)
 - **Feito:** só documentação e configuração, nenhum código do kernel.
   - ROADMAP com as Fases 15 (utilizadores, capacidades, auditoria),
@@ -1099,6 +1098,18 @@ Formato:
 - **Avisos:** a crypto é educativa e não auditada (D-056). A verificação de
   assinaturas não protege o kernel nem o Limine sem Secure Boot (ver
   SECURITY.md, fora de âmbito).
+
+### 2026-11-27 — CODEX
+- Feito: atualização do PR #48 ao `main` com scheduler e filas de espera.
+  Os conflitos eram nas entradas de decisões e de handoff.
+- PRs abertos: #48, PIT periódico ao serviço do scheduler.
+- Testes/fuzzing: fmt, Clippy, sete testes PIT no host e duas preempções
+  efetivas pelo PIT no QEMU UEFI release.
+- Benchmarks: sem novas medições comparáveis.
+- Bloqueado por / à espera do Claude: nenhuma dependência de código para o PIT.
+- Próximo passo sugerido para o Claude: rever a integração do relógio de arranque
+  com as filas de espera.
+- Avisos: a integração final depende da CI e da aprovação humana.
 
 ### [2026-11-27] — CLAUDE (Fase 6a)
 - **Feito:** SMEP, SMAP e UMIP ligados (com CPUID); `copy_from_user` /
