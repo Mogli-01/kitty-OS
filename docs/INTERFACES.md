@@ -413,11 +413,28 @@ o `init` recebe os handles de CONSOLE, raiz do initrd, INPUT e DISPLAY e
 passa-os com `process_spawn`; não há `input_open`. O Codex pode programar
 a shell, a biblioteca de syscalls e o compositor contra esse contrato.
 
+### Memória de user: `mm::user` (Fase 6a) — INSTÁVEL
+Fornece: CLAUDE (`kernel/src/mm/user.rs`). Usa: núcleo (syscalls).
+```rust
+pub fn UserSlice::new(addr: u64, len: usize) -> Result<UserSlice, UserError>; // só valida o intervalo
+pub fn copy_from_user(dst: &mut [u8], src: UserSlice) -> Result<(), UserError>;
+pub fn copy_to_user(dst: UserSlice, src: &[u8]) -> Result<(), UserError>;
+pub fn UserPtr::<T>::new(addr: u64) -> Result<UserPtr<T>, UserError>;    // T = u8..u64, i32, i64
+pub fn UserPtr::<T>::read(self) -> Result<T, UserError>;
+pub fn UserPtr::<T>::write(self, v: T) -> Result<(), UserError>;
+// UserError::BadRange (fora da metade de user, overflow, > 1 MiB) → E_INVAL/E_FAULT
+// UserError::Fault (não mapeado / sem acesso) → E_FAULT
+```
+- Nunca há panic por um ponteiro de user mau.
+- Copiar uma vez para o kernel e só depois validar (sem TOCTOU).
+- Marcador: `[mm] user-copy self-test passed`; features `selftest-smap`
+  (`protection violation on read in kernel mode`) e `selftest-smep`
+  (`protection violation on instruction fetch in kernel mode`).
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |
 |---|---|---|---|
-| `UserPtr<T>`, `copy_from_user`, `copy_to_user` | CLAUDE | CODEX (VFS) | 6 |
 | ABI das syscalls (números, registos, códigos de erro) | CLAUDE | CODEX (userland) | 6 |
 | `trait FileSystem` / `trait Inode` do VFS | CODEX | CLAUDE (syscalls) | 7 |
 | Handles e direitos: `Handle`, `Rights` (bits 0–15 genéricos `READ, WRITE, MAP, TRANSFER, DUP, EXEC`; 16–31 por tipo), `handle_close`, `handle_dup(h, rights_menores)`, `handle_info(h)` (D-058) | CLAUDE | CODEX (userland) | 6 |
