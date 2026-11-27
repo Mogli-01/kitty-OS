@@ -153,3 +153,45 @@ fn mounts_an_empty_root_while_propagating_archive_errors() {
         Error::Archive(kitty_initrd::Error::MissingEnd)
     );
 }
+
+#[test]
+fn directory_views_resolve_and_list_only_their_own_subtree() {
+    let bytes = fixture();
+    let fs = InitrdFs::mount(&bytes).unwrap();
+    let root = fs.directory("/").unwrap();
+    let bin = root.directory("bin").unwrap();
+    let etc = root.directory("etc").unwrap();
+    assert_eq!(bin.lookup("sh"), fs.lookup("/bin/sh"));
+    assert_eq!(bin.lookup("binutils"), Err(Error::NotFound));
+    assert_eq!(etc.lookup("init/config"), fs.lookup("/etc/init/config"));
+    assert_eq!(
+        etc.directory("init").unwrap().lookup("config"),
+        fs.lookup("/etc/init/config")
+    );
+    assert!(matches!(bin.directory("sh"), Err(Error::NotDirectory)));
+    assert!(root.directory("empty").unwrap().read_dir().next().is_none());
+    assert_eq!(
+        bin.read_dir().map(|entry| entry.name).collect::<Vec<_>>(),
+        ["cat", "sh"]
+    );
+}
+
+#[test]
+fn directory_views_require_canonical_nonempty_relative_paths() {
+    let bytes = fixture();
+    let fs = InitrdFs::mount(&bytes).unwrap();
+    let bin = fs.directory("/bin").unwrap();
+    for path in [
+        "",
+        "/etc/init",
+        "../etc/init",
+        "./sh",
+        "sh/..",
+        "sh/",
+        "x//y",
+        "x\0y",
+    ] {
+        assert_eq!(bin.lookup(path), Err(Error::InvalidPath));
+        assert!(matches!(bin.directory(path), Err(Error::InvalidPath)));
+    }
+}
