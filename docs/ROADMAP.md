@@ -154,7 +154,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Tarefa | Dono | Estado |
 |---|---|---|
 | Biblioteca gráfica em user space: píxeis, retângulos, linhas, blit | CODEX | Primitivas BGRA8888 em revisão no ramo `codex/graficos-base` |
-| Fontes bitmap, depois PSF e TrueType simples | CODEX | Fonte bitmap original (#27) e leitura PSF2 (`codex/fontes-psf2`) em revisão. TrueType pendente |
+| Fontes bitmap, depois PSF e TrueType simples | CODEX | Fonte bitmap original (#27) e leitura PSF2 (`codex/fontes-psf2`) em revisão. Fuzzing da geometria PSF2 em revisão. TrueType pendente |
 | Double buffering | CODEX | Dois buffers com apresentação total ou parcial em revisão no ramo `codex/double-buffer` |
 | Framebuffer mapeado com write-combining (usa a API de PAT da Fase 3) | CODEX | TODO |
 | Objeto `DISPLAY`: `display_map(h)` exige um handle com `MAP`, que o `init` dá só ao compositor; a consola do kernel larga o ecrã (D-058) | CLAUDE | TODO |

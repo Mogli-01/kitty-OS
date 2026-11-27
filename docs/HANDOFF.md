@@ -1585,3 +1585,19 @@ Formato:
   formato e pitch da superfície na futura interface `DISPLAY`.
 - **Avisos** — o alvo gráfico usa um workspace de host próprio, para
   que o PR possa ser revisto sobre a base da biblioteca gráfica (#27).
+
+### [2026-11-27] — CODEX (geometria de glifos no fuzzing PSF2)
+
+- **Feito** — o alvo PSF2 gera também atlas completos sem tabela Unicode,
+  com larguras de 1 a 32, alturas de 1 a 24 e um a quatro glifos.
+  Mantém os casos de ficheiros arbitrários e de tabelas Unicode.
+- **PRs abertos** — ramo `codex/psf2-fuzz-geometry` sobre o #54.
+- **Testes/fuzzing** — alvo PSF2 com AddressSanitizer e testes gráficos
+  no host. As baterias MADT e USTAR mantêm os testes existentes.
+- **Benchmarks** — sem novas medições.
+- **Proteções de segurança alteradas** — cobertura da geometria e dos
+  offsets dos glifos com verificação do padding do canvas.
+- **Bloqueado por / à espera do Claude** — nada neste teste.
+- **Próximo passo sugerido para o Claude** — manter a resolução das
+  interfaces gráficas no handoff.
+- **Avisos** — mudança no alvo de fuzzing do host.
