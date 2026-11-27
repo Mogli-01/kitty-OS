@@ -125,6 +125,8 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 
 | VFS | CODEX | Raiz só de leitura com índice limitado, pesquisa e listagem em revisão no #24. Montagem no arranque em preparação |
 | initrd (módulo do Limine) | CODEX | Parser USTAR em revisão no #23. Entrega do módulo disponível no #38 |
+
+| initrd (módulo do Limine) | CODEX | Parser USTAR em revisão (#23), com cobertura adicional da passagem entre ficheiros no ramo `codex/ustar-fuzz-multifile`; ligação ao Limine no #38 |
 | Shell em userland | CODEX | TODO |
 | Entrega do módulo initrd ao VFS (`Platform::initrd`, validado, só de leitura) (#22) | CLAUDE | FEITO |
 | Syscalls de ficheiros no núcleo: `open_at(dir_handle, caminho, direitos)`, read/write/close; sem caminhos absolutos globais (D-058) | CLAUDE | TODO |
