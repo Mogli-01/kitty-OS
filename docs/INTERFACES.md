@@ -113,6 +113,11 @@ das falhas, confirma `frame allocator self-test passed`, a auditoria W^X,
 heap e o do MMIO. Guarda a série em `build/memory-tests/<firmware>-<perfil>/`.
 `test` e `test-memory` dão erro se o log não puder ser gravado.
 
+`cargo xtask test-keyboard [--bios] [--release]` verifica a pressão e
+libertação de `A` e da seta para cima através de IRQ1. Usa a feature
+`selftest-ps2-keyboard` para a emissão dos marcadores de teste e guarda a
+série em `build/serial-keyboard.log`.
+
 ### Heap do kernel (`alloc`) — ESTÁVEL
 Fornece: CLAUDE (`kernel/src/mm/heap.rs`). Usa: todos.
 `Box`, `Vec`, `String`, … funcionam depois de `mm::heap::init()`.
@@ -188,6 +193,22 @@ pub fn arch::irq::unregister_isa(line: u8) -> Result<(), IrqError>;
   espúrios (IRQ7/IRQ15 do PIC, vetor 0xFF do APIC) nunca chegam ao handler.
 - `connect_isa` de um controlador só pode devolver vetores 0x20–0xEF
   (senão `ControllerError`).
+
+**Fontes locais do APIC (issue #36):**
+```rust
+pub fn arch::irq::register_local(handler: IrqHandler) -> Result<Vector, IrqError>;
+pub fn arch::irq::unregister_local(vector: Vector) -> Result<(), IrqError>;
+```
+- Reserva um vetor de dispositivo livre (0x30–0xEF) e instala o handler,
+  **sem** rota ISA (timer, erro ou térmica da LVT do local APIC).
+- Ordem: programar a LVT **mascarada** com o vetor devolvido → só depois
+  desmascarar. Para parar ou reconfigurar: **mascarar primeiro**, depois
+  `unregister_local`. Uma interrupção já a caminho que chegue depois
+  encontra o vetor sem handler: conta como inesperada e **recebe na mesma o
+  EOI** (regra de EOI por origem, D-039), por isso o APIC nunca fica preso.
+- O EOI é do núcleo, como para todas as fontes de dispositivo.
+- Pode ser chamado antes ou depois do `sti`. Só o CPU de arranque nesta
+  fase (o timer local é por CPU: com SMP, Fase 9, cada CPU regista o seu).
 
 **Controlador de interrupções** (para o driver de I/O APIC + local APIC):
 ```rust
@@ -335,19 +356,214 @@ Usar para tudo o que um handler de interrupção possa tocar. Os guards
 guards aninhados libertam-se por ordem inversa (LIFO); um `drop` fora de
 ordem pode religar as interrupções com outro lock ainda preso.
 
+### Scheduler e threads do kernel (Fase 5) — INSTÁVEL
+Fornece: CLAUDE (`kernel/src/sched/`). Usa: CODEX (timer, drivers com
+threads), núcleo.
+```rust
+pub fn sched::spawn(name: &'static str, entry: fn()) -> Result<ThreadId, SpawnError>;
+pub fn sched::yield_now();
+pub fn sched::exit() -> !;          // também acontece quando `entry` volta
+pub fn sched::tick();               // chamar no handler do timer
+pub fn sched::current() -> ThreadId;
+pub fn sched::switches() -> u64;
+```
+- **Timer (Codex):** o handler do IRQ do timer só tem de chamar
+  `sched::tick()` (não aloca nem toma locks). Não troca de thread dentro do handler: o núcleo fá-lo no
+  fim do dispatch, depois do EOI. Frequência sugerida: 100–1000 Hz.
+- Cada thread tem 32 KiB de pilha com página de guarda; um overflow dá
+  double fault com relatório (não corrompe outra thread).
+- **Não preempta** enquanto houver um `SpinLock` simples preso; por isso,
+  num laço longo, não seguras um `SpinLock` (usa `IrqSpinLock` com secções
+  curtas, ou liberta o lock).
+- Para esperar por algo **sem gastar CPU**, usar `sched::WaitQueue` (abaixo).
+- Marcadores: `[sched] cooperative self-test passed`, e com a feature
+  `selftest-preempt` `[sched] preemption self-test passed`;
+  `selftest-thread-stack-overflow` → double fault na IST.
+
+### `sched::WaitQueue` (Fase 5) — INSTÁVEL
+Fornece: CLAUDE (`kernel/src/sched/wait.rs`). Usa: CODEX (drivers com
+leituras bloqueantes, input), núcleo (IPC, Fase 12).
+```rust
+pub const fn WaitQueue::new() -> WaitQueue;            // pode ser `static`
+pub fn wait_until(&self, ready: impl FnMut() -> bool); // bloqueia até ready()
+pub fn wake_one(&self) -> bool;                        // também em handlers de IRQ
+pub fn wake_all(&self) -> usize;                       // também em handlers de IRQ
+```
+- `wake_one`/`wake_all` **não usam o heap** (a fila mantém o buffer; o
+  scheduler reserva espaço na fila de prontas no `spawn`), por isso são
+  seguros em handlers de IRQ. O `wait_until` (só em contexto de thread)
+  pode alocar ao registar-se.
+- Padrão: o produtor **publica primeiro** (ex.: põe o byte num buffer
+  protegido por `IrqSpinLock`, ou num atómico) e **depois** chama
+  `wake_one`. O consumidor chama `wait_until(|| há_dados())`.
+- `ready` tem de ser barato e não pode bloquear nem tomar um `SpinLock`
+  simples (pode ler atómicos ou tomar um `IrqSpinLock` curto).
+- **Só em contexto de thread**, com interrupções ligadas e sem nenhum lock
+  preso: **nunca num handler de IRQ** (lá usa-se `wake_one`/`wake_all`). O
+  uso errado dá panic logo à entrada. Volta sempre com as interrupções
+  ligadas.
+- Não há wake-ups perdidos (D-046); um wake-up espúrio só faz a condição ser
+  verificada de novo.
+- Marcadores: `[sched] wait queue self-test passed`; com `selftest-preempt`,
+  `idle + wake from IRQ work` (a thread de arranque dorme na thread idle e é
+  acordada pelo handler do timer).
+
+### Fase 6: processos, syscalls, consola e INPUT — DESENHO
+Contrato completo em **`docs/FASE6.md`** (issues #46 e #50): ABI das
+syscalls e códigos de erro, `UserPtr`/`copy_*_user`, handles e direitos,
+`console_read`/`console_write` e `console::input_push` (driver de teclado),
+arranque de `/sbin/init` a partir do initrd, e o formato `InputEvent` (24
+bytes) com `input_read`/`input::push`. Sem autoridade ambiente (D-058):
+o `init` recebe os handles de CONSOLE, raiz do initrd, INPUT e DISPLAY e
+passa-os com `process_spawn`; não há `input_open`. O Codex pode programar
+a shell, a biblioteca de syscalls e o compositor contra esse contrato.
+
+### Memória de user: `mm::user` (Fase 6a) — INSTÁVEL
+Fornece: CLAUDE (`kernel/src/mm/user.rs`). Usa: núcleo (syscalls).
+```rust
+pub fn UserSlice::new(addr: u64, len: usize) -> Result<UserSlice, UserError>; // só valida o intervalo
+pub fn copy_from_user(dst: &mut [u8], src: UserSlice) -> Result<(), UserError>;
+pub fn copy_to_user(dst: UserSlice, src: &[u8]) -> Result<(), UserError>;
+pub fn UserPtr::<T>::new(addr: u64) -> Result<UserPtr<T>, UserError>;    // T = u8..u64, i32, i64
+pub fn UserPtr::<T>::read(self) -> Result<T, UserError>;
+pub fn UserPtr::<T>::write(self, v: T) -> Result<(), UserError>;
+// UserError::BadRange (fora da metade de user, overflow, > 1 MiB) → E_INVAL/E_FAULT
+// UserError::Fault (não mapeado / sem acesso) → E_FAULT
+```
+- Nunca há panic por um ponteiro de user mau.
+- Copiar uma vez para o kernel e só depois validar (sem TOCTOU).
+- Marcador: `[mm] user-copy self-test passed`; features `selftest-smap`
+  (`protection violation on read in kernel mode`) e `selftest-smep`
+  (`protection violation on instruction fetch in kernel mode`).
+
+### Eventos internos do PS/2 — INSTÁVEL
+
+Fornece: CODEX (`kitty_ps2::Ps2Input`). A fila tem 64 entradas e entrega
+`InputEvent::Key(KeyEvent)` e `InputEvent::Mouse(MouseReport)` por ordem
+de descodificação. IRQ1 e IRQ12 partilham o bloco de portas. O bit AUX
+do estado identifica o dispositivo que enviou o byte. Cada handler lê no
+máximo um byte.
+
+`next_input` devolve `InputEvent::Lost` antes de retomar a entrega após
+perda. O consumidor limpa o estado de teclas e botões retidos. Um byte AUX
+corrompido, quando a posição é conhecida, descarta o restante pacote. Um
+erro que torne a posição desconhecida exige nova configuração do rato.
+A entrega a processos e os timestamps dependem das futuras interfaces de
+`INPUT` e de tempo monotónico.
+
+### Raiz só de leitura do initrd (`kitty-vfs`) — INSTÁVEL
+
+Fornece: CODEX (`fs/vfs`). O módulo de arranque vem do núcleo (#22).
+
+A montagem aceita até 65 536 entradas USTAR, contando o cabeçalho da raiz
+quando presente. Acima desse limite, devolve `Error::TooManyEntries` antes
+de reservar memória para o índice.
+
+```rust
+impl<'a> InitrdFs<'a> {
+    pub fn mount(bytes: &'a [u8]) -> Result<Self, Error>;
+    pub fn lookup(&self, path: &str) -> Result<Inode<'a>, Error>;
+    pub fn read_dir(&self, path: &str) -> Result<ReadDir<'_, 'a>, Error>;
+}
+impl File<'_> {
+    pub fn read_at(self, offset: u64, destination: &mut [u8]) -> usize;
+}
+```
+
+`lookup` e `read_dir` recebem caminhos absolutos canónicos UTF-8. A raiz
+é `/`. Os restantes caminhos têm até 256 bytes depois da barra inicial.
+`lookup` devolve `Inode::Directory` ou `Inode::File(File)`. `read_dir`
+enumera os filhos diretos por ordem das componentes, incluindo diretórios
+implícitos. `read_at` lê para um buffer Rust já validado, devolve zero no
+fim do ficheiro e preserva o resto do buffer. O inode de ficheiro e as
+entradas de diretório conservam o tempo de vida dos bytes do arquivo.
+
+O caminho por syscall depende de validação de ponteiros e direitos pelo
+núcleo. Esta interface é a primeira implementação da raiz do VFS.
+
+`devices::init` cria a raiz a partir de `Platform::initrd`. O marcador
+`[vfs] initrd mounted read-only` confirma que o índice foi publicado.
+`[vfs] initrd archive rejected` confirma que o VFS recusou o conteúdo e
+continua o arranque sem a raiz. `selftest-initrd` verifica a listagem e
+os bytes de `/etc/kitty.txt` no arquivo de teste e emite
+`[vfs] initrd read verified (/etc/kitty.txt)` quando ambos coincidem.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |
 |---|---|---|---|
-| `sched::tick()` — chamada pelo driver do timer a cada interrupção | CLAUDE | CODEX | 4/5 |
-| `sched::spawn_kernel_thread(fn() -> !)` | CLAUDE | CODEX | 5 |
-| `UserPtr<T>`, `copy_from_user`, `copy_to_user` | CLAUDE | CODEX (VFS) | 6 |
 | ABI das syscalls (números, registos, códigos de erro) | CLAUDE | CODEX (userland) | 6 |
 | `trait FileSystem` / `trait Inode` do VFS | CODEX | CLAUDE (syscalls) | 7 |
-| Filas de espera: `WaitQueue::wait()` / `wake_one()` / `wake_all()` | CLAUDE | CODEX (drivers que bloqueiam) | 5 |
-| Handles e direitos: `Handle`, `Rights { READ, WRITE, MAP, TRANSFER, … }`, `handle_close`, `handle_duplicate(h, rights_menores)` | CLAUDE | CODEX (userland) | 6 |
+| Handles e direitos: `Handle`, `Rights` (bits 0–15 genéricos `READ, WRITE, MAP, TRANSFER, DUP, EXEC`; 16–31 por tipo), `handle_close`, `handle_dup(h, rights_menores)`, `handle_info(h)` (D-058) | CLAUDE | CODEX (userland) | 6 |
+| `process_spawn(imagem: Handle, handles: UserSlice<(Handle, Rights)>) -> Handle` — a única forma de dar autoridade a um processo novo (D-058) | CLAUDE | CODEX (init, shell) | 6 |
+| `open_at(dir: Handle, caminho, rights) -> Handle`, sem caminhos globais; o VFS recusa sair do diretório do handle (D-058) | CLAUDE (syscall) + CODEX (VFS) | ambos | 7 |
 | `struct InputEvent` unificado (teclado + rato: tipo, código, valor, timestamp) e `input::push(InputEvent)` chamada pelos drivers | CODEX (formato) + CLAUDE (entrega) | ambos | 11 |
 | Syscalls de memória partilhada: `shm_create(size) -> Handle`, `shm_map(h, CacheType) -> UserPtr`, `shm_unmap` | CLAUDE | CODEX | 12 |
 | Syscalls de canais: `channel_create() -> (Handle, Handle)`, `channel_send(h, bytes, handles)`, `channel_recv(h, …)` (bloqueante e não bloqueante), tamanho máximo fixo por mensagem | CLAUDE | CODEX | 12 |
-| Capacidades `DISPLAY` (`display_map() -> framebuffer WC + geometria`) e `INPUT` (`input_open() -> Handle` de canal de eventos) | CLAUDE | CODEX (compositor) | 10–11 |
+| Objetos `DISPLAY` (`display_map(h) -> framebuffer WC + geometria`, exige `MAP`) e `INPUT` (`input_read(h, …)`); os handles são dados pelo kernel ao `init`, sem syscall de "abrir" (D-058) | CLAUDE | CODEX (compositor) | 10–11 |
 | Protocolo compositor ↔ aplicações (criar janela, anexar buffer, damage, eventos, foco) | CLAUDE (spec) | CODEX (implementação) | 13 |
+
+## Esboços das Fases 15–17 (só desenho, vão mudar)
+
+Assinaturas para o Codex poder planear. Nenhuma está implementada; cada
+uma passa a INSTÁVEL na secção "Disponíveis hoje" quando entrar.
+
+### Capacidades (Fase 6 → 15) — CLAUDE
+```rust
+// syscalls (rax = número; erros < 0 como na D-049, + E_BADSIG = -11)
+handle_close(h) -> 0
+handle_dup(h, rights) -> h2          // rights ⊆ rights(h), exige DUP
+handle_info(h) -> (kind: u16, rights: u32)
+process_spawn(image: Handle /*EXEC*/, handles: *const (u32, u32), n) -> Handle
+// Fase 15: identidade e sessões
+process_identity(h_proc) -> (uid, gid)         // exige READ no processo
+session_create(h_accounts, uid, auth_token) -> h_session   // só o login
+```
+Tipos de objetos reservados: `CONSOLE`, `FILE`, `DIR`, `PROCESS`,
+`CHANNEL`, `SHM`, `INPUT`, `DISPLAY`, `AUDIO`, `NET`, `SOCKET`,
+`FIREWALL`, `AUDIT`, `ACCOUNTS`.
+
+### Auditoria (Fase 15) — CLAUDE
+```rust
+// dentro do kernel (núcleo, drivers, VFS e stack de rede podem chamar)
+pub fn audit::record(event: AuditEvent);   // nunca bloqueia, nunca aloca no caminho de IRQ
+pub struct AuditEvent {
+    pub time_ns: u64, pub uid: u32, pub pid: u32,
+    pub kind: AuditKind,       // OpenProtected, NetRequest, PermChange, AuthFail, CapDenied, …
+    pub object: u32,           // id estável do objeto, nunca um endereço do kernel
+    pub result: i32,           // 0 ou código de erro
+}
+// user space: só quem tem um handle AUDIT com AUDIT_READ (a sessão de admin)
+audit_read(h_audit, buf, max) -> n        // devolve eventos inteiros; o primeiro pode ser "perdidos: N"
+```
+
+### Criptografia (Fase 16) — CLAUDE, `kernel/src/crypto` (educativa, não auditada)
+```rust
+pub fn sha256(data: &[u8]) -> [u8; 32];
+pub fn chacha20poly1305_seal(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], buf: &mut [u8]) -> [u8; 16];
+pub fn chacha20poly1305_open(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], buf: &mut [u8], tag: &[u8; 16]) -> Result<(), CryptoError>; // tag comparada em tempo constante
+pub fn ed25519_verify(public: &[u8; 32], msg: &[u8], sig: &[u8; 64]) -> Result<(), CryptoError>;
+pub fn argon2id(password: &[u8], salt: &[u8], params: Argon2Params, out: &mut [u8]) -> Result<(), CryptoError>;
+pub fn rng::fill(out: &mut [u8]);           // CSPRNG do kernel
+// user space
+random_fill(buf, len) -> n                  // sem handle (D-058)
+```
+A assinatura (`ed25519_sign`) vive só na ferramenta do xtask, no host: a
+chave privada nunca entra no kernel nem no repositório.
+
+### Hooks do firewall (Fase 17) — CLAUDE fornece, CODEX (stack de rede) chama
+```rust
+pub enum Verdict { Accept, Drop, Reject }
+pub struct PacketMeta { pub dir: Direction, pub proto: Proto, pub src: IpPort, pub dst: IpPort,
+                        pub socket: Option<SocketId>, pub len: u16 }
+pub fn firewall::check_inbound(meta: &PacketMeta) -> Verdict;   // antes de entregar a um socket
+pub fn firewall::check_outbound(meta: &PacketMeta) -> Verdict;  // antes de enviar
+pub fn firewall::check_bind(owner: Pid, proto: Proto, port: u16) -> Verdict;
+pub fn firewall::check_connect(owner: Pid, dst: IpPort) -> Verdict;
+// user space
+fw_add_rule(h_fw, rule) -> id          // admin: exige FW_ADMIN
+fw_add_block(h_fw, match, ttl_s) -> id // IDS: exige só FW_ADD_BLOCK (nunca abre)
+fw_events(h_fw, buf, max) -> n         // metadados para o IDS, fila limitada
+```
+Regras: os hooks são chamados em contexto de IRQ ou de thread, nunca
+alocam e nunca bloqueiam. Sem regra que aceite, a entrada é `Drop`.

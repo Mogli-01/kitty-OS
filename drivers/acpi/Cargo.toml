@@ -1,0 +1,5 @@
+[package]
+name = "kitty-acpi"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true

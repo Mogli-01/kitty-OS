@@ -9,6 +9,7 @@ com a etiqueta `para-codex`).
 
 ## Papel do Codex
 Dono de: **drivers** (`drivers/`: APIC, timer, teclado, UART completo, …),
+**ligação dos drivers ao kernel** (`kernel/src/devices/`, em Rust seguro),
 **VFS/initrd** (`fs/`), **shell e userland** (`userland/`), **testes**
 (`tests/`, `cargo xtask test`), **fuzzing**, **CI** (`.github/workflows/`),
 **benchmarks** e **documentação de utilizador**.
