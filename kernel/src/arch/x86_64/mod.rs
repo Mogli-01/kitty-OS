@@ -42,4 +42,5 @@ pub fn init() {
     gdt::init();
     idt::init();
     irq::init();
+    trap::init_syscalls();
 }

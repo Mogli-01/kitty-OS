@@ -102,7 +102,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 ## Fase 6 — User mode
 | Tarefa | Dono | Estado |
 |---|---|---|
-| `syscall`/`sysret`, tabela de syscalls, validação de TODOS os argumentos | CLAUDE | TODO |
+| Entrada e tabela de syscalls | CLAUDE / CODEX | Entrada `syscall`, retorno IRETQ e consola em revisão em `codex/fase7-syscalls`. Faltam handles de ficheiros e integração de `init` |
 | `UserPtr<T>`, `copy_from_user` / `copy_to_user` (com recuperação de #PF) | CLAUDE | FEITO |
 | Espaços de endereçamento separados por processo; entrada em ring 3, `TSS.RSP0`, `swapgs`, exceções de user matam o processo, FPU/SSE por thread (6b) | CLAUDE | FEITO |
 | ELF loader | CLAUDE | TODO |

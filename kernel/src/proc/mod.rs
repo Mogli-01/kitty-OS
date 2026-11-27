@@ -40,11 +40,13 @@ pub enum Status {
     Killed,
     /// Killed by the CPU exception `vector` it caused.
     Fault(u8),
+    Exited(u8),
 }
 
 const STATUS_RUNNING: u32 = 0;
 const STATUS_KILLED: u32 = 1;
 const STATUS_FAULT: u32 = 0x100;
+const STATUS_EXIT: u32 = 0x200;
 
 /// Why a process could not be created.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,6 +70,7 @@ pub struct Process {
     gid: u32,
     space: UserSpace,
     kill: AtomicBool,
+    console: AtomicBool,
     status: AtomicU32,
 }
 
@@ -102,8 +105,18 @@ impl Process {
             gid: 0,
             space,
             kill: AtomicBool::new(false),
+            console: AtomicBool::new(false),
             status: AtomicU32::new(STATUS_RUNNING),
         }))
+    }
+
+    #[cfg(feature = "qemu-exit")]
+    pub(super) fn grant_console(&self) {
+        self.console.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn has_console(&self) -> bool {
+        self.console.load(Ordering::Acquire)
     }
 
     /// Process identifier.
@@ -131,6 +144,7 @@ impl Process {
         match self.status.load(Ordering::Acquire) {
             STATUS_RUNNING => Status::Running,
             STATUS_KILLED => Status::Killed,
+            other if other & STATUS_EXIT != 0 => Status::Exited(other as u8),
             other => Status::Fault((other & 0xFF) as u8),
         }
     }
@@ -155,6 +169,14 @@ impl Process {
 /// Starts the process's main thread at [`CODE_BASE`].
 pub fn start(process: &Arc<Process>, name: &'static str) -> Result<sched::ThreadId, ProcError> {
     sched::spawn_user(name, Arc::clone(process), CODE_BASE, STACK_TOP).map_err(ProcError::Spawn)
+}
+
+/// Exits the running user process. The exit status is limited to 8 bits.
+pub(crate) fn exit_current(code: u64) -> ! {
+    if let Some(process) = sched::current_process() {
+        process.end(STATUS_EXIT | (code as u32 & 0xff));
+    }
+    sched::exit()
 }
 
 /// Called by the exception handler when user code caused `vector`: ends

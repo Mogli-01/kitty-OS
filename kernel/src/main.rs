@@ -227,6 +227,13 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         Err(why) => panic!("user-mode self-test failed: {}", why),
     }
 
+    #[cfg(feature = "qemu-exit")]
+    if let Err(why) = proc::selftest::console() {
+        panic!("user console self-test failed: {why}");
+    }
+    #[cfg(feature = "qemu-exit")]
+    kprintln!("[syscall] console read, write and exit verified in Ring 3");
+
     #[cfg(feature = "selftest-preempt")]
     {
         assert!(

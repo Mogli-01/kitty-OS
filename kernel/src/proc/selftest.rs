@@ -106,6 +106,29 @@ pub fn run() -> Result<Report, &'static str> {
     })
 }
 
+/// Checks console I/O and exit through the actual Ring 3 syscall entry.
+#[cfg(feature = "qemu-exit")]
+pub(crate) fn console() -> Result<(), &'static str> {
+    {
+        let process = Process::from_test_image(test_program(TestProgram::Console))
+            .map_err(|_| "could not create console test process")?;
+        process.grant_console();
+        let thread = super::start(&process, "selftest-console")
+            .map_err(|_| "could not start console test process")?;
+        if !wait_until(|| sched::is_blocked(thread), 100_000) {
+            return Err("console read did not block");
+        }
+        crate::console::input_push(b"\n");
+        if !wait_until(|| process.status() != Status::Running, 100_000)
+            || process.status() != Status::Exited(42)
+        {
+            return Err("console test process did not finish successfully");
+        }
+    }
+    settle();
+    Ok(())
+}
+
 /// Runs a program that is expected to fault; returns how it ended.
 fn run_to_fault(program: TestProgram) -> Result<Status, ProcError> {
     let process = Process::from_test_image(test_program(program))?;

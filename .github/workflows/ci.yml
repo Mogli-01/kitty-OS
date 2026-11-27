@@ -189,7 +189,8 @@ jobs:
 
           run_case boot \
             --expect '[sched] cooperative self-test passed' \
-            --expect '[sched] wait queue self-test passed'
+            --expect '[sched] wait queue self-test passed' \
+            --expect '[syscall] console read, write and exit verified in Ring 3'
           grep -F -- '[cpu] breakpoint at rip=' build/serial-logs/boot.log
           grep -F -- '[cpu] breakpoint exception handled, execution resumed' build/serial-logs/boot.log
 

@@ -134,6 +134,22 @@ unsafe fn wrmsr(msr: u32, value: u64) {
     }
 }
 
+/// Installs the long-mode syscall entry for the current boot CPU.
+/// SAFETY: the entry must be a kernel text address that switches off the
+/// user stack before touching it and restores privilege safely.
+pub(super) unsafe fn install_syscall_entry(entry: u64) {
+    let star = u64::from(super::gdt::KERNEL_CS) << 32;
+    // SAFETY: STAR's kernel CS/SS pair names the installed GDT descriptors.
+    unsafe { wrmsr(0xc000_0081, star) };
+    // SAFETY: the caller guarantees the entry stub and its invariants.
+    unsafe { wrmsr(0xc000_0082, entry) };
+    // SAFETY: clearing flags on entry leaves IF, TF, DF and AC disabled
+    // before the stub switches stacks.
+    unsafe { wrmsr(0xc000_0084, u64::from(u32::MAX)) };
+    // SAFETY: all entry MSRs are configured and the GDT/IDT are installed.
+    unsafe { wrmsr(MSR_EFER, rdmsr(MSR_EFER) | 1) };
+}
+
 const MSR_APIC_BASE: u32 = 0x1B;
 
 /// Physical base address of the local APIC registers (IA32_APIC_BASE).

@@ -1576,3 +1576,19 @@ Formato:
   - uma thread por processo;
   - na 6c, o `syscall` tem de limpar AC/IF/DF/TF no FMASK e os handlers IST têm de verificar o GS base pelo MSR;
   - para o trabalho da interface gráfica: as issues #70, #72, #74 e #87 continuam por responder (contratos PCI, UART, DISPLAY e ecrã de arranque).
+
+### [2026-11-27] — CODEX (syscalls de consola)
+
+- **Feito** — entrada `syscall`, retorno por IRETQ, leitura bloqueante
+  da consola, escrita e saída do processo. O driver PS/2 entrega os bytes
+  traduzidos a uma fila fixa. O teste lê e escreve em Ring 3.
+- **PRs abertos** — ramo `codex/fase7-syscalls` sobre o #91.
+- **Testes/fuzzing** — teste de arranque do QEMU com leitura, escrita e
+  saída em Ring 3. A matriz CI passa a exigir o marcador de conclusão.
+- **Proteções de segurança alteradas** — pilha do núcleo antes de usar o
+  frame, retorno validado, cópias com a API de memória de utilizador.
+- **Bloqueado por / à espera do Claude** — revisão da entrada e ABI.
+  A alteração às áreas do núcleo foi autorizada expressamente.
+- **Próximo passo sugerido para o Claude** — rever a entrada asm e os
+  invariantes da pilha antes de integrar o carregador.
+- **Avisos** — o scratch é do CPU de arranque. O retorno usa IRETQ.

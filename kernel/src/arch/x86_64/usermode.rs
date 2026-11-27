@@ -181,6 +181,31 @@ global_asm!(
 .section .rodata.kitty_user_tests, "a"
 .balign 16
 
+// Reads one byte from the granted console, writes it back and exits.
+.global kitty_ut_console_start
+kitty_ut_console_start:
+    mov eax, {console_read}
+    xor edi, edi
+    mov esi, {data}
+    mov edx, 1
+    syscall
+    cmp rax, 1
+    jne .Lconsole_failed
+    mov eax, {console_write}
+    syscall
+    cmp rax, 1
+    jne .Lconsole_failed
+    mov edi, 42
+    jmp .Lconsole_exit
+.Lconsole_failed:
+    mov edi, 1
+.Lconsole_exit:
+    mov eax, {exit}
+    syscall
+    ud2
+.global kitty_ut_console_end
+kitty_ut_console_end:
+
 // Reads address 0: #PF (the first 1 MiB is never mapped).
 .global kitty_ut_null_start
 kitty_ut_null_start:
@@ -296,7 +321,11 @@ kitty_ut_secret_start:
 .global kitty_ut_secret_end
 kitty_ut_secret_end:
 .section .text
-"#
+"#,
+    data = const TEST_DATA,
+    console_read = const crate::syscall::CONSOLE_READ,
+    console_write = const crate::syscall::CONSOLE_WRITE,
+    exit = const crate::syscall::EXIT,
 );
 
 unsafe extern "C" {
@@ -316,6 +345,10 @@ unsafe extern "C" {
     static kitty_ut_clean_end: u8;
     static kitty_ut_secret_start: u8;
     static kitty_ut_secret_end: u8;
+    #[cfg(feature = "qemu-exit")]
+    static kitty_ut_console_start: u8;
+    #[cfg(feature = "qemu-exit")]
+    static kitty_ut_console_end: u8;
 }
 
 /// The user test programs.
@@ -337,11 +370,18 @@ pub enum TestProgram {
     Clean,
     /// Fills SSE registers with a secret, then counts.
     Secret,
+    #[cfg(feature = "qemu-exit")]
+    Console,
 }
 
 /// Machine code of `program`.
 pub fn test_program(program: TestProgram) -> &'static [u8] {
     let (start, end) = match program {
+        #[cfg(feature = "qemu-exit")]
+        TestProgram::Console => (
+            &raw const kitty_ut_console_start,
+            &raw const kitty_ut_console_end,
+        ),
         TestProgram::NullRead => (&raw const kitty_ut_null_start, &raw const kitty_ut_null_end),
         TestProgram::KernelRead => (
             &raw const kitty_ut_kread_start,
