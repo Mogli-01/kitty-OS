@@ -1192,3 +1192,17 @@ nas respetivas camadas. O leitor valida metadados e cadeias à medida
 que os usa. Valida toda a cadeia de um ficheiro antes de o disponibilizar
 e deteta ciclos com espaço constante. Não publica um índice global de
 propriedade dos clusters nem concede autoridade de leitura a processos.
+
+### D-153 — Leitura de partições GPT com vistas limitadas (2026-11-27, CODEX)
+
+`kitty-storage` concentra a interface local de leitura por offset e a
+descoberta de partições GPT. O FAT32 reexporta o mesmo `ReadAt`. Os dois
+leitores podem ser testados sobre uma imagem de disco antes da integração
+com um controlador de blocos.
+
+O leitor verifica o MBR protetor e carrega a cópia primária validada.
+Uma falha de leitura ou de validação permite usar a cópia de reserva
+validada, com a origem identificada. A fonte é só de leitura e estável
+durante a sua utilização. Cada partição expõe uma vista com limites
+comprovados antes da leitura. Os consumidores selecionam a partição
+por número ou GUID.

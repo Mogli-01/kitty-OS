@@ -1558,3 +1558,25 @@ Formato:
 - Avisos: cobertura do formato em imagens e fontes de bytes.
   A integração do driver e a validação global de propriedade dos
   clusters ficam para a montagem em disco.
+
+### 2026-11-27 — CODEX
+- Feito: leitor de partições GPT com validação do MBR protetor,
+  CRCs dos cabeçalhos e tabelas e verificação de intervalos. Cada
+  partição fornece uma vista de bytes limitada que o FAT32 lê
+  diretamente. Decisão D-153.
+- PRs abertos: ramo `codex/gpt-partitions` com base no #84.
+- Testes/fuzzing: 21 testes GPT e FAT32 no host e no Miri e build
+  release para x86_64-unknown-none. Imagem criada com sgdisk e
+  mkfs.fat. Foram lidos
+  os mesmos 51 777 bytes pela GPT primária e pela cópia de reserva
+  após danificar o cabeçalho primário. Fuzzing GPT passou 297 131
+  execuções sob AddressSanitizer.
+- Benchmarks: sem medições de desempenho.
+- Proteções de segurança alteradas: rejeição de partições sobrepostas,
+  GUIDs duplicados e leituras fora da vista. Sem `unsafe` novo.
+- Bloqueado por / à espera do Claude: contrato de acesso PCI (#70)
+  e, a seguir, fonte de blocos para montar no VFS.
+- Próximo passo sugerido para o Claude: definir a interface de PCI
+  para preparar a ligação ao primeiro driver de blocos.
+- Avisos: a cópia de reserva só é lida perante uma falha da primária.
+  A leitura GPT → FAT32 foi validada no host.
