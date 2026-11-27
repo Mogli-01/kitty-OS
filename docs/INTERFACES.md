@@ -510,10 +510,15 @@ pub fn time::sleep_ms(ms: u64) -> bool;            // false de imediato sem time
 - **Quando corre:** o `register_splash` guarda a função. O `kmain` cria a thread `boot-splash` **logo depois de ligar as interrupções**, que é o primeiro ponto onde há ao mesmo tempo ecrã e relógio. A animação corre **em paralelo** com o resto do arranque e nunca o atrasa.
 - **Em `Target`:** passar `width()`, `height()` e `pitch()` de um `FramebufferLease`, e o slice de `pixels_mut()`, que já foi validado contra o mapeamento real.
 - **Formato:** se `format()` não for `Bgra8888`, converter com `channels()` ou não animar.
-- **Durante o empréstimo:** a consola não desenha. As mensagens do kernel vão para a série e ficam guardadas (até 16 KiB). Quando a lease é largada, a consola limpa o ecrã e volta a escrevê-las.
+- **Regras da lease:**
+  - pedi-la só em contexto de thread (aloca), nunca dentro do `write_str` de uma consola registada (o lock não é reentrante);
+  - largá-la sempre, ou seja, a função de splash **retorna**. Não chamar `sched::exit()` nem `mem::forget` com a lease viva: o ecrã ficaria preso;
+  - a lease não é revogável. Enquanto existir, o `display_map` (abaixo) devolve `E_BUSY`.
+- **Durante o empréstimo:** a consola não desenha. As mensagens do kernel vão para a série e ficam guardadas (até 16 KiB). Quando a lease é largada, a consola limpa o ecrã e volta a escrever **o último ecrã** dessas mensagens. Esse redesenho é feito fora do lock da consola, para não desligar as interrupções durante muito tempo.
   - Um pânico durante o empréstimo só aparece na série.
   - Para mostrar o ecrã de pânico do Pantufa é preciso outro contrato (o caminho de pânico não pode tirar o ecrã ao dono da lease).
-- **Relógio:**
+- **Relógio:** `set_tick_rate` só é chamado pelo driver que chama `sched::tick`. O tempo 0 é o momento do registo. O `sleep_ms` recusa (devolve `false`) se for chamado com as interrupções desligadas ou com um spinlock preso.
+- **Relógio (pormenores):**
   - **Falta do lado do Codex:** o driver do timer do scheduler tem de chamar `time::set_tick_rate(TICK_HZ)` (`devices/pit.rs` e `devices/apic/scheduler_timer.rs`). Até lá, `monotonic_ms()` devolve `None`.
   - A resolução é de 1 tick (10 ms a 100 Hz). Chega para 20–30 fps.
 - **Caminhos explícitos:**
@@ -528,8 +533,13 @@ pub fn time::sleep_ms(ms: u64) -> bool;            // false de imediato sem time
 
 ### Fase 10: objeto DISPLAY para o compositor (#74) — DESENHO
 Fornece: CLAUDE (implementação depois da 6c, que traz os handles). Usa: CODEX (compositor).
-- **Quem recebe:** existe **um** objeto `DISPLAY`, criado no arranque se houver framebuffer. O seu único handle tem os direitos `MAP | TRANSFER` e **não** tem `DUP` (D-058). O kernel dá-o ao `init` (índice 3), que o passa ao compositor com `process_spawn(..., SPAWN_MOVE)` (#79). Nenhum outro processo pode ter o ecrã.
-- **Entrega:** `display_map(h) -> Result<(), E>` mapeia o framebuffer no espaço do processo, a partir de um endereço de user escolhido pelo núcleo. É memória de user, escrevível, **NX** e **write-combining**. Não é `OWNED` (D-060): o núcleo nunca a liberta como RAM.
+- **Quem recebe:** existe **um** objeto `DISPLAY`, criado no arranque se houver framebuffer. O seu único handle tem os direitos `MAP | TRANSFER` e **não** tem `DUP` (D-058). O kernel dá-o ao `init` (índice 3), que o passa ao compositor com `process_spawn(..., SPAWN_MOVE)`. Nenhum outro processo pode ter o ecrã.
+  - **Regras do spawn** (#79; entram na D-058 e no FASE6 com a 6c): `SPAWN_COPY` exige `DUP` e `SPAWN_MOVE` exige `TRANSFER`; tudo ou nada; o pai mantém a autoridade se o spawn falhar.
+  - **Mover um DISPLAY mapeado:** o `SPAWN_MOVE` devolve `E_BUSY`. Quem mapeou tem de fechar o mapeamento primeiro. Assim nunca há dois processos com o ecrã mapeado.
+- **Entrega:** `display_map(h) -> Result<(), E>` mapeia o framebuffer no espaço do processo, a partir de um endereço de user escolhido pelo núcleo. É memória de user, escrevível, **NX** e **write-combining**. Não é `OWNED` (D-060, no #91): o núcleo nunca a liberta como RAM.
+  - **Intervalo de páginas:** tem de caber **inteiro** na entrada `FRAMEBUFFER` do mapa de memória do Limine (ou num BAR conhecido); se não couber, o mapeamento é recusado. O `DisplayInfo.base` inclui o offset dentro da primeira página.
+  - **Mapeamento imutável:** as PTEs ficam registadas no objeto DISPLAY. Não se pode mudar a proteção (W^X), partilhar, copiar nem remapear. O desmapeamento usa essas PTEs, nunca um endereço virtual às cegas.
+  - **Ecrã limpo:** o framebuffer é limpo **antes de cada** mapeamento, incluindo o primeiro. O compositor nunca lê o texto da consola do kernel nem os píxeis de um compositor anterior.
   - A geometria é escrita numa estrutura do processo (via `copy_to_user`):
     ```rust
     #[repr(C)] pub struct DisplayInfo {

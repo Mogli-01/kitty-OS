@@ -1187,6 +1187,12 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
 - **Thread própria:** o splash corre numa thread criada logo depois de ligar as interrupções, porque é o primeiro ponto com ecrã e relógio ao mesmo tempo. Isto cumpre "nunca atrasar o arranque".
 - **Relógio:** `time::monotonic_ms` = ticks × 1000 / Hz. O driver do timer regista a frequência (`set_tick_rate`). Sem timer, a resposta é `None` e nunca um valor inventado.
 - **Limite conhecido:** um pânico durante a lease só aparece na série.
+- **Revisto depois do `security-reviewer`:**
+  - a devolução do ecrã redesenha fora do lock da consola e só o último ecrã de texto (antes, centenas de scrolls corriam com IF = 0);
+  - o `sleep_ms` recusa ser chamado com as interrupções desligadas ou com um spinlock preso;
+  - o tempo 0 é o momento do `set_tick_rate`;
+  - o autoteste distingue "sem ecrã" de "ecrã emprestado";
+  - o contrato do DISPLAY passa a ter: `E_BUSY` para mover um DISPLAY mapeado e com uma lease ativa; o intervalo inteiro dentro da entrada FRAMEBUFFER; PTEs imutáveis e registadas; e o ecrã limpo antes de cada mapeamento.
 - **DISPLAY (#74):**
   - um objeto único, cujo handle não tem `DUP` e só pode passar de dono por `SPAWN_MOVE`;
   - mapeado WC + NX, sem `OWNED`;

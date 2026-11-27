@@ -180,18 +180,52 @@ impl FramebufferLease {
 impl Drop for FramebufferLease {
     fn drop(&mut self) {
         let Some(fb) = self.fb.take() else { return };
-        let mut consoles = CONSOLES.lock();
+        // Clearing the screen and redrawing text is slow (WC memory): do it
+        // *outside* the console lock, which disables interrupts (security
+        // review: a long replay under it lost timer ticks and keystrokes).
+        // 1. Take what was printed so far; keep collecting into a fresh
+        //    buffer while we redraw.
+        let mut fresh = String::new();
+        let _ = fresh.try_reserve_exact(PENDING_MAX);
+        let earlier = core::mem::replace(&mut CONSOLES.lock().pending, fresh);
+        // 2. Redraw without the lock: only the last screenful of text, so
+        //    there is no scrolling.
         let mut console = FbConsole::new(fb);
-        let pending = core::mem::take(&mut consoles.pending);
-        console.write_str(&pending);
+        console.write_str(last_lines(&earlier, console.rows()));
+        drop(earlier);
+        // 3. Under the lock: the little that arrived meanwhile, then hand
+        //    the screen back.
+        let mut consoles = CONSOLES.lock();
+        let late = core::mem::take(&mut consoles.pending);
+        console.write_str(&late);
         consoles.fb = Some(console);
         consoles.lent = false;
+        drop(consoles);
+        drop(late);
     }
+}
+
+/// The last `rows` lines of `text` (a line may still wrap: at worst the top
+/// one scrolls away).
+fn last_lines(text: &str, rows: usize) -> &str {
+    let trimmed = text.strip_suffix('\n').unwrap_or(text);
+    let start = trimmed
+        .match_indices('\n')
+        .rev()
+        .nth(rows.saturating_sub(2))
+        .map_or(0, |(i, _)| i + 1);
+    text.get(start..).unwrap_or(text)
+}
+
+/// Whether the framebuffer is currently lent out.
+pub fn framebuffer_lent() -> bool {
+    CONSOLES.lock().lent
 }
 
 /// Takes the framebuffer away from the text console until the returned
 /// lease is dropped. `None` if there is no framebuffer or it is already
-/// lent.
+/// lent. Thread context only (it allocates); never from a registered
+/// `Console`'s `write_str` (the console lock is not re-entrant).
 pub fn lend_framebuffer() -> Option<FramebufferLease> {
     let mut consoles = CONSOLES.lock();
     consoles.fb.as_ref()?;

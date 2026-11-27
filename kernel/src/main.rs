@@ -193,12 +193,12 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     };
     let has_initrd = platform.initrd.is_some();
     devices::init(&platform);
+    arch::enable_interrupts();
+    bootstage::reached(bootstage::Stage::Interrupts);
     bootstage::reached(bootstage::Stage::Drivers);
     if has_initrd {
         bootstage::reached(bootstage::Stage::Files);
     }
-    arch::enable_interrupts();
-    bootstage::reached(bootstage::Stage::Interrupts);
     bootstage::start_splash();
     assert!(
         sync::irq_spinlock::selftest(),

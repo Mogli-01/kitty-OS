@@ -41,6 +41,11 @@ impl FbConsole {
         }
     }
 
+    /// Text rows on screen.
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
+
     /// Stops the text console and returns the framebuffer.
     pub fn into_framebuffer(self) -> FrameBuffer {
         self.fb

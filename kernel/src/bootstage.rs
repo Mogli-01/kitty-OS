@@ -107,8 +107,9 @@ pub fn selftest_lease() -> bool {
             let back = crate::console::lend_framebuffer().is_some();
             geometry && exclusive && back
         }
-        // No framebuffer (headless): nothing to lend, nothing to check.
-        None => true,
+        // No framebuffer (headless): nothing to lend, nothing to check. But
+        // "busy" (a splash holds it) must not pass as "absent".
+        None => !crate::console::framebuffer_lent(),
     };
     let time_ok = match crate::time::monotonic_ms() {
         Some(t0) => {
