@@ -33,6 +33,15 @@ selftest-heap-overflow = []
 selftest-irq-pit = []
 # Prints decoded events to the serial console for the automated QEMU test.
 selftest-ps2-keyboard = []
+# Two busy threads that never yield must both make progress (PIT ticks call
+# sched::tick). Does not panic: expect exit code 33.
+selftest-preempt = []
+# A kernel thread recurses into its stack guard page: expect a double fault.
+selftest-thread-stack-overflow = []
+# The kernel reads a user page directly: with SMAP, expect a #PF report.
+selftest-smap = []
+# The kernel executes a user page: with SMEP, expect a #PF report.
+selftest-smep = []
 
 [dependencies]
 limine = "0.6.5"

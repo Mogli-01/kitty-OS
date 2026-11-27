@@ -369,3 +369,107 @@ Formato:
   de interrupções do #15 para ligar os drivers sobre o `main`.
 - **Avisos** — a fila guarda eventos físicos. A camada de input aplica o
   layout e o timestamp depois desta etapa.
+
+### [2026-11-26] — CLAUDE (desenho da Fase 6)
+- **Feito:** `docs/FASE6.md` com o contrato da Fase 6 (processos, ring 3,
+  ABI das syscalls, `copy_*_user`, handles, consola da shell, `/sbin/init`
+  do initrd, INPUT para o compositor) e decisões D-047 a D-053. Responde às
+  issues #46 e #50. Só documentação.
+- **PRs abertos:** este (`claude/fase6-desenho`); #39, #40 (Fase 5) e #51
+  (#36) à espera de revisão.
+- **Próximo passo sugerido para o Codex:** rever o contrato; construir
+  `/sbin/init` (a shell) como ELF64 estático e a biblioteca de syscalls em
+  `userland/` contra a ABI; `console::input_push` no driver de teclado.
+- **Próximo passo do Claude:** 6a (SMEP/SMAP/UMIP + `copy_*_user` com
+  recuperação de #PF).
+
+### [2026-11-26] — CLAUDE (issue #36)
+- **Feito:** `arch::irq::register_local`/`unregister_local` para fontes do
+  local APIC sem rota ISA (timer, erro, térmica), com contrato de ciclo de
+  vida em INTERFACES.md. PR `claude/irq-local-vector` (base `main`).
+- **PRs abertos:** este; #39 e #40 (Fase 5) à espera de revisão.
+- **Proteções de segurança alteradas:** nenhuma (o EOI por origem, D-039,
+  já cobre interrupções em trânsito depois de `unregister_local`).
+- **Próximo passo sugerido para o Codex:** usar `register_local` no timer
+  do Local APIC (`codex/local-apic`) e verificar 2 entregas.
+- **Avisos:** só o CPU de arranque (cada CPU terá o seu timer na Fase 9).
+
+### [2026-11-26] — CLAUDE (7.ª sessão, continuação)
+- **Feito:**
+  - Com aprovação do Rodrigo no chat: merge de #15, #35 e #38; #13
+    fechada. Os PRs #14 e #25 do Codex foram aprovados mas têm conflitos
+    com o `main` (comentei a pedir rebase). Revi os outros 12 PRs do Codex
+    (comentários nos PRs).
+  - **Fase 5 (este PR):** threads do kernel, troca de contexto mínima em
+    assembly, scheduler round-robin preemptivo, pilhas de thread com página
+    de guarda, contador de preempção nos `SpinLock`, medição em ciclos.
+    Decisões D-044 (`unsafe` em `sched/`) e D-045.
+  - **`WaitQueue`** (PR seguinte, `claude/fase5-waitqueue`, base #39):
+    estado `Blocked`, `wait_until`/`wake_one`/`wake_all` sem wake-ups
+    perdidos (D-046), utilizável a partir de handlers de IRQ; autoteste
+    produtor/consumidor no arranque.
+- **PRs abertos:** #39 (`claude/fase5-scheduler`); `claude/fase5-waitqueue`
+  (base #39).
+- **Proteções de segurança alteradas:** ATIVAS — pilhas de thread com
+  guarda e limpas ao libertar; sem preempção com spinlock preso; troca só
+  depois do EOI.
+- **Bloqueado por / à espera do Codex:** rebase dos #14 e #25; mudanças
+  pedidas em #23, #24, #27, #28, #31; adaptar o #34 a
+  `devices::init(&Platform)`.
+- **Próximo passo sugerido para o Codex:** no driver do timer (#19), o
+  handler do IRQ0 chama `sched::tick()` (contrato em INTERFACES.md,
+  "Scheduler"). Pôr `selftest-preempt` e `selftest-thread-stack-overflow`
+  na CI (o primeiro sem `--expect-panic`).
+- **Avisos:**
+  - Para esperar sem gastar CPU: `sched::WaitQueue` (ex.: o teclado pode
+    acordar leitores a partir do handler do IRQ1).
+  - Um só CPU (o lock do scheduler é largado antes da troca).
+  - Os ciclos do autoteste vêm do QEMU TCG: não são de hardware real.
+
+### [2026-11-27] — CLAUDE (expansão do roadmap)
+- **Feito:** só documentação e configuração, nenhum código do kernel.
+  - ROADMAP com as Fases 15 (utilizadores, capacidades, auditoria),
+    16 (crypto, binários assinados, disco encriptado), 17 (rede, firewall,
+    IDS), 18 (som, `kpkg`) e 19 (hardware real: ThinkPad T14 Gen 1 AMD),
+    e a identidade "kitty" nas Fases 10 e 14 (ecrã de arranque, tema,
+    mascote, `meow`, snake e tetris, tudo com gráficos originais).
+  - `docs/REDTEAM.md`: rondas de red team vs blue team no fim de cada fase,
+    a partir da 6; etiquetas `vulnerabilidade` e `red-team` criadas.
+  - SECURITY (modelo de ameaça com o atacante local, a app maliciosa, o
+    atacante na rede e o acesso físico ao disco; proteções novas),
+    DECISIONS D-055…D-059, INTERFACES (esboços de capacidades, auditoria,
+    crypto e hooks do firewall), CLAUDE.md e CONTRIBUTING.md.
+  - **Fases 6 e 12 "capability-first" (D-058):** sem `input_open`, handles
+    de DISPLAY/INPUT dados pelo `init`, `process_spawn` com lista de handles,
+    `open_at` relativo a um diretório, `handle_info`, bits de direitos por
+    tipo, `uid`/`gid` e auditoria preparados, `E_BADSIG` reservado.
+- **PRs abertos:** este (`claude/roadmap-expansao`); #75 (6a); #39, #40,
+  #51, #52 à espera de revisão. O #52 (`docs/FASE6.md`) tem de ser alinhado
+  com a D-058 antes do merge.
+- **Proteções de segurança alteradas:** nenhuma ativada; novas PLANEADAS
+  (Fases 15–18).
+- **Bloqueado por / à espera do Codex:** nada.
+- **Próximo passo sugerido para o Codex:** ler o roadmap expandido,
+  atualizar o AGENTS.md e preparar a CI para os testes de red team e de
+  criptografia (runner de `tests/security/redteam/` com o manifesto
+  `aberta`/`corrigida`, e um job no host para os vetores de teste da crypto).
+- **Avisos:** a crypto é educativa e não auditada (D-056). A verificação de
+  assinaturas não protege o kernel nem o Limine sem Secure Boot (ver
+  SECURITY.md, fora de âmbito).
+
+### [2026-11-27] — CLAUDE (Fase 6a)
+- **Feito:** SMEP, SMAP e UMIP ligados (com CPUID); `copy_from_user` /
+  `copy_to_user` / `UserSlice` / `UserPtr` com recuperação de #PF (um ponteiro
+  mau dá `Fault`, nunca panic); `clac` à entrada do dispatch. Autotestes: ida e
+  volta por uma página de user real, falha recuperada (não mapeado e a cruzar
+  o fim da página), recusa da metade do kernel; `selftest-smap` e
+  `selftest-smep` provam que o kernel não lê nem executa páginas de user.
+  D-054. PR `claude/fase6a-usercopy` (base `main`).
+- **PRs abertos:** este; #39, #40, #51, #52 à espera de revisão.
+- **Proteções de segurança alteradas:** ATIVAS — SMEP, SMAP, UMIP,
+  `copy_*_user` com recuperação.
+- **Próximo passo sugerido para o Codex:** pôr `selftest-smap` e
+  `selftest-smep` na CI (com `--expect-panic` e os textos em INTERFACES.md).
+- **Avisos:** a prova do UMIP precisa de ring 3 (Fase 6b). Ainda não há
+  processos: a página de teste é mapeada temporariamente na metade de user
+  do espaço do kernel e removida a seguir.
