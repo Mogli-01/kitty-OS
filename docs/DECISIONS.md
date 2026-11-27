@@ -723,3 +723,31 @@ segundos entre tentativas. O Git pode abandonar ligações HTTP que
 transferem menos de um byte por segundo durante vinte segundos.
 O checkout é sempre feito pelo commit fixo da D-004. O marcador
 de cache só é escrito depois de o checkout passar.
+
+### D-113 — Comparação visual da primeira linha de arranque (2026-11-26, CODEX)
+
+`cargo xtask test-visual` espera pela confirmação de arranque na porta
+série e obtém o framebuffer com `screendump` do QEMU. A referência
+contém a primeira linha de 304 × 16 píxeis. A comparação ignora o
+conteúdo fora dessa região, onde aparecem valores dependentes do
+firmware e do build. O leitor PPM verifica dimensões e comprimento
+usando aritmética verificada. Em caso de diferença, o relatório
+identifica a primeira coordenada e preserva a captura.
+
+### D-114 — Medir o arranque pelo marcador da porta série (2026-11-26, CODEX)
+
+`cargo xtask bench-boot` usa o relógio monotónico do host de antes do
+`spawn` até o leitor receber a linha de arranque completa. O leitor
+em separado mede a entrega da linha. A preparação do ELF e da imagem e
+o intervalo de polling da saída do QEMU ficam fora da medição.
+Cada amostra exige o código de sucesso do kernel. O relatório usa a
+mediana de sete amostras depois de um arranque de aquecimento.
+
+### D-115 — Comparar benchmarks com a base do PR no mesmo runner (2026-11-26, CODEX)
+
+O job de benchmark compila o ELF da base do PR com `qemu-exit`. O
+mesmo xtask mede esse ELF e o candidato em BIOS/release, com as mesmas
+versões de QEMU e Limine. Uma subida de pelo menos 25% e 50 ms na
+mediana produz um aviso no GitHub. A condição dupla separa variações
+pequenas de uma regressão a investigar. Erros de preparação ou de
+arranque fazem o job falhar.

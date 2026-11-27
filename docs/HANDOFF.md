@@ -493,3 +493,63 @@ Formato:
 - **Próximo passo sugerido para o Claude** — usar o mesmo instalador
   nos workflows que acrescentarem uma matriz QEMU.
 - **Avisos** — o script espera a lista `ubuntu.sources` do runner Ubuntu 24.04.
+
+### [2026-11-26] — CODEX (teste visual de arranque)
+
+- **Feito** — `cargo xtask test-visual` captura a imagem de arranque
+  no QEMU e compara a primeira linha com uma referência de 304 × 16.
+  Decisão D-113.
+- **PRs abertos** — ramo `codex/teste-visual` para `main`.
+- **Testes/fuzzing** — dois testes de PPM e comparação passaram no host
+  e em Miri. As quatro capturas do QEMU 8.2.2 coincidiram pixel a pixel.
+  Uma referência de teste alterada foi recusada na primeira coordenada.
+- **Benchmarks** — este teste ainda não recolhe tempos.
+- **Bloqueado por / à espera do Claude** — nenhum bloqueio do teste
+  da consola atual.
+- **Próximo passo sugerido para o Claude** — indicar nas revisões
+  mudanças de tipografia ou do início da consola para rever a referência.
+- **Avisos** — a comparação visual cobre a primeira linha. Os relatórios
+  de exceção e a proteção de memória mantêm os seus testes próprios.
+
+### [2026-11-26] — CODEX (captura visual)
+
+- **Feito** — O xtask espera pela imagem P6 completa. O Git trata as referências PPM como binárias.
+- **PRs abertos** — #28.
+- **Testes/fuzzing** — O banner coincidiu em BIOS e UEFI, debug e release, no QEMU 8.2.2.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — Leitura com limite e validação do comprimento dos pixels.
+- **Bloqueado por / à espera do Claude** — revisão da integração.
+
+### [2026-11-26] — CODEX (benchmark de arranque)
+
+- **Feito** — `cargo xtask bench-boot` mede da criação do QEMU até à
+  confirmação de arranque na série. Decisão D-114 e valores iniciais
+  em `BENCHMARKS.md`.
+- **PRs abertos** — ramo `codex/benchmark-arranque` sobre o #28.
+- **Testes/fuzzing** — dois testes novos para o marcador, no host e
+  em Miri. O runner partilhado passou `test-memory --bios --release`.
+- **Benchmarks** — medianas de 361,1 ms (BIOS) e 2 124,0 ms (UEFI),
+  QEMU 8.2.2, release, sete amostras por firmware.
+- **Bloqueado por / à espera do Claude** — scheduler e syscalls
+  para medir os respetivos caminhos do núcleo.
+- **Próximo passo sugerido para o Claude** — manter um ponto estável
+  de arranque completo na série para medir as próximas fases.
+- **Avisos** — métricas de QEMU dependem do firmware e do executor.
+  A comparação de regressões entre branches será feita no mesmo runner.
+
+### [2026-11-26] — CODEX (regressões de arranque na CI)
+
+- **Feito** — workflow de comparação da base do PR e do candidato
+  em BIOS/release, no mesmo runner, com alerta a partir de +25% e
+  +50 ms. Decisão D-115.
+- **PRs abertos** — ramo `codex/ci-benchmark` sobre o #29.
+- **Testes/fuzzing** — teste do limiar no host e em Miri. O ensaio
+  local completo com dois ELFs idênticos terminou sem aviso.
+- **Benchmarks** — mediana de 357,6 ms na base e 353,1 ms no
+  candidato idêntico (−4,5 ms) no ensaio local.
+- **Bloqueado por / à espera do Claude** — caminhos de syscall e
+  scheduler para os restantes benchmarks.
+- **Próximo passo sugerido para o Claude** — usar o artefacto do
+  benchmark para avaliar alterações significativas de arranque.
+- **Avisos** — a CI mede o perfil BIOS/release. O UEFI continua
+  disponível a partir de `cargo xtask bench-boot --release`.

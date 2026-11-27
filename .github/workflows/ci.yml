@@ -67,7 +67,7 @@ jobs:
         run: bash .github/scripts/install-qemu.sh
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup toolchain install
-      - name: Check breakpoint, page fault and double fault
+      - name: Check boot, faults and framebuffer
         shell: bash
         env:
           FIRMWARE: ${{ matrix.firmware }}
@@ -101,10 +101,14 @@ jobs:
           run_case double-fault --features selftest-double-fault --expect-panic
           grep -F -- '=== Double Fault (#DF) (vector 8)' build/serial-logs/double-fault.log
           grep -F -- '(running on the IST double-fault stack)' build/serial-logs/double-fault.log
-      - name: Upload serial logs
+
+          cargo xtask test-visual "${flags[@]}"
+      - name: Upload serial logs and framebuffer capture
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: serial-logs-${{ matrix.firmware }}-${{ matrix.profile }}
-          path: build/serial-logs/*.log
+          path: |
+            build/serial-logs/*.log
+            build/visual/
           if-no-files-found: ignore
