@@ -22,6 +22,8 @@ use crate::mm::paging::MapError;
 use crate::mm::uspace::{UserPerm, UserSpace};
 use crate::sched::{self, SpawnError};
 
+mod elf;
+
 /// Where test images put their code (docs/FASE6.md §1: ELF segments start
 /// at 4 MiB).
 pub const CODE_BASE: u64 = 0x0040_0000;
@@ -74,7 +76,7 @@ pub struct Process {
     status: AtomicU32,
 }
 
-static NEXT_PID: AtomicU32 = AtomicU32::new(1);
+static NEXT_PID: AtomicU32 = AtomicU32::new(2);
 
 impl Process {
     /// Builds a process from a raw code image for the self-tests: code at
@@ -110,7 +112,6 @@ impl Process {
         }))
     }
 
-    #[cfg(feature = "qemu-exit")]
     pub(super) fn grant_console(&self) {
         self.console.store(true, Ordering::Release);
     }
@@ -163,6 +164,35 @@ impl Process {
             Ordering::AcqRel,
             Ordering::Acquire,
         );
+    }
+}
+
+/// Starts the first executable from the boot archive, when present.
+pub(crate) fn start_init() {
+    let Some(image) = crate::devices::initrd_file("/sbin/init") else {
+        crate::kprintln!("[init] /sbin/init missing or invalid (missing file)");
+        return;
+    };
+    let (space, entry) = match elf::load(image) {
+        Ok(loaded) => loaded,
+        Err(error) => {
+            crate::kprintln!("[init] /sbin/init missing or invalid ({error:?})");
+            return;
+        }
+    };
+    let process = Arc::new(Process {
+        pid: 1,
+        uid: 0,
+        gid: 0,
+        space,
+        kill: AtomicBool::new(false),
+        console: AtomicBool::new(false),
+        status: AtomicU32::new(STATUS_RUNNING),
+    });
+    process.grant_console();
+    match sched::spawn_user("init", process, entry, STACK_TOP) {
+        Ok(_) => crate::kprintln!("[init] /sbin/init scheduled in Ring 3"),
+        Err(error) => crate::kprintln!("[init] /sbin/init could not start ({error:?})"),
     }
 }
 

@@ -39,7 +39,11 @@ pub enum Inode<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct File<'a>(&'a [u8]);
 
-impl File<'_> {
+impl<'a> File<'a> {
+    pub fn as_bytes(self) -> &'a [u8] {
+        self.0
+    }
+
     pub const fn len(self) -> usize {
         self.0.len()
     }

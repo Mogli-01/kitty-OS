@@ -269,6 +269,10 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     #[cfg(feature = "selftest-heap-overflow")]
     arch::x86_64::selftest::heap_overflow();
 
+    proc::start_init();
+    #[cfg(feature = "qemu-exit")]
+    sched::yield_now();
+
     kprintln!("[boot] boot complete, idling with interrupts enabled");
 
     #[cfg(feature = "qemu-exit")]

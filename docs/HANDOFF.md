@@ -1592,3 +1592,17 @@ Formato:
 - **Próximo passo sugerido para o Claude** — rever a entrada asm e os
   invariantes da pilha antes de integrar o carregador.
 - **Avisos** — o scratch é do CPU de arranque. O retorno usa IRETQ.
+
+### [2026-11-27] — CODEX (arranque de init)
+
+- **Feito** — procura `/sbin/init` no initrd e carrega um ELF64 estático
+  para páginas privadas. Concede a consola ao primeiro processo.
+- **PRs abertos** — ramo `codex/fase7-init` sobre as syscalls de consola.
+- **Testes/fuzzing** — seis arranques release em BIOS e UEFI com ELF
+  executado em Ring 3, ELF inválido e ficheiro ausente. A matriz de CI
+  inclui os três casos.
+- **Proteções de segurança alteradas** — validação de cabeçalhos,
+  intervalos e permissões antes de mapear, limite de páginas, pilha com
+  guarda e auditoria W^X. Sem `unsafe` novo.
+- **Bloqueado por / à espera do Claude** — revisão do carregador e da
+  integração. A shell real e os handles de ficheiros têm PR separado.
