@@ -340,7 +340,9 @@ Contrato completo em **`docs/FASE6.md`** (issues #46 e #50): ABI das
 syscalls e códigos de erro, `UserPtr`/`copy_*_user`, handles e direitos,
 `console_read`/`console_write` e `console::input_push` (driver de teclado),
 arranque de `/sbin/init` a partir do initrd, e o formato `InputEvent` (24
-bytes) com `input_open`/`input_read`/`input::push`. O Codex pode programar
+bytes) com `input_read`/`input::push`. Sem autoridade ambiente (D-058):
+o `init` recebe os handles de CONSOLE, raiz do initrd, INPUT e DISPLAY e
+passa-os com `process_spawn`; não há `input_open`. O Codex pode programar
 a shell, a biblioteca de syscalls e o compositor contra esse contrato.
 
 ## Planeadas (assinaturas propostas, podem mudar)

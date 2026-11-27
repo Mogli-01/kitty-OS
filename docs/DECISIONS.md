@@ -479,3 +479,6 @@ O contrato completo está em `docs/FASE6.md`. Resumo das decisões:
   exclusivo (`E_BUSY`); fila de 256 com evento "perdidos"; **fila esvaziada
   na troca de consumidor** (o seguinte não vê teclas do anterior); o handler
   de IRQ publica sem heap e acorda com `WaitQueue::wake_one`.
+- **Alinhadas com a D-058** (PR #77): sem `input_open`; o `init` recebe os
+  handles e passa-os com `process_spawn`; `handle_info`; direitos com bits
+  por tipo; `uid`/`gid` e auditoria preparados; `E_BADSIG` reservado.

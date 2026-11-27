@@ -3,19 +3,26 @@
 Estado: **DESENHO** (contrato a implementar pelo Claude; o Codex pode
 programar contra ele já). Responde às issues #46 (entrega de INPUT ao
 compositor) e #50 (arranque e consola da primeira shell). Decisões:
-D-047…D-053. Qualquer mudança a este contrato atualiza este ficheiro e
-`docs/INTERFACES.md` no mesmo PR.
+D-047…D-053, alinhadas com a **D-058** ("capability-first", PR #77) para a
+Fase 15 não obrigar a refazer as syscalls. Qualquer mudança a este contrato
+atualiza este ficheiro e `docs/INTERFACES.md` no mesmo PR.
 
-Princípio: **o user space é hostil**. Cada número que atravessa a fronteira
-(registos de syscall, ponteiros, tamanhos, handles, ficheiros ELF) é
-validado pelo núcleo antes de ser usado.
+Princípios:
+- **O user space é hostil.** Cada número que atravessa a fronteira
+  (registos de syscall, ponteiros, tamanhos, handles, ficheiros ELF) é
+  validado pelo núcleo antes de ser usado.
+- **Sem autoridade ambiente (D-055, D-058).** Um processo só consegue atuar
+  sobre os objetos para os quais tem um handle, e começa só com os handles
+  que quem o criou lhe deu. Não há nomes, caminhos nem dispositivos
+  globais que se possam "abrir".
 
 ---
 
 ## 1. Processos e espaço de endereçamento (D-047)
 
 - Um **processo** tem: PID, um `AddressSpace` próprio, uma **tabela de
-  handles** e uma ou mais threads. A metade do kernel (PML4 256–511) é a
+  handles**, uma ou mais threads e `uid`/`gid` (sempre 0 = "sistema" até à
+  Fase 15; só existem para a Fase 15 não mudar a estrutura). A metade do kernel (PML4 256–511) é a
   mesma em todos os processos: as entradas pré-alocadas na Fase 3 são
   copiadas, por isso o kernel nunca precisa de mapear nada por processo.
 - Layout da metade de user (sem ASLR até à Fase 8):
@@ -64,10 +71,17 @@ validado pelo núcleo antes de ser usado.
 | -8 | `E_NOENT` | não existe |
 | -9 | `E_NOSYS` | syscall desconhecida |
 | -10 | `E_TOOBIG` | tamanho acima do limite |
+| -11 | `E_BADSIG` | reservado (Fase 16): imagem sem assinatura válida |
 
 - **Todos** os argumentos são validados antes de qualquer efeito. Números
   de syscall fora da tabela → `E_NOSYS` (nunca indexar uma tabela sem
   verificar).
+- **Capability-first (D-058):** toda a syscall com efeito fora do próprio
+  processo recebe um handle como **primeiro argumento**. As únicas
+  exceções são `exit`, `yield`, `clock_now`, `random_fill` e as operações
+  sobre a própria tabela (`handle_close`, `handle_dup`, `handle_info`).
+- As syscalls sensíveis chamam `audit::record` (sem efeito até à Fase 15),
+  para a auditoria não exigir mexer em cada syscall depois.
 - `sysret` só com RIP canónico na metade de user (o `sysretq` com RIP não
   canónico faz #GP em ring 0 nalguns CPUs: verificar e, se for o caso,
   sair por `iretq`).
@@ -91,11 +105,27 @@ validado pelo núcleo antes de ser usado.
 
 - Um handle é um `u32` opaco para o processo: índice na tabela + **geração**
   (um handle fechado e reutilizado não aponta para o objeto novo).
-- Direitos (bitflags): `READ`, `WRITE`, `MAP`, `TRANSFER`, `DUP`.
-- Syscalls: `handle_close(h)`, `handle_dup(h, rights) -> h2` (só com
-  `DUP`, e `rights` ⊆ direitos de `h`: **só se pode reduzir**).
-- Um processo começa só com os handles que quem o cria lhe dá. Não há nomes
-  globais.
+- Direitos (`u32`, bitflags):
+  - bits 0–15 **genéricos**: `READ`, `WRITE`, `MAP`, `TRANSFER`, `DUP`,
+    `EXEC`; os restantes reservados;
+  - bits 16–31 **específicos de cada tipo** de objeto (por exemplo
+    `NET_CONNECT` na Fase 17, `AUDIT_READ` na Fase 15). Um tipo novo nunca
+    muda a ABI.
+- Syscalls:
+  - `handle_close(h)`;
+  - `handle_dup(h, rights) -> h2`: só com `DUP`, e `rights` ⊆ direitos de
+    `h`. Os direitos **só se podem reduzir**;
+  - `handle_info(h) -> (tipo, direitos)`: um processo pode ver o que tem
+    sem tentar e falhar.
+- **Criar processos:** `process_spawn(imagem, handles, n) -> h_proc` é a
+  única forma de criar um processo e de lhe dar autoridade. `imagem` é um
+  handle de ficheiro com `EXEC`; `handles` aponta para `n` pares
+  `(handle, direitos)` (no máximo 64), copiados para a tabela nova com
+  direitos iguais ou **menores**. O processo novo não herda nada por
+  omissão. (Implementado na 6d, junto com o carregador ELF.)
+- **Transferência por canal (Fase 12):** exige `TRANSFER`, retira o handle
+  ao emissor e os direitos só podem diminuir.
+- Não há nomes globais.
 
 ## 6. Consola da primeira shell (issue #50, D-052)
 
@@ -109,8 +139,18 @@ validado pelo núcleo antes de ser usado.
   metade de user e ≥ 1 MiB, sem sobreposições, **nunca W+X**; entrada dentro
   de um segmento executável. Os bytes são **copiados** para frames novos (o
   initrd é só de leitura e partilhado).
-- **Direitos iniciais:** o `init` (PID 1) recebe **um** handle, `0`, para o
-  objeto **CONSOLE** com `READ | WRITE`. Mais nada.
+- **Direitos iniciais:** o `init` (PID 1) é o único processo criado pelo
+  kernel e não por `process_spawn`. Recebe:
+  - o handle `0`, para o objeto **CONSOLE**, com `READ | WRITE | DUP |
+    TRANSFER` (para o poder passar à shell);
+  - quando o VFS estiver ligado (Fase 7), um handle **DIR** com `READ` para a
+    raiz do initrd, e é com ele que o `init` abre os programas
+    (`open_at(dir, "bin/sh", READ | EXEC)`);
+  - quando existirem (Fases 10–11), os handles únicos de **INPUT** e
+    **DISPLAY**, que o `init` passa ao compositor com `process_spawn`.
+
+  Mais nada. A ordem fixa (0 = CONSOLE, 1 = DIR, 2 = INPUT, 3 = DISPLAY)
+  faz parte da ABI do `init`.
 - `console_write(h, buf, len) -> n`: escreve em todas as consolas do kernel
   (ecrã + série). `len ≤ 4096` (senão `E_TOOBIG`); bytes UTF-8, os
   inválidos aparecem como `?`; **escrita parcial permitida** (devolve quantos
@@ -151,18 +191,19 @@ pub struct InputEvent {
 - **Relógio:** `time_ns` é monotónico, em nanossegundos desde o arranque,
   do mesmo relógio que o `time::now_ns()` do kernel (TSC calibrado no
   arranque; enquanto não houver calibração, contagem de ticks × período).
-- **Direito de leitura:** objeto **INPUT**, único no sistema. Só um
-  processo o pode ter aberto de cada vez (exclusivo): `input_open() -> h`
-  devolve `E_PERM` sem a capacidade e `E_BUSY` se já houver consumidor. A
-  capacidade é dada pelo `init` ao compositor (Fase 13); até lá nenhum
-  processo a tem.
+- **Direito de leitura:** objeto **INPUT**, único no sistema, criado no
+  arranque. **Não há `input_open()` (D-058):** o kernel dá o único handle
+  ao `init`, que o passa ao compositor com `process_spawn` (Fase 13); até
+  lá, nenhum outro processo o tem. A exclusividade vem de existir um só
+  handle, **sem** o direito `DUP`: não se pode copiar, só transferir.
 - **Leitura:** `input_read(h, buf, max) -> n` bloqueia até haver ≥ 1 evento
   e copia até `max` eventos inteiros (`buf` com `max * 24` bytes válidos).
 - **Perda:** fila circular de 256 eventos por objeto INPUT. Se encher, o
   evento novo é descartado e o próximo `input_read` começa por um evento
   `kind = 3` (perdidos); o compositor deve repor o estado dos botões e
   teclas (assumir tudo solto).
-- **Troca de consumidor:** ao fechar o handle, a fila é **esvaziada**. O
+- **Troca de consumidor:** ao fechar ou transferir o handle, a fila é
+  **esvaziada**. O
   consumidor seguinte nunca vê teclas destinadas ao anterior (por exemplo,
   uma password).
 - **Do handler de IRQ:** o driver publica com `input::push(event)` (fila
@@ -177,9 +218,11 @@ pub struct InputEvent {
 1. **6a** SMEP/SMAP/UMIP + `UserPtr` + `copy_*_user` com recuperação de #PF.
 2. **6b** processos, espaços de endereçamento de user, `TSS.RSP0`, `swapgs`,
    entrada em ring 3, exceções de user matam o processo.
-3. **6c** `syscall`/`sysret`, tabela de syscalls, handles e direitos,
-   objeto CONSOLE.
-4. **6d** carregador ELF e arranque de `/sbin/init` a partir do initrd.
+3. **6c** `syscall`/`sysret`, tabela de syscalls, handles e direitos
+   (com `handle_info` e o formato de direitos da D-058), objeto CONSOLE,
+   pontos de auditoria sem efeito.
+4. **6d** carregador ELF, `process_spawn` e arranque de `/sbin/init` a
+   partir do initrd.
 5. **6e** objeto INPUT e `input_read` (com a Fase 11 do Codex).
 
 O Codex pode, em paralelo: construir `/sbin/init` (shell) como ELF64
