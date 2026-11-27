@@ -16,6 +16,7 @@ test = false
 bench = false
 
 [features]
+boot-splash = []
 # Only for automated tests: lets the kernel power off QEMU through the
 # isa-debug-exit device. Never enabled in normal builds.
 qemu-exit = []

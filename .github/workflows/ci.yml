@@ -193,6 +193,10 @@ jobs:
           grep -F -- '[cpu] breakpoint at rip=' build/serial-logs/boot.log
           grep -F -- '[cpu] breakpoint exception handled, execution resumed' build/serial-logs/boot.log
 
+          run_case animated-splash --features boot-splash \
+            --expect '[splash] animation complete' \
+            --expect '[sched] cooperative self-test passed'
+
           run_case xapic-pit --features selftest-xapic \
             --expect 'controller: I/O APIC + xAPIC' \
             --expect '[apic] two IRQ0 deliveries acknowledged' \

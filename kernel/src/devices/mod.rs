@@ -18,6 +18,8 @@ mod apic;
 mod initrd;
 mod pit;
 mod ps2;
+#[cfg(feature = "boot-splash")]
+pub(crate) mod splash;
 #[cfg(all(
     feature = "qemu-exit",
     any(feature = "selftest-pit-driver", feature = "selftest-lapic-scheduler")

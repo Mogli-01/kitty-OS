@@ -67,6 +67,17 @@ entrada em `docs/UNSAFE.md`.
 Fornece: CLAUDE. Uso interno do núcleo; os drivers não recebem estes tipos
 diretamente.
 
+### Empréstimo do framebuffer no arranque — INSTÁVEL
+
+Com a feature `boot-splash`, o núcleo empresta a `devices::splash::show`
+uma referência mutável ao framebuffer validado, antes de inicializar a
+consola. O empréstimo acaba antes de transferir a propriedade do
+framebuffer para a consola. O driver usa apenas a geometria e as
+operações seguras de desenho. O temporizador PIT é reclamado pela
+concessão legada documentada, enquanto as interrupções estão desligadas.
+A concessão termina antes da inicialização das interrupções e do
+temporizador do scheduler.
+
 ### Teste de arranque — ESTÁVEL
 Fornece: CLAUDE (`xtask`). Mantém: CODEX.
 `cargo xtask test [--bios] [--release]` compila o kernel com a feature
