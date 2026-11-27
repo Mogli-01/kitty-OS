@@ -31,6 +31,11 @@ selftest-heap-overflow = []
 # Fires a real hardware interrupt (PIT IRQ0 through the 8259 PIC) and
 # checks it reaches its handler. Does not panic: expect exit code 33.
 selftest-irq-pit = []
+# Two busy threads that never yield must both make progress (PIT ticks call
+# sched::tick). Does not panic: expect exit code 33.
+selftest-preempt = []
+# A kernel thread recurses into its stack guard page: expect a double fault.
+selftest-thread-stack-overflow = []
 
 [dependencies]
 limine = "0.6.5"
