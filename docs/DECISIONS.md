@@ -1183,7 +1183,7 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
 
 O xtask inclui a arte estática na ESP ou na ISO quando se seleciona
 `--splash`. O Limine apresenta-a antes de lançar o kernel, com uma
-contagem de dois segundos que se pode interromper. Isto permite
+contagem de seis segundos que se pode interromper. Isto permite
 experimentar o tema com BIOS e UEFI sem depender da API de ecrã do
 compositor. Os comandos de teste, benchmark e arranque sem a opção
 usam o tempo de espera predefinido de zero segundos.

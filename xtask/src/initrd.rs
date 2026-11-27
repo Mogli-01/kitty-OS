@@ -44,7 +44,7 @@ pub(crate) fn load(path: &Path) -> Result<Vec<u8>> {
 
 // Give the artwork a brief, interruptible display before booting the kernel.
 const SPLASH_SETTINGS: &str = "\
-timeout: 2
+timeout: 6
 wallpaper: boot():/boot/kitty-welcome.png
 wallpaper_style: centered
 backdrop: 161B27
@@ -87,7 +87,7 @@ mod tests {
     #[test]
     fn adds_splash_options_without_changing_initrd_or_default_timeout() {
         let config = limine_config(true, true);
-        assert!(config.contains("timeout: 2\nwallpaper: boot():/boot/kitty-welcome.png\n"));
+        assert!(config.contains("timeout: 6\nwallpaper: boot():/boot/kitty-welcome.png\n"));
         assert_eq!(config.matches("timeout:").count(), 1);
         assert!(config.contains("module_string: kitty-initrd"));
         assert!(!limine_config(false, false).contains("wallpaper"));

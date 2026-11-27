@@ -38,10 +38,15 @@ cargo xtask run --release --bios --splash  # BIOS
 cargo xtask iso --release --splash         # build/kitty-os.iso
 ```
 
-O Limine mostra a arte do kitty-OS durante dois segundos e lança o
+O Limine mostra «A iniciar o kittyOS» durante seis segundos e lança o
 kernel. Podes premir uma tecla para parar a contagem ou Enter para
 selecionar a entrada. `esp` também aceita `--splash`. Depois do ecrã
 de boas-vindas aparece a consola de arranque do kernel.
+
+A [pré-visualização do gato a piscar](../assets/boot/kitty-welcome-preview.gif)
+mostra a animação de seis segundos. O Limine apresenta o fundo estático.
+A reprodução dos quadros durante o arranque depende do acesso ao framebuffer
+descrito na [issue #87](https://github.com/Mogli-01/kitty-OS/issues/87).
 
 ## Empacotar um initrd
 
