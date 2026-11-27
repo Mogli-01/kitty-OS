@@ -702,3 +702,16 @@ desenho da Fase 12, para a Fase 15 não obrigar a refazer as syscalls.
 - **Porquê:** quem escreve o código tem os mesmos pontos cegos quando o
   revê. Um atacante diferente, com incentivo para encontrar falhas, vê
   outras coisas. Os PoCs transformam cada falha num teste permanente.
+
+### D-137 — Camada de registos 16550A sem espera ativa (2026-11-26, CODEX)
+
+`kitty-uart` usa exclusivamente `kitty-hal::PortBlock`. Configura 8N1
+com um divisor diferente de zero. Limpa DLAB antes de escrever IER e
+volta ao banco de dados após programar o divisor. Se a configuração
+falhar, as operações de dados ficam indisponíveis até nova configuração
+completa. Cada operação de dados consulta o LSR uma vez e transfere no
+máximo um byte. As flags da receção são preservadas quando a transmissão
+consulta o LSR. Um *overrun* isolado preserva o byte mais antigo na FIFO.
+
+A D-009 conserva a função da consola de arranque. A integração com
+portas reais exige uma concessão exclusiva e um contrato de interrupções.

@@ -308,6 +308,24 @@ Formato:
     da janela MMIO não é reutilizado).
   - A sequência IOREGSEL/IOWIN tem de ser serializada pelo driver.
 
+### [2026-11-26] — CODEX (camada 16550A)
+
+- **Feito** — configuração 8N1 e polling de TX/RX em `kitty-uart`, com
+  um byte por chamada e tratamento de erros de linha. Decisão D-137.
+- **PRs abertos** — ramo `codex/uart-16550` sobre `main`.
+- **Testes/fuzzing** — seis testes de portas simuladas abrangem a ordem
+  de configuração, falhas de acesso e preservação do estado de receção
+  quando há consultas durante a transmissão. CI executa no host e em Miri.
+  O arranque release no QEMU confirmou a consola inicial em UEFI e BIOS.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — camada de registos em Rust seguro
+  sobre `PortBlock`, com acessos limitados e sem espera ativa.
+- **Bloqueado por / à espera do Claude** — contrato de posse exclusiva
+  da UART e entrega de interrupções para ligar o driver às portas reais.
+- **Próximo passo sugerido para o Claude** — discutir a transição da
+  consola de arranque ou a concessão de uma segunda UART.
+- **Avisos** — os testes de registos usam portas simuladas.
+
 ### [2026-11-26] — CLAUDE (desenho da Fase 6)
 - **Feito:** `docs/FASE6.md` com o contrato da Fase 6 (processos, ring 3,
   ABI das syscalls, `copy_*_user`, handles, consola da shell, `/sbin/init`
@@ -394,6 +412,19 @@ Formato:
 - **Avisos:** a crypto é educativa e não auditada (D-056). A verificação de
   assinaturas não protege o kernel nem o Limine sem Secure Boot (ver
   SECURITY.md, fora de âmbito).
+
+### 2026-11-27 — CODEX
+- Feito: atualização do PR #59 ao `main`, preservando as decisões e o
+  handoff de ambos os ramos.
+- PRs abertos: #59 (camada de registos) e #78 (fontes de IRQ de receção).
+- Testes/fuzzing: fmt, Clippy, seis testes UART no host e arranque em QEMU
+  UEFI release.
+- Benchmarks: sem novas medições.
+- Bloqueado por / à espera do Claude: concessão COM1 e contrato IRQ4 (#72).
+- Próximo passo sugerido para o Claude: definir a passagem da consola
+  inicial para o driver que recebe por interrupção.
+- Avisos: o ensaio de arranque mantém a consola série normal. A receção
+  por interrupção ainda depende do contrato do núcleo.
 
 ### [2026-11-27] — CLAUDE (Fase 6a)
 - **Feito:** SMEP, SMAP e UMIP ligados (com CPUID); `copy_from_user` /
