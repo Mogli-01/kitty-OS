@@ -145,6 +145,14 @@ jobs:
       - run: cargo clippy -p kitty-gfx --locked --all-targets -- -D warnings
       - run: cargo test -p kitty-gfx --locked
       - run: cargo miri test -p kitty-gfx --locked
+      - run: cargo fmt --manifest-path fuzz/graphics/Cargo.toml --all --check
+      - run: cargo install cargo-fuzz --version 0.13.2 --locked
+      - run: cargo fetch --manifest-path fuzz/graphics/Cargo.toml --locked
+      - name: Fuzz PSF2 parsing and drawing under AddressSanitizer
+        env:
+          CARGO_NET_OFFLINE: 'true'
+        run: cargo fuzz run --fuzz-dir fuzz/graphics psf2 -- -max_total_time=15 -timeout=5 -max_len=65536
+      - run: git diff --exit-code -- fuzz/graphics/Cargo.lock
 
   boot:
     name: QEMU (${{ matrix.firmware }}, ${{ matrix.profile }})

@@ -1191,3 +1191,12 @@ O `xtask test-initrd` verifica um ficheiro conhecido, uma imagem em que
 o checksum do cabeçalho é inválido e a ausência de módulo. Os ensaios
 usam meios de arranque próprios em `build/initrd-tests/`. O comando
 normal `--initrd` valida o arquivo no host antes de preparar o meio.
+
+### D-132 — Ler fontes PSF2 em user space (2026-11-26, CODEX)
+
+O leitor PSF2 v0 valida a versão, as flags, as dimensões e o comprimento
+de cada glifo antes de emprestar o atlas a `BitmapFont`. O mapa Unicode
+opcional tem um registo por glifo e as suas entradas são UTF-8 válido.
+O desenho reutiliza `Canvas::draw_glyph`. A pesquisa por carácter
+percorre o mapa sem alocação nem cache. As sequências com vários
+caracteres são validadas e ficam reservadas para composição futura.

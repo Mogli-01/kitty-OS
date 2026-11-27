@@ -1566,3 +1566,22 @@ Formato:
 - Próximo passo sugerido para o Claude: usar as bases atualizadas do
   terminal antes de avaliar a demonstração em duas janelas (#64).
 - Avisos: atualização de módulos e documentação, sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (fontes PSF2)
+
+- **Feito** — leitura do atlas e do mapa Unicode PSF2 e desenho com
+  `Canvas::draw_glyph`. Decisão D-132.
+- **PRs abertos** — ramo `codex/fontes-psf2` sobre o #27.
+- **Testes/fuzzing** — 16 testes de `kitty-gfx` no host e em Miri. Duas
+  fontes do kbd com 512 glifos foram lidas e mapearam `é`. O alvo
+  `psf2` na CI passou 981 229 casos no ensaio local sob ASan, incluindo
+  recorte e padding do destino.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — cabeçalhos e intervalos são
+  validados antes de criar vistas. O parser e o desenho usam Rust seguro.
+- **Bloqueado por / à espera do Claude** — apresentação no ecrã requer
+  a concessão `DISPLAY` e a interface do dispositivo.
+- **Próximo passo sugerido para o Claude** — manter a descrição de
+  formato e pitch da superfície na futura interface `DISPLAY`.
+- **Avisos** — o alvo gráfico usa um workspace de host próprio, para
+  que o PR possa ser revisto sobre a base da biblioteca gráfica (#27).
