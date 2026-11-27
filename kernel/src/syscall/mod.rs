@@ -72,6 +72,8 @@ pub mod nr {
 
 /// Largest buffer for one console call (docs/FASE6.md §6).
 pub const CONSOLE_MAX: usize = 4096;
+/// Bytes copied per step (keeps the kernel stack use small).
+const CHUNK: usize = 512;
 
 /// Number of system calls handled (diagnostics, tests).
 static CALLS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
@@ -92,6 +94,7 @@ pub fn dispatch(number: u64, args: [u64; 6]) -> i64 {
     match number {
         nr::EXIT => {
             drop(process);
+            // The code is the low 32 bits of the argument (documented ABI).
             proc::exit_current(a0 as u32 as i32)
         }
         nr::YIELD => {
@@ -173,12 +176,27 @@ fn console_write(process: &Arc<Process>, handle: u64, buf: u64, len: u64) -> i64
         if len > CONSOLE_MAX {
             return Err(E_TOOBIG);
         }
-        let src = UserSlice::new(buf, len).map_err(user_err)?;
-        let mut bytes = [0u8; CONSOLE_MAX];
-        let dst = bytes.get_mut(..len).ok_or(E_TOOBIG)?;
-        copy_from_user(dst, src).map_err(user_err)?;
-        // Copied once into the kernel, then used: no TOCTOU.
-        console::write_user_text(dst);
+        // Validate the whole range first: nothing is written for a bad one.
+        UserSlice::new(buf, len).map_err(user_err)?;
+        let mut done = 0;
+        let mut bytes = [0u8; CHUNK];
+        while done < len {
+            let n = (len - done).min(CHUNK);
+            let src = UserSlice::new(buf + done as u64, n).map_err(user_err)?;
+            let dst = bytes.get_mut(..n).ok_or(E_TOOBIG)?;
+            if copy_from_user(dst, src).is_err() {
+                // Partial write: report what was accepted (if anything).
+                return if done == 0 {
+                    Err(E_FAULT)
+                } else {
+                    Ok(done as i64)
+                };
+            }
+            // Each chunk is copied once, then used: no TOCTOU. (A UTF-8
+            // character split between chunks shows as `?`.)
+            console::write_user_text(dst);
+            done += n;
+        }
         Ok(len as i64)
     };
     run().unwrap_or_else(|e| e)
@@ -187,7 +205,9 @@ fn console_write(process: &Arc<Process>, handle: u64, buf: u64, len: u64) -> i64
 fn console_read(process: &Arc<Process>, handle: u64, buf: u64, len: u64) -> i64 {
     let run = || -> Result<i64, i64> {
         console_handle(process, handle, Rights::READ)?;
-        let len = usize::try_from(len).map_err(|_| E_TOOBIG)?.min(CONSOLE_MAX);
+        // Reads may return fewer bytes than asked (like `read`): at most one
+        // chunk per call.
+        let len = usize::try_from(len).map_err(|_| E_TOOBIG)?.min(CHUNK);
         // Validate the destination before blocking (an obviously bad
         // pointer fails at once). A fault after the wait loses the bytes
         // read (they were the program's own input).
@@ -195,7 +215,7 @@ fn console_read(process: &Arc<Process>, handle: u64, buf: u64, len: u64) -> i64 
         if len == 0 {
             return Ok(0);
         }
-        let mut bytes = [0u8; CONSOLE_MAX];
+        let mut bytes = [0u8; CHUNK];
         let kbuf = bytes.get_mut(..len).ok_or(E_TOOBIG)?;
         let n = console::input_read(kbuf, || process.is_killed());
         if n == 0 {

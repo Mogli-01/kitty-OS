@@ -494,7 +494,8 @@ Fornece: CLAUDE (`kernel/src/syscall`, D-063). Usa: CODEX (biblioteca de syscall
 - **Números e erros:** ver a tabela em `docs/FASE6.md` §3. A ABI é estável.
 - O processo começa com o handle `0` = CONSOLE (`READ|WRITE|DUP|TRANSFER`).
 - Um handle é um `u32` (índice + geração). Depois de `handle_close`, o número **nunca mais** é válido.
-- **`console_write`:** até 4096 B. Os caracteres de controlo, exceto `\n` e `\t`, aparecem como `?`.
+- **`console_write`:** até 4096 B. Os caracteres de controlo (exceto `
+` e `	`) e os invisíveis aparecem como `?`; o texto de user tem `[u] ` na série. **`console_read`:** devolve no máximo 512 B por chamada.
 - **`console_read`:** bloqueia até haver pelo menos 1 byte. Um processo morto enquanto espera acaba na mesma.
 - **Do lado do kernel (driver de teclado):** `console::input_push(&[u8])`, que é seguro em IRQ e não usa heap. O buffer tem 4 KiB e, quando está cheio, descarta os bytes novos (`console::input_dropped()`).
 - **Marcador:** `[syscall] self-test passed`. Também aparece `[user] hello from ring 3 via syscall`, escrito pelo próprio programa.

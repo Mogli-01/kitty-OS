@@ -80,12 +80,12 @@ Princípios:
   processo recebe um handle como **primeiro argumento**. As únicas
   exceções são `exit`, `yield`, `clock_now`, `random_fill` e as operações
   sobre a própria tabela (`handle_close`, `handle_dup`, `handle_info`).
-- As syscalls sensíveis chamam `audit::record` (sem efeito até à Fase 15),
-  para a auditoria não exigir mexer em cada syscall depois.
+- As syscalls sensíveis (abrir ficheiros, rede, permissões) vão chamar
+  `audit::record` desde que existam; as da 6c não são sensíveis.
 - **Implementação (6c, D-063):**
   - a entrada é `syscall`. O FMASK limpa IF, DF, TF, AC, NT e IOPL: o SMAP fica fechado mesmo que o programa tenha posto AC = 1;
   - a seguir vêm `swapgs` e a troca para a pilha de kernel da thread;
-  - a saída é **sempre por `iretq`**, pelo mesmo caminho das interrupções, e nunca por `sysret` (o `sysretq` com RIP não canónico faz #GP em ring 0 nos Intel);
+  - a saída é **sempre por `iretq`**, pelo mesmo caminho das interrupções, e nunca por `sysret`. Como um `iretq` para um RIP não canónico também falharia em ring 0, a última página de user nunca é mapeada e a saída verifica o RIP;
   - RCX e R11 voltam com o RIP e o RFLAGS de user, como faria o `sysret`; os outros registos são preservados.
 - **Números (ABI estável):**
 
@@ -175,9 +175,10 @@ Princípios:
 - `console_write(h, buf, len) -> n`: escreve em todas as consolas do kernel
   (ecrã + série). `len ≤ 4096` (senão `E_TOOBIG`). Os bytes são UTF-8: os
   inválidos aparecem como `?`, e **todos os caracteres de controlo exceto
-  `\n` e `\t` também** (C0, DEL e C1, incluindo ESC). Assim, um programa não
-  manda sequências de escape para o terminal nem falsifica linhas do
-  kernel com `\r`; **escrita parcial permitida** (devolve quantos
+  `\n` e `\t` também** (C0, DEL e C1, incluindo ESC), tal como os
+  caracteres invisíveis e de bidi. Na série, cada linha de user começa por
+  `[u] `; no ecrã, tem outra cor. Assim, um programa não manda sequências
+  de escape para o terminal nem cria linhas que pareçam do kernel; **escrita parcial permitida** (devolve quantos
   bytes foram aceites); `E_FAULT` se o buffer for inválido, `E_PERM` sem
   `WRITE`.
 - `console_read(h, buf, len) -> n`: **bloqueia** (`WaitQueue`) até haver
@@ -242,9 +243,10 @@ pub struct InputEvent {
 1. **6a** SMEP/SMAP/UMIP + `UserPtr` + `copy_*_user` com recuperação de #PF.
 2. **6b** processos, espaços de endereçamento de user, `TSS.RSP0`, `swapgs`,
    entrada em ring 3, exceções de user matam o processo.
-3. **6c** (FEITO, D-063) `syscall`/`sysret`, tabela de syscalls, handles e direitos
-   (com `handle_info` e o formato de direitos da D-058), objeto CONSOLE,
-   pontos de auditoria sem efeito.
+3. **6c** (FEITO, D-063) `syscall` (saída por `iretq`), tabela de syscalls,
+   handles e direitos (com `handle_info` e o formato de direitos da D-058),
+   objeto CONSOLE. Os pontos de auditoria entram com as primeiras syscalls
+   sensíveis (Fases 7 e 15).
 4. **6d** carregador ELF, `process_spawn` e arranque de `/sbin/init` a
    partir do initrd.
 5. **6e** objeto INPUT e `input_read` (com a Fase 11 do Codex).

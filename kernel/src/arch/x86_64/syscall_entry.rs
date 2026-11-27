@@ -90,6 +90,13 @@ extern "C" fn syscall_dispatch(frame: &mut TrapFrame) {
     ];
     frame.rax = crate::syscall::dispatch(frame.rax, args) as u64;
     super::cpu::disable_interrupts();
+    // `iretq` to a non-canonical or kernel RIP faults in ring 0 *after* the
+    // exit `swapgs` (user GS loaded). The last user page is never mapped,
+    // so RCX after `syscall` cannot be past it; check anyway and kill the
+    // process instead of risking a kernel #GP (security review).
+    if frame.rip >= crate::mm::paging::USER_MAP_END {
+        crate::proc::exit_current_on_fault(13);
+    }
     crate::proc::on_return_to_user();
 }
 

@@ -41,6 +41,17 @@ impl FbConsole {
         }
     }
 
+    /// Draws `s` in the colour used for **user** text, so a program cannot
+    /// make its output look like a kernel message on screen.
+    pub fn write_user_str(&mut self, s: &str) {
+        let kernel_fg = self.fg;
+        self.fg = self.fb.color(0x8F, 0xE3, 0xB0);
+        for c in s.chars() {
+            self.put_char(c);
+        }
+        self.fg = kernel_fg;
+    }
+
     fn newline(&mut self) {
         self.col = 0;
         if self.row + 1 < self.rows {

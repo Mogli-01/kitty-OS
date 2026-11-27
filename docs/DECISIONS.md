@@ -1222,6 +1222,7 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
   - Depois do `swapgs`, o RSP de user fica num slot por CPU e a pilha passa a ser a da thread (o mesmo valor de `TSS.RSP0`, escrito pelo scheduler). O frame construído é igual ao de uma trap de ring 3.
 - **Saída sempre por `iretq`**, pelo caminho comum das interrupções.
   - **Porquê não `sysret`:** com um RCX não canónico, o `sysretq` faz #GP **em ring 0 com o GS de user** nos Intel (CVE-2012-0217); e o `sysret` não repõe RFLAGS e segmentos como o `iretq`.
+  - **Atenção:** o `iretq` para um RIP não canónico **também** falha em ring 0. Por isso, a última página de user (`0x7FFF_FFFF_F000`) nunca é mapeada (`USER_MAP_END`, como no Linux), e a saída da syscall mata o processo se o RIP não for de user.
   - **Porquê o caminho comum:** um único caminho de saída já testado, que honra o `kill` e a preempção.
   - **Custo:** medido no autoteste, cerca de 1400 ciclos por syscall vazia em release no QEMU TCG. Um caminho `sysret` só entra se for medido e valer a pena.
 - **Handles:** um `u32` com índice (16 bits) e geração (15 bits). Fechar um handle incrementa a geração, por isso um número fechado nunca chega ao objeto que reutiliza o slot (a geração só dá a volta ao fim de 32768 fechos no mesmo slot). Os direitos são de 32 bits: os bits genéricos 0–5 estão definidos, os 6–15 reservados (`E_INVAL`) e os 16–31 são por tipo (D-058). O `dup` exige `DUP` e só pode reduzir direitos.
@@ -1236,6 +1237,15 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
 - **CONSOLE:**
   - **`console_write`:** copia de uma vez para o kernel (sem TOCTOU) e filtra os caracteres de controlo, exceto `\n` e `\t`. Um programa não consegue mandar sequências de escape para o terminal de quem lê a série, nem reescrever uma linha com `\r` para falsificar uma mensagem do kernel.
   - **`console_read`:** bloqueia numa `WaitQueue`, alimentada por `input_push`, que é seguro em IRQ, não usa heap e tem 4 KiB que descartam os bytes novos quando estão cheios. Um `kill` acorda o leitor, que desiste.
+- **Revisto depois do `security-reviewer`:**
+  - **DoS:** o `console_write` prendia o lock da consola (IF = 0) durante 4096 caracteres, e cada `\n` fazia scroll do ecrã inteiro. Agora o lock é largado a cada 64 caracteres, e a cópia é feita em fatias de 512 B (menos pilha).
+  - **`console_read`:** repete a espera se outro leitor esvaziou o ring. Assim nunca dá `E_AGAIN` a um processo vivo, e um leitor cancelado não leva bytes.
+  - **Texto de user distinguível:** na série, cada linha de user começa por `[u] `; no ecrã, tem outra cor. Também passam a `?` os caracteres invisíveis e de bidi (Trojan Source).
+  - **Sem `sysenter`:** `SYSENTER_CS = 0`.
+  - **Invariante escrito:** nenhum código Rust usa endereçamento relativo ao GS.
+  - **Ordem de locks nova:** tabela de handles (SpinLock) → heap (`try_reserve` no `insert`).
+- **Decisão para a 6d:** a leitura da consola (CONSOLE `READ`) não é dada por omissão. O `process_spawn` só passa o que o pai pedir, e a ideia é que só a shell em primeiro plano tenha `READ`. Hoje o ring de input é global e todos os leitores competem; com o login (Fase 15), a leitura passa a ser de um só dono, tal como o INPUT.
+- **Auditoria:** ainda não há syscalls sensíveis (nenhuma abre ficheiros nem rede), por isso não há `audit::record`. Os pontos de auditoria entram com as syscalls que os justificam (Fases 7 e 15).
 - **Limites:**
   - ainda não há `process_spawn` (6d);
   - `clock_now` e `random_fill` estão reservados (`E_NOSYS`);

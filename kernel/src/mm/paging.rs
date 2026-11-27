@@ -343,6 +343,11 @@ impl AddressSpace {
 pub const USER_MIN: u64 = 0x10_0000;
 /// One past the highest user address (start of the non-canonical hole).
 pub const USER_END: u64 = 0x0000_8000_0000_0000;
+/// One past the highest address a user page may be **mapped** at: the
+/// last 4 KiB below the hole stay unmapped, so code can never run at
+/// `0x7FFF_FFFF_Fxxx` and a `syscall` there can never leave a
+/// non-canonical RCX for the `iretq` back (which would fault in ring 0).
+pub const USER_MAP_END: u64 = USER_END - 0x1000;
 
 /// Result of [`AddressSpace::audit_user_half`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -392,7 +397,7 @@ impl AddressSpace {
         flags: MapFlags,
     ) -> Result<(), MapError> {
         let v = virt.as_u64();
-        if !(USER_MIN..USER_END).contains(&v) || !flags.user || flags.global {
+        if !(USER_MIN..USER_MAP_END).contains(&v) || !flags.user || flags.global {
             return Err(MapError::UserInKernelHalf);
         }
         if !v.is_multiple_of(PAGE_SIZE) {

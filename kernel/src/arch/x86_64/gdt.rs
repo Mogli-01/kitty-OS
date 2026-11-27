@@ -119,6 +119,10 @@ static TABLES: CpuTables = CpuTables {
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// Per-CPU block that the kernel's GS base points at (Phase 6b, D-060).
+/// Invariant (D-063): only the `syscall` entry assembly addresses this
+/// block through GS; no Rust code uses GS-relative accesses (see the note
+/// in `trap.rs` about NMI/#MC in the entry window).
+///
 /// The `syscall` entry (6c) uses it through GS: it saves the user RSP in
 /// slot [`PERCPU_USER_RSP`] and loads the kernel stack from slot
 /// [`PERCPU_KERNEL_RSP`], because `syscall` does not switch stacks.

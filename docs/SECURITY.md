@@ -107,7 +107,9 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | Estado FPU/SSE guardado e reposto por thread de user (`fxsave64`/`fxrstor64`); thread nova começa no estado inicial; AVX desligado | um processo ler XMM de outro (chaves, passwords) | ATIVA (autoteste "secret/clean") | 6 |
 | Entrada `syscall` com FMASK = IF\|DF\|TF\|AC\|NT\|IOPL; saída sempre por `iretq` (sem `sysret`) | SMAP aberto por um `popf` de user; #GP em ring 0 com o GS de user (sysret não canónico); passo a passo no kernel | ATIVA (D-063) | 6 |
 | Handles com geração (um número fechado nunca volta a valer); direitos só diminuem (`dup`) | use-after-close; escalada de direitos | ATIVA | 6 |
-| `console_write` filtra os caracteres de controlo (só `\n`/`\t`) | sequências de escape no terminal de quem lê a série; falsificar linhas do kernel | ATIVA | 6 |
+| `console_write` filtra os caracteres de controlo (só `\n`/`\t`) e os invisíveis/bidi; o texto de user tem `[u] ` na série e outra cor no ecrã | sequências de escape no terminal de quem lê a série; falsificar linhas do kernel; Trojan Source | ATIVA | 6 |
+| A escrita na consola larga o lock a cada 64 caracteres | DoS por latência de interrupções (scrolls com IF = 0) | ATIVA | 6 |
+| A última página de user nunca é mapeada (`USER_MAP_END`); a saída da syscall verifica o RIP | `iretq` para um RIP não canónico falhar em ring 0 com o GS de user | ATIVA | 6 |
 | Um processo bloqueado numa syscall pode ser morto | processo imortal preso numa leitura | ATIVA | 6 |
 | `swapgs` só com CS de ring 3 + `lfence` (CVE-2019-1125); `TSS.RSP0` = pilha de kernel da thread atual | o kernel correr com o GS de user; trap de ring 3 numa pilha errada | ATIVA (verificação do GS base nas falhas de user) | 6 |
 | Primeiro 1 MiB de user nunca mapeado (`USER_MIN`) | null deref explorável | ATIVA (`map_user_frame` recusa; teste de leitura de 0) | 6 |
