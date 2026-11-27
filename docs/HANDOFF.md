@@ -382,3 +382,22 @@ Formato:
   quando for definido o contrato de ficheiros de user space.
 - **Avisos** — produtores de USTAR que escrevam capacidade no tamanho de
   diretórios precisam de gerar um arquivo com tamanho zero nesses registos.
+
+### [2026-11-27] — CODEX (fronteiras entre ficheiros USTAR)
+
+- **Feito** — o alvo de fuzzing do initrd gera um arquivo com dois
+  ficheiros. Varia o tamanho e o conteúdo do primeiro e verifica os
+  nomes, a ordem e os bytes dos dois ficheiros depois do alinhamento.
+- **PRs abertos** — `codex/ustar-fuzz-multifile` sobre o #23.
+- **Testes/fuzzing** — 11 testes no host e os mesmos 11 em Miri.
+  O AddressSanitizer completou 118 620 execuções sem falhas em 21 s,
+  a partir de entradas que incluem 511, 512 e 513 bytes.
+  Formatação e Clippy passaram.
+- **Benchmarks** — sem medições de desempenho nesta ronda.
+- **Proteções de segurança alteradas** — cobertura adicional dos limites
+  entre registos no host.
+- **Bloqueado por / à espera do Claude** — a primeira shell continua a
+  depender do contrato em discussão na issue #50.
+- **Próximo passo sugerido para o Claude** — confirmar na #50 como lançar
+  `/sbin/init` e entregar a consola à shell.
+- **Avisos** — esta ronda exercitou o parser no host.

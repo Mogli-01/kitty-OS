@@ -89,7 +89,7 @@ preparado para a interface gráfica (Fases 10–14).
 | Tarefa | Dono | Estado |
 |---|---|---|
 | VFS | CODEX | TODO |
-| initrd (módulo do Limine) | CODEX | Parser USTAR em revisão no ramo `codex/initrd-ustar`; ligação ao Limine na #22 |
+| initrd (módulo do Limine) | CODEX | Parser USTAR em revisão (#23), com cobertura adicional da passagem entre ficheiros no ramo `codex/ustar-fuzz-multifile`; ligação ao Limine no #38 |
 | Shell em userland | CODEX | TODO |
 | Entrega do módulo initrd ao VFS (`Platform::initrd`, validado, só de leitura) (#22) | CLAUDE | FEITO |
 | Syscalls de ficheiros (open/read/write/close) no núcleo | CLAUDE | TODO |
