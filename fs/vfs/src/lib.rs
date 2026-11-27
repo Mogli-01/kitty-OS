@@ -83,7 +83,8 @@ impl<'a> InitrdFs<'a> {
             if current.path == next.path {
                 return Err(Error::DuplicatePath);
             }
-            if matches!(current.kind, EntryKind::File(_)) && descends_from(current.path, next.path)
+            if matches!(current.kind, EntryKind::File(_))
+                && has_descendant_path(0, current.path, next.path)
             {
                 return Err(Error::FileAsAncestor);
             }
@@ -93,49 +94,84 @@ impl<'a> InitrdFs<'a> {
 
     /// Looks up a canonical absolute path such as `/bin/kitty-shell`.
     pub fn lookup(&self, path: &str) -> Result<Inode<'a>, Error> {
-        match self.locate(absolute_path(path)?)? {
-            Location::File(file) => Ok(Inode::File(file)),
-            Location::Directory { .. } => Ok(Inode::Directory),
-        }
+        locate(&self.entries, 0, absolute_path(path)?).map(Location::inode)
     }
 
     /// Lists each direct child once, in path component order.
     pub fn read_dir(&self, path: &str) -> Result<ReadDir<'_, 'a>, Error> {
-        let path = absolute_path(path)?;
-        let Location::Directory { first_child } = self.locate(path)? else {
-            return Err(Error::NotDirectory);
-        };
-        let descendants = &self.entries[first_child..];
-        let count = descendants.partition_point(|entry| descends_from(path, entry.path));
-        Ok(ReadDir {
-            entries: descendants[..count].iter(),
-            depth: path.components().count(),
-            last: None,
-        })
+        Ok(self.directory(path)?.read_dir())
     }
 
-    fn locate(&self, path: Path<'_>) -> Result<Location<'a>, Error> {
-        match self
-            .entries
-            .binary_search_by(|entry| entry.path.components().cmp(path.components()))
-        {
-            Ok(index) => match self.entries[index].kind {
-                EntryKind::File(data) => Ok(Location::File(File(data))),
-                EntryKind::Directory => Ok(Location::Directory {
-                    first_child: index + 1,
-                }),
-            },
-            Err(index)
-                if path.is_root()
-                    || self
-                        .entries
-                        .get(index)
-                        .is_some_and(|entry| descends_from(path, entry.path)) =>
-            {
-                Ok(Location::Directory { first_child: index })
-            }
-            Err(_) => Err(Error::NotFound),
+    /// Opens a directory view for trusted kernel code. Subsequent lookups
+    /// on the view can only resolve entries below that directory.
+    pub fn directory(&self, path: &str) -> Result<Directory<'_, 'a>, Error> {
+        open_directory(&self.entries, 0, absolute_path(path)?)
+    }
+}
+
+/// A view of one subtree in the mounted archive. It carries no access
+/// rights; the kernel checks the rights of the caller's handle first.
+pub struct Directory<'fs, 'a> {
+    entries: &'fs [Entry<'a>],
+    depth: usize,
+}
+
+impl<'fs, 'a> Directory<'fs, 'a> {
+    /// Looks up a nonempty canonical relative path beneath this directory.
+    pub fn lookup(&self, path: &str) -> Result<Inode<'a>, Error> {
+        locate(self.entries, self.depth, relative_path(path)?).map(Location::inode)
+    }
+
+    /// Narrows the view to a child directory.
+    pub fn directory(&self, path: &str) -> Result<Self, Error> {
+        open_directory(self.entries, self.depth, relative_path(path)?)
+    }
+
+    /// Lists the direct children of this directory.
+    pub fn read_dir(&self) -> ReadDir<'fs, 'a> {
+        ReadDir {
+            entries: self.entries.iter(),
+            depth: self.depth,
+            last: None,
         }
+    }
+}
+
+fn open_directory<'fs, 'a>(
+    entries: &'fs [Entry<'a>],
+    depth: usize,
+    path: Path<'_>,
+) -> Result<Directory<'fs, 'a>, Error> {
+    let Location::Directory { first_child } = locate(entries, depth, path)? else {
+        return Err(Error::NotDirectory);
+    };
+    let descendants = &entries[first_child..];
+    let count = descendants.partition_point(|entry| has_descendant_path(depth, path, entry.path));
+    Ok(Directory {
+        entries: &descendants[..count],
+        depth: depth + path.components().count(),
+    })
+}
+
+fn locate<'a>(entries: &[Entry<'a>], depth: usize, path: Path<'_>) -> Result<Location<'a>, Error> {
+    match entries
+        .binary_search_by(|entry| entry.path.components().skip(depth).cmp(path.components()))
+    {
+        Ok(index) => match entries[index].kind {
+            EntryKind::File(data) => Ok(Location::File(File(data))),
+            EntryKind::Directory => Ok(Location::Directory {
+                first_child: index + 1,
+            }),
+        },
+        Err(index)
+            if path.is_root()
+                || entries
+                    .get(index)
+                    .is_some_and(|entry| has_descendant_path(depth, path, entry.path)) =>
+        {
+            Ok(Location::Directory { first_child: index })
+        }
+        Err(_) => Err(Error::NotFound),
     }
 }
 
@@ -153,6 +189,15 @@ fn allocate_index<'a>(count: usize) -> Result<Vec<Entry<'a>>, Error> {
 enum Location<'a> {
     File(File<'a>),
     Directory { first_child: usize },
+}
+
+impl<'a> Location<'a> {
+    fn inode(self) -> Inode<'a> {
+        match self {
+            Self::File(file) => Inode::File(file),
+            Self::Directory { .. } => Inode::Directory,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -194,8 +239,14 @@ fn absolute_path(path: &str) -> Result<Path<'_>, Error> {
         .ok_or(Error::InvalidPath)
 }
 
-fn descends_from(parent: Path<'_>, child: Path<'_>) -> bool {
-    let mut child = child.components();
+fn relative_path(path: &str) -> Result<Path<'_>, Error> {
+    Path::from_relative(path)
+        .filter(|path| !path.is_root())
+        .ok_or(Error::InvalidPath)
+}
+
+fn has_descendant_path(depth: usize, parent: Path<'_>, child: Path<'_>) -> bool {
+    let mut child = child.components().skip(depth);
     parent
         .components()
         .all(|component| child.next() == Some(component))
