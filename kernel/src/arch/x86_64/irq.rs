@@ -265,6 +265,10 @@ pub(super) fn dispatch(vector: u8) {
     if device_vector && let Some(c) = controller {
         c.eoi(v);
     }
+
+    // Only now (handler done, EOI sent, no IRQ-table lock held) may the
+    // scheduler switch threads, if the timer asked for it.
+    crate::sched::preempt_if_requested();
 }
 
 /// Boot self-test of the dispatch path without any hardware: registers a
