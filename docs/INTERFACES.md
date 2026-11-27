@@ -189,6 +189,22 @@ pub fn arch::irq::unregister_isa(line: u8) -> Result<(), IrqError>;
 - `connect_isa` de um controlador só pode devolver vetores 0x20–0xEF
   (senão `ControllerError`).
 
+**Fontes locais do APIC (issue #36):**
+```rust
+pub fn arch::irq::register_local(handler: IrqHandler) -> Result<Vector, IrqError>;
+pub fn arch::irq::unregister_local(vector: Vector) -> Result<(), IrqError>;
+```
+- Reserva um vetor de dispositivo livre (0x30–0xEF) e instala o handler,
+  **sem** rota ISA (timer, erro ou térmica da LVT do local APIC).
+- Ordem: programar a LVT **mascarada** com o vetor devolvido → só depois
+  desmascarar. Para parar ou reconfigurar: **mascarar primeiro**, depois
+  `unregister_local`. Uma interrupção já a caminho que chegue depois
+  encontra o vetor sem handler: conta como inesperada e **recebe na mesma o
+  EOI** (regra de EOI por origem, D-039), por isso o APIC nunca fica preso.
+- O EOI é do núcleo, como para todas as fontes de dispositivo.
+- Pode ser chamado antes ou depois do `sti`. Só o CPU de arranque nesta
+  fase (o timer local é por CPU: com SMP, Fase 9, cada CPU regista o seu).
+
 **Controlador de interrupções** (para o driver de I/O APIC + local APIC):
 ```rust
 pub trait InterruptController: Sync {
