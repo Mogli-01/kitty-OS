@@ -174,6 +174,10 @@ pub fn stub_address(vector: usize) -> Option<u64> {
 /// `extern "C"` so the assembly can call it with the System V convention
 /// (first argument in RDI).
 extern "C" fn trap_dispatch(frame: &mut TrapFrame) {
+    // The CPU does not clear RFLAGS.AC on interrupt entry. If we interrupted
+    // a user copy (AC=1), close the SMAP window for the handler; `iretq`
+    // restores the interrupted code's AC from the frame.
+    super::usercopy::clac();
     match u8::try_from(frame.vector) {
         Ok(v) if v >= super::irq::FIRST_INTERRUPT_VECTOR => super::irq::dispatch(v),
         _ => super::exceptions::handle(frame),
