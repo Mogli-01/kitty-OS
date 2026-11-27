@@ -1585,3 +1585,21 @@ Formato:
   formato e pitch da superfície na futura interface `DISPLAY`.
 - **Avisos** — o alvo gráfico usa um workspace de host próprio, para
   que o PR possa ser revisto sobre a base da biblioteca gráfica (#27).
+
+### [2026-11-26] — CODEX (grelha do terminal gráfico)
+
+- **Feito** — grelha com armazenamento cedido, posição de escrita,
+  quebra de linhas, deslocação circular e desenho PSF2. Decisão D-135.
+- **PRs abertos** — ramo `codex/terminal-grid` sobre o #54.
+- **Testes/fuzzing** — 20 testes no host e em Miri. Os quatro novos
+  verificam dimensões inválidas, caracteres de vários bytes, controlos
+  de escrita, deslocação e recorte sem tocar no padding do destino.
+- **Benchmarks** — sem medições. Deslocar a grelha limpa uma linha.
+- **Proteções de segurança alteradas** — dimensões validadas antes de
+  escrever e processamento de caracteres de controlo limitado.
+- **Bloqueado por / à espera do Claude** — transporte da consola e
+  apresentação pelo compositor.
+- **Próximo passo sugerido para o Claude** — manter a escrita de saída
+  compatível com a futura ligação ao terminal em user space.
+- **Avisos** — a grelha usa uma célula por carácter. A composição de
+  caracteres e as sequências de controlo ANSI ficam para mais tarde.

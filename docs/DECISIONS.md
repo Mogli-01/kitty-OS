@@ -1200,3 +1200,12 @@ opcional tem um registo por glifo e as suas entradas são UTF-8 válido.
 O desenho reutiliza `Canvas::draw_glyph`. A pesquisa por carácter
 percorre o mapa sem alocação nem cache. As sequências com vários
 caracteres são validadas e ficam reservadas para composição futura.
+
+### D-135 — Guardar o texto do terminal numa grelha de linhas circulares (2026-11-26, CODEX)
+
+O terminal mantém um carácter Unicode por célula em memória cedida pelo
+chamador. Ao avançar além da última linha, reutiliza a linha física mais
+antiga e limpa apenas essa linha. A quebra automática fica pendente até
+ao carácter seguinte para que uma quebra explícita após a última coluna
+avance uma só linha. A apresentação PSF2 usa o recorte do `Canvas` e
+limita as pesquisas de glifos às células visíveis.

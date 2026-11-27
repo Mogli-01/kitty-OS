@@ -60,6 +60,11 @@ impl<'a> BitmapFont<'a> {
         self.data.len() / self.glyph_bytes()
     }
 
+    /// Returns the width and height of a glyph in pixels.
+    pub const fn dimensions(self) -> (u8, u8) {
+        (self.layout.width, self.layout.height)
+    }
+
     pub fn glyph(self, index: usize) -> Option<Glyph<'a>> {
         let offset = index.checked_mul(self.glyph_bytes())?;
         let data = self.data.get(offset..)?.get(..self.glyph_bytes())?;

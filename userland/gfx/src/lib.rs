@@ -15,6 +15,8 @@ pub use buffering::DoubleBuffer;
 pub use cursor::Cursor;
 pub use damage::Damage;
 pub use windows::{MAX_WINDOWS, Window, WindowHit, WindowStack};
+mod terminal;
+pub use terminal::TextGrid;
 
 const PIXEL_BYTES: usize = 4;
 
