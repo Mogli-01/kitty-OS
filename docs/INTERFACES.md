@@ -354,11 +354,38 @@ pub fn sched::switches() -> u64;
 - **Não preempta** enquanto houver um `SpinLock` simples preso; por isso,
   num laço longo, não seguras um `SpinLock` (usa `IrqSpinLock` com secções
   curtas, ou liberta o lock).
-- Ainda não há bloqueio/espera (`WaitQueue` vem a seguir): uma thread que
-  espera faz `yield_now()` em ciclo.
+- Para esperar por algo **sem gastar CPU**, usar `sched::WaitQueue` (abaixo).
 - Marcadores: `[sched] cooperative self-test passed`, e com a feature
   `selftest-preempt` `[sched] preemption self-test passed`;
   `selftest-thread-stack-overflow` → double fault na IST.
+
+### `sched::WaitQueue` (Fase 5) — INSTÁVEL
+Fornece: CLAUDE (`kernel/src/sched/wait.rs`). Usa: CODEX (drivers com
+leituras bloqueantes, input), núcleo (IPC, Fase 12).
+```rust
+pub const fn WaitQueue::new() -> WaitQueue;            // pode ser `static`
+pub fn wait_until(&self, ready: impl FnMut() -> bool); // bloqueia até ready()
+pub fn wake_one(&self) -> bool;                        // também em handlers de IRQ
+pub fn wake_all(&self) -> usize;                       // também em handlers de IRQ
+```
+- `wake_one`/`wake_all` **não usam o heap** (a fila mantém o buffer; o
+  scheduler reserva espaço na fila de prontas no `spawn`), por isso são
+  seguros em handlers de IRQ. O `wait_until` (só em contexto de thread)
+  pode alocar ao registar-se.
+- Padrão: o produtor **publica primeiro** (ex.: põe o byte num buffer
+  protegido por `IrqSpinLock`, ou num atómico) e **depois** chama
+  `wake_one`. O consumidor chama `wait_until(|| há_dados())`.
+- `ready` tem de ser barato e não pode bloquear nem tomar um `SpinLock`
+  simples (pode ler atómicos ou tomar um `IrqSpinLock` curto).
+- **Só em contexto de thread**, com interrupções ligadas e sem nenhum lock
+  preso: **nunca num handler de IRQ** (lá usa-se `wake_one`/`wake_all`). O
+  uso errado dá panic logo à entrada. Volta sempre com as interrupções
+  ligadas.
+- Não há wake-ups perdidos (D-046); um wake-up espúrio só faz a condição ser
+  verificada de novo.
+- Marcadores: `[sched] wait queue self-test passed`; com `selftest-preempt`,
+  `idle + wake from IRQ work` (a thread de arranque dorme na thread idle e é
+  acordada pelo handler do timer).
 
 ## Planeadas (assinaturas propostas, podem mudar)
 
@@ -367,7 +394,6 @@ pub fn sched::switches() -> u64;
 | `UserPtr<T>`, `copy_from_user`, `copy_to_user` | CLAUDE | CODEX (VFS) | 6 |
 | ABI das syscalls (números, registos, códigos de erro) | CLAUDE | CODEX (userland) | 6 |
 | `trait FileSystem` / `trait Inode` do VFS | CODEX | CLAUDE (syscalls) | 7 |
-| Filas de espera: `WaitQueue::wait()` / `wake_one()` / `wake_all()` | CLAUDE | CODEX (drivers que bloqueiam) | 5 |
 | Handles e direitos: `Handle`, `Rights` (bits 0–15 genéricos `READ, WRITE, MAP, TRANSFER, DUP, EXEC`; 16–31 por tipo), `handle_close`, `handle_dup(h, rights_menores)`, `handle_info(h)` (D-058) | CLAUDE | CODEX (userland) | 6 |
 | `process_spawn(imagem: Handle, handles: UserSlice<(Handle, Rights)>) -> Handle` — a única forma de dar autoridade a um processo novo (D-058) | CLAUDE | CODEX (init, shell) | 6 |
 | `open_at(dir: Handle, caminho, rights) -> Handle`, sem caminhos globais; o VFS recusa sair do diretório do handle (D-058) | CLAUDE (syscall) + CODEX (VFS) | ambos | 7 |

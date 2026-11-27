@@ -506,6 +506,26 @@ está em `docs/UNSAFE.md`.
   os "ciclos" não são de hardware real: o número serve para comparar
   versões, não como valor absoluto.
 
+### D-046 — Filas de espera (`WaitQueue`) sem wake-ups perdidos (2026-11-26, CLAUDE)
+`WaitQueue::wait_until(|| condição)` verifica a condição, regista a thread
+e bloqueia-a (estado `Blocked`, fora da fila de prontas) **com as
+interrupções desligadas**. Num só CPU nada corre entre esses passos, por
+isso quem acorda ou corre antes da verificação (a condição já é verdadeira)
+ou depois do registo (a thread é acordada): nunca se perde um wake-up. A
+condição é sempre verificada de novo depois de acordar (wake-ups espúrios
+não fazem mal). `wake_one`/`wake_all` podem ser chamados de handlers de
+interrupção e ignoram entradas obsoletas. Se nenhuma outra thread puder
+correr, o waiter dorme com `sti; hlt` em vez de girar. SMP (Fase 9): a
+verificação e o registo passam a ser feitos sob o lock da fila.
+**Revisto depois do `security-reviewer`:** (1) uma thread acordada voltava
+com as interrupções **desligadas** (a troca não transporta o RFLAGS): agora
+`wait_until` exige IF=1 e nenhum lock à entrada (panic sempre que for mal
+usado, não só quando a condição é falsa) e liga sempre as interrupções ao
+sair; o autoteste verifica-o. (2) Há uma **thread idle dedicada**, que nunca
+está na fila de prontas, nunca bloqueia nem sai: é escolhida quando a thread
+atual bloqueia ou sai sem mais nada pronto. Antes, se a thread de arranque
+estivesse bloqueada, o `exit` da última thread dava panic.
+
 ### D-055 — Capacidades em vez de só permissões estilo Unix (2026-11-27, CLAUDE)
 - **Decisão:** a autoridade no kitty-OS são **handles com direitos**
   (D-018/D-051). Um processo só pode atuar sobre os objetos para os quais
