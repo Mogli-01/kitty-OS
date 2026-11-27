@@ -157,6 +157,17 @@ encaminha para a janela com foco. As aplicações nunca leem input global.
 **Porquê:** impede keyloggers e que uma aplicação veja cliques/teclas
 destinados a outra.
 
+### D-102 — Descodificar o teclado PS/2 em Set 2 (2026-11-25, CODEX)
+O crate interno `kitty-ps2` processa um byte de cada vez e produz eventos
+de teclas físicas. Compila em `no_std`, sem alocação, `unsafe` ou crates
+externos. O transporte do i8042 fornece o fluxo Set 2 sem tradução e o
+layout e o timestamp são aplicados pela camada de input.
+
+A separação permite exercitar todas as transições com bytes arbitrários
+no host e em Miri. A tabela de teclas preserva posições que têm o mesmo
+código base, como a seta para cima e o 8 do teclado numérico, bem como
+a tecla adicional ISO. [Referência de códigos](https://github.com/qemu/keycodemapdb/blob/master/data/keymaps.csv)
+
 ### D-020 — Tipos de cache (PAT) geridos pelo VMM (2026-11-25, CLAUDE)
 O roadmap pede o framebuffer com write-combining. Programar o MSR `IA32_PAT`
 e escolher os bits PAT/PCD/PWT das entradas de página é paginação, logo
@@ -456,6 +467,128 @@ isso o `&'static [u8]` é sólido durante toda a vida do kernel.
 sobreposição com a imagem do kernel. Sem módulo, ou módulo recusado: o arranque
 continua sem initrd (diagnóstico), com a razão escrita no log.
 
+### D-044 — `unsafe` permitido em `sched/` (2026-11-26, CLAUDE)
+Trocar de pilha (chamar `arch::x86_64::context::switch`) e voltar a fazer
+de um endereço um `fn()` não se consegue em Rust seguro, e o scheduler é o
+único dono dessas operações. Tal como o `sync/` (D-008), o `sched/` entra na
+lista de módulos com `#[allow(unsafe_code)]`. Cada bloco tem `// SAFETY:` e
+está em `docs/UNSAFE.md`.
+
+### D-045 — Threads do kernel e scheduler preemptivo round-robin (2026-11-26, CLAUDE)
+- **Troca de contexto mínima** (`context.rs`): guarda os 6 registos
+  callee-saved e o RSP, carrega o RSP da outra thread e faz `ret` para
+  dentro dela (14 instruções). Os caller-saved já são guardados pelo
+  compilador à volta da chamada; o kernel não usa SSE (sem estado de FPU);
+  a troca é sempre feita com interrupções desligadas. Uma thread parada é
+  só o seu RSP.
+- **Pilhas** (`mm/stack.rs`): slots de 64 KiB na região
+  `0xFFFF_E000_0000_0000`, com 32 KiB de pilha RW+NX, **página de guarda**
+  por baixo e espaço por mapear por cima; slots reutilizados; frames limpos
+  pelo PMM ao libertar.
+- **Preempção:** o timer chama `sched::tick()`, que só marca um pedido
+  (atómico, sem lock). A troca acontece no fim de `irq::dispatch`, **depois
+  do EOI** e sem nenhum lock da tabela preso. **Nunca preempta** com um
+  `SpinLock` simples preso (contador em `sync::preempt`): no mesmo CPU, a
+  thread seguinte podia girar para sempre num lock cujo dono não corre. Com
+  `IrqSpinLock` o problema nem se põe (as interrupções estão desligadas).
+- **Saída e recolha:** uma thread que volta da função de entrada morre; a
+  pilha dela é libertada pela próxima decisão do scheduler, fora do lock e
+  nunca enquanto ainda se está a correr nela.
+- **Sem heap em contexto de interrupção** (revisão do Codex ao #39/#40): a
+  fila `ready` e a lista de slots livres das pilhas reservam capacidade em
+  contexto de thread (`spawn`, `KernelStack::new`) para todas as threads e
+  slots existentes; por isso o caminho de preempção, a recolha de threads
+  mortas no fim de uma IRQ e o `wake` chamado por um handler nunca alocam.
+- **Ordem dos locks** (do exterior para o interior): `SCHED` → heap →
+  espaço do kernel → PMM, e `stack::SLOTS` → heap. `SCHED` nunca é pedido
+  com um destes presos. O caminho da troca não aloca (a thread que morre
+  vai para um `Option`, não para um `Vec`).
+- **Revisto depois do `security-reviewer`:** o contador de preempção passou
+  a incrementar *antes* do CAS do `SpinLock`; uma troca cooperativa com um
+  lock preso é um `assert!`; o panic handler desliga as interrupções logo à
+  entrada (sem preempção durante um panic); `exit` da última thread
+  executável é um panic explícito; e acabou o `transmute` do endereço de
+  entrada (o trampolim passa o `fn()` diretamente).
+- **Um CPU:** o lock do scheduler é largado *antes* da troca, com as
+  interrupções ainda desligadas, o que chega num só CPU. O SMP (Fase 9)
+  exige filas por CPU e o lock preso durante a troca.
+- **Medição:** autoteste no arranque com 2 threads em ping-pong
+  (`yield_now`), que mostra os ciclos (TSC) por yield+troca. No QEMU TCG
+  os "ciclos" não são de hardware real: o número serve para comparar
+  versões, não como valor absoluto.
+
+### D-046 — Filas de espera (`WaitQueue`) sem wake-ups perdidos (2026-11-26, CLAUDE)
+`WaitQueue::wait_until(|| condição)` verifica a condição, regista a thread
+e bloqueia-a (estado `Blocked`, fora da fila de prontas) **com as
+interrupções desligadas**. Num só CPU nada corre entre esses passos, por
+isso quem acorda ou corre antes da verificação (a condição já é verdadeira)
+ou depois do registo (a thread é acordada): nunca se perde um wake-up. A
+condição é sempre verificada de novo depois de acordar (wake-ups espúrios
+não fazem mal). `wake_one`/`wake_all` podem ser chamados de handlers de
+interrupção e ignoram entradas obsoletas. Se nenhuma outra thread puder
+correr, o waiter dorme com `sti; hlt` em vez de girar. SMP (Fase 9): a
+verificação e o registo passam a ser feitos sob o lock da fila.
+**Revisto depois do `security-reviewer`:** (1) uma thread acordada voltava
+com as interrupções **desligadas** (a troca não transporta o RFLAGS): agora
+`wait_until` exige IF=1 e nenhum lock à entrada (panic sempre que for mal
+usado, não só quando a condição é falsa) e liga sempre as interrupções ao
+sair; o autoteste verifica-o. (2) Há uma **thread idle dedicada**, que nunca
+está na fila de prontas, nunca bloqueia nem sai: é escolhida quando a thread
+atual bloqueia ou sai sem mais nada pronto. Antes, se a thread de arranque
+estivesse bloqueada, o `exit` da última thread dava panic.
+
+### D-047 a D-053 — Desenho da Fase 6 (2026-11-26, CLAUDE)
+O contrato completo está em `docs/FASE6.md`. Resumo das decisões:
+- **D-047** Processos com espaço de endereçamento próprio; metade do kernel
+  partilhada (PML4 256–511 copiadas); primeiro 1 MiB de user nunca mapeado;
+  `TSS.RSP0` atualizado em cada troca.
+- **D-048** Entrada em ring 3 por `iretq` com registos a zero; `swapgs`
+  nos stubs vindos de ring 3; exceções de user matam o processo; SMEP,
+  SMAP e UMIP ligados antes do primeiro processo.
+- **D-049** ABI: `syscall`, número em `rax`, argumentos `rdi rsi rdx r10 r8
+  r9`, erros negativos (`E_INVAL` a `E_TOOBIG`); todos os argumentos
+  validados antes de qualquer efeito; `sysret` só com RIP canónico de user.
+- **D-050** `UserPtr`/`copy_*_user`: intervalo todo na metade de user, sem
+  overflow, SMAP aberto só durante a cópia, #PF na cópia dá `E_FAULT` por
+  tabela de exceções (nunca panic), copiar uma vez antes de validar.
+- **D-051** Handles = índice + geração; direitos `READ WRITE MAP TRANSFER
+  DUP`; `handle_dup` só reduz direitos; sem nomes globais.
+- **D-052** `/sbin/init` do initrd, ELF64 validado e **copiado** para
+  frames novos; recebe só o handle 0 = CONSOLE (`READ|WRITE`); consola de
+  bytes (UTF-8 + sequências ESC), escrita parcial, leitura bloqueante.
+- **D-053** INPUT: eventos de 24 bytes com `time_ns` monotónico; objeto
+  exclusivo (`E_BUSY`); fila de 256 com evento "perdidos"; **fila esvaziada
+  na troca de consumidor** (o seguinte não vê teclas do anterior); o handler
+  de IRQ publica sem heap e acorda com `WaitQueue::wake_one`.
+- **Alinhadas com a D-058** (PR #77): sem `input_open`; o `init` recebe os
+  handles e passa-os com `process_spawn`; `handle_info`; direitos com bits
+  por tipo; `uid`/`gid` e auditoria preparados; `E_BADSIG` reservado.
+
+### D-054 — Implementação da 6a: SMEP/SMAP/UMIP e `copy_*_user` (2026-11-27, CLAUDE)
+- SMEP, SMAP e UMIP são ligados no CR4 **só se o CPUID os reportar**
+  (escrever um bit reservado dá #GP); o arranque escreve na consola quais
+  ficaram ativos, para um CPU antigo sem SMAP não passar despercebido.
+- A cópia é um único `rep movsb` numa rotina em assembly com uma "tabela de
+  exceções" de uma entrada: um #PF em ring 0 **exatamente** nessa instrução
+  é recuperado saltando para um fixup que devolve erro. Qualquer outro #PF
+  do kernel continua a ser fatal.
+- `stac`/`clac` rodeiam só a cópia. **Detalhe importante:** o CPU não limpa
+  a flag AC ao entrar numa interrupção, por isso `trap_dispatch` faz `clac`
+  à entrada; sem isso, um handler que interrompesse uma cópia correria com
+  o SMAP desligado. O `iretq` repõe a AC de quem foi interrompido.
+- **Revisto depois do `security-reviewer`:** o fixup só se aplica se o
+  endereço da falha (CR2) estiver na metade de user e o código de erro não
+  tiver `RSVD` (tabelas corrompidas); uma falha do lado do kernel é
+  corrupção e continua fatal, em vez de virar um `E_FAULT` silencioso.
+- **Invariante (a manter nas fases seguintes):** a metade de baixo de
+  qualquer espaço de endereçamento **só tem páginas de user (U=1)**. O SMAP
+  só protege páginas com U; uma página de supervisor ali (trampolim de APs,
+  mapeamento de identidade, estruturas por processo) ficaria acessível a
+  `copy_*_user`. Na 6b, uma auditoria da metade de user verifica isto.
+- **Para a 6c:** o `IA32_FMASK` do `syscall` tem de limpar também a **AC**
+  (bit 18), além de IF/DF/TF: o ring 3 pode pôr AC=1 com `popf`, e a entrada
+  por `syscall` não passa pelo `clac` do dispatch.
+
 ### D-055 — Capacidades em vez de só permissões estilo Unix (2026-11-27, CLAUDE)
 - **Decisão:** a autoridade no kitty-OS são **handles com direitos**
   (D-018/D-051). Um processo só pode atuar sobre os objetos para os quais
@@ -580,6 +713,471 @@ desenho da Fase 12, para a Fase 15 não obrigar a refazer as syscalls.
 - **Porquê:** quem escreve o código tem os mesmos pontos cegos quando o
   revê. Um atacante diferente, com incentivo para encontrar falhas, vê
   outras coisas. Os PoCs transformam cada falha num teste permanente.
+
+### D-137 — Camada de registos 16550A sem espera ativa (2026-11-26, CODEX)
+
+`kitty-uart` usa exclusivamente `kitty-hal::PortBlock`. Configura 8N1
+com um divisor diferente de zero. Limpa DLAB antes de escrever IER e
+volta ao banco de dados após programar o divisor. Se a configuração
+falhar, as operações de dados ficam indisponíveis até nova configuração
+completa. Cada operação de dados consulta o LSR uma vez e transfere no
+máximo um byte. As flags da receção são preservadas quando a transmissão
+consulta o LSR. Um *overrun* isolado preserva o byte mais antigo na FIFO.
+
+A D-009 conserva a função da consola de arranque. A integração com
+portas reais exige uma concessão exclusiva e um contrato de interrupções.
+
+### D-134 — Repetir a preparação do Limine quando o transporte falha (2026-11-26, CODEX)
+
+O `xtask` tenta o `git fetch` até três vezes, com esperas de um e dois
+segundos entre tentativas. O Git pode abandonar ligações HTTP que
+transferem menos de um byte por segundo durante vinte segundos.
+O checkout é sempre feito pelo commit fixo da D-004. O marcador
+de cache só é escrito depois de o checkout passar.
+
+### D-113 — Comparação visual da primeira linha de arranque (2026-11-26, CODEX)
+
+`cargo xtask test-visual` espera pela confirmação de arranque na porta
+série e obtém o framebuffer com `screendump` do QEMU. A referência
+contém a primeira linha de 304 × 16 píxeis. A comparação ignora o
+conteúdo fora dessa região, onde aparecem valores dependentes do
+firmware e do build. O leitor PPM verifica dimensões e comprimento
+usando aritmética verificada. Em caso de diferença, o relatório
+identifica a primeira coordenada e preserva a captura.
+
+### D-114 — Medir o arranque pelo marcador da porta série (2026-11-26, CODEX)
+
+`cargo xtask bench-boot` usa o relógio monotónico do host de antes do
+`spawn` até o leitor receber a linha de arranque completa. O leitor
+em separado mede a entrega da linha. A preparação do ELF e da imagem e
+o intervalo de polling da saída do QEMU ficam fora da medição.
+Cada amostra exige o código de sucesso do kernel. O relatório usa a
+mediana de sete amostras depois de um arranque de aquecimento.
+
+### D-115 — Comparar benchmarks com a base do PR no mesmo runner (2026-11-26, CODEX)
+
+O job de benchmark compila o ELF da base do PR com `qemu-exit`. O
+mesmo xtask mede esse ELF e o candidato em BIOS/release, com as mesmas
+versões de QEMU e Limine. Uma subida de pelo menos 25% e 50 ms na
+mediana produz um aviso no GitHub. A condição dupla separa variações
+pequenas de uma regressão a investigar. Erros de preparação ou de
+arranque fazem o job falhar.
+### D-106 — Descodificação MADT sobre bytes imutáveis (2026-11-25, CODEX)
+
+`kitty-acpi` verifica a assinatura, o comprimento declarado (limite de
+64 KiB) e a soma de verificação antes de percorrer a MADT. Descodifica
+registos I/O APIC, overrides de IRQ ISA e o override de endereço do Local
+APIC. Rejeita campos reservados nos registos usados e definições repetidas
+do mesmo ID de I/O APIC, fonte ISA ou endereço alternativo do Local APIC.
+Avança sobre os outros tipos apenas depois de validar os limites do
+registo. Sem alocação no parser.
+
+A descoberta e o mapeamento de firmware pertencem ao núcleo (#18).
+Endereços físicos descodificados precisam da capacidade de MMIO do
+núcleo. O driver deve determinar o número de entradas de cada I/O APIC e
+validar os intervalos GSI antes de programar qualquer rota.
+
+O workspace separado `fuzz/` usa `libfuzzer-sys` e `cargo-fuzz`
+só no host. A CI verifica a lógica com Miri e corre AddressSanitizer
+tanto sobre bytes brutos como sobre registos dentro de um cabeçalho
+com soma válida, para exercitar a lógica após essa verificação.
+
+### D-122 — Resolver as rotas NMI do Local APIC por CPU (2026-11-26, CODEX)
+
+Os registos MADT tipo 0 ligam o ID de um xAPIC ativo ao UID ACPI do seu
+processador. Os registos tipo 4 usam esse UID ou `0xff` para indicar todos
+os processadores. `local_nmis` resolve separadamente LINT0 e LINT1, valida
+a polaridade e o modo de disparo e rejeita configurações contraditórias.
+As flags conformes são interpretadas como ativo alto, disparo por flanco.
+UIDs ou IDs repetidos entre processadores ativos tornam a tabela ambígua.
+
+Uma entrada de NMI do I/O APIC ou x2APIC exige uma política própria. O
+pedido de rotas xAPIC devolve erro nestes casos para que a inicialização
+possa preservar o encaminhamento existente. [ACPI 6.6, §§5.2.12.2,
+5.2.12.6–7 e 5.2.12.13](https://uefi.org/specs/ACPI/6.6/05_ACPI_Software_Programming_Model.html#multiple-apic-description-table-madt)
+
+### D-107 — Programar rotas I/O APIC com a entrada mascarada (2026-11-25, CODEX)
+
+O driver recebe um `RegisterBlock` exclusivo. Escreve o índice de 8 bits
+em IOREGSEL (offset `0x00`) e acede ao registo de 32 bits em IOWIN (offset
+`0x10`). A versão define quantas entradas cabem na tabela. Cada entrada
+ocupa dois índices consecutivos a partir de `0x10`. O par seletor/janela
+requer exclusão mútua por dispositivo.
+
+Antes de escrever a metade alta (destino) e depois a baixa (vetor,
+polaridade e trigger), o driver confirma a máscara da rota anterior.
+Se houver entrega em curso ou Remote IRR, mantém a máscara e espera
+que o dono do handler trate a interrupção antiga antes de voltar a
+tentar. O driver confirma por leitura os campos da rota nova e só
+permite desmascará-la após uma configuração completa.
+
+O núcleo fornece o mapeamento UC e valida a topologia antes da mudança de
+controlador (#18). A ligação futura confirma que o destino é um APIC ID
+válido, que os intervalos GSI não se sobrepõem e que o handler está
+instalado antes de desmascarar.
+
+### D-121 — Programar o timer do Local APIC com a entrada mascarada (2026-11-26, CODEX)
+
+O driver acede a registos de 32 bits por um `RegisterBlock` xAPIC UC do
+CPU em execução. Lê a revisão e o limite da tabela LVT em `0x030` e obtém
+o destino físico unicast em `0x020`. Ativa a entrega em `0x0f0` com o vetor
+espúrio `0xff` e difusão de EOI. Antes de ativar, verifica as entradas LVT
+presentes na revisão. Aceita entradas mascaradas e LINT já configurado
+para NMI. O controlador confirma as fontes e o estado do PIC antes da
+transição. Para vetores de dispositivo, escreve zero em `0x0b0` depois
+de o handler devolver. Um vetor espúrio dispensa EOI.
+
+O timer mascara a sua entrada LVT (`0x320`) e escreve zero na contagem
+inicial (`0x380`) antes de mudar o divisor (`0x3e0`) e o modo. O divisor
+usa os bits 0, 1 e 3. O driver confirma por leitura o divisor, o modo e
+o vetor. A contagem inicial de 32 bits é positiva e `0x390` devolve os
+ticks restantes após divisão. A calibração pode observar a contagem
+enquanto a entrada está mascarada. O modo periódico recarrega a contagem
+ao expirar. O chamador instala o handler antes de desmascarar e trata
+eventuais interrupções já aceites pelo CPU quando pára o timer.
+
+[Intel SDM, vol. 3A, §§12.4.8, 12.5.4 e 12.8.5](https://cdrdv2-public.intel.com/835754/253668-sdm-vol-3a.pdf)
+
+### D-138 — Ligar o controlador APIC no arranque (2026-11-26, CODEX)
+
+A feature `xapic` prepara o I/O APIC e o LAPIC pelas capacidades do
+núcleo e instala `InterruptController` antes dos restantes dispositivos.
+Os overrides ISA precedem as rotas por identidade. Uma GSI tem um único
+dono. São recusadas rotas especiais ativas, intervalos sobrepostos,
+NMI em LINT0 e NMI de nível em LINT1. O LAPIC é ativado antes de
+configurar NMI e os bancos ISR e IRR têm de estar vazios.
+### D-044 — `unsafe` permitido em `sched/` (2026-11-26, CLAUDE)
+Trocar de pilha (chamar `arch::x86_64::context::switch`) e voltar a fazer
+de um endereço um `fn()` não se consegue em Rust seguro, e o scheduler é o
+único dono dessas operações. Tal como o `sync/` (D-008), o `sched/` entra na
+lista de módulos com `#[allow(unsafe_code)]`. Cada bloco tem `// SAFETY:` e
+está em `docs/UNSAFE.md`.
+
+### D-045 — Threads do kernel e scheduler preemptivo round-robin (2026-11-26, CLAUDE)
+- **Troca de contexto mínima** (`context.rs`): guarda os 6 registos
+  callee-saved e o RSP, carrega o RSP da outra thread e faz `ret` para
+  dentro dela (14 instruções). Os caller-saved já são guardados pelo
+  compilador à volta da chamada; o kernel não usa SSE (sem estado de FPU);
+  a troca é sempre feita com interrupções desligadas. Uma thread parada é
+  só o seu RSP.
+- **Pilhas** (`mm/stack.rs`): slots de 64 KiB na região
+  `0xFFFF_E000_0000_0000`, com 32 KiB de pilha RW+NX, **página de guarda**
+  por baixo e espaço por mapear por cima; slots reutilizados; frames limpos
+  pelo PMM ao libertar.
+- **Preempção:** o timer chama `sched::tick()`, que só marca um pedido
+  (atómico, sem lock). A troca acontece no fim de `irq::dispatch`, **depois
+  do EOI** e sem nenhum lock da tabela preso. **Nunca preempta** com um
+  `SpinLock` simples preso (contador em `sync::preempt`): no mesmo CPU, a
+  thread seguinte podia girar para sempre num lock cujo dono não corre. Com
+  `IrqSpinLock` o problema nem se põe (as interrupções estão desligadas).
+- **Saída e recolha:** uma thread que volta da função de entrada morre; a
+  pilha dela é libertada pela próxima decisão do scheduler, fora do lock e
+  nunca enquanto ainda se está a correr nela.
+- **Sem heap em contexto de interrupção** (revisão do Codex ao #39/#40): a
+  fila `ready` e a lista de slots livres das pilhas reservam capacidade em
+  contexto de thread (`spawn`, `KernelStack::new`) para todas as threads e
+  slots existentes; por isso o caminho de preempção, a recolha de threads
+  mortas no fim de uma IRQ e o `wake` chamado por um handler nunca alocam.
+- **Ordem dos locks** (do exterior para o interior): `SCHED` → heap →
+  espaço do kernel → PMM, e `stack::SLOTS` → heap. `SCHED` nunca é pedido
+  com um destes presos. O caminho da troca não aloca (a thread que morre
+  vai para um `Option`, não para um `Vec`).
+- **Revisto depois do `security-reviewer`:** o contador de preempção passou
+  a incrementar *antes* do CAS do `SpinLock`; uma troca cooperativa com um
+  lock preso é um `assert!`; o panic handler desliga as interrupções logo à
+  entrada (sem preempção durante um panic); `exit` da última thread
+  executável é um panic explícito; e acabou o `transmute` do endereço de
+  entrada (o trampolim passa o `fn()` diretamente).
+- **Um CPU:** o lock do scheduler é largado *antes* da troca, com as
+  interrupções ainda desligadas, o que chega num só CPU. O SMP (Fase 9)
+  exige filas por CPU e o lock preso durante a troca.
+- **Medição:** autoteste no arranque com 2 threads em ping-pong
+  (`yield_now`), que mostra os ciclos (TSC) por yield+troca. No QEMU TCG
+  os "ciclos" não são de hardware real: o número serve para comparar
+  versões, não como valor absoluto.
+### D-105 — PIT legado em modo periódico (2026-11-25, CODEX)
+
+O crate `kitty-pit` programa o canal 0 do PIT 8254 em modo 2 através de
+`PortBlock`. Os divisores válidos são 2–65 536. O valor máximo usa a
+codificação de 16 bits a zero prevista pelo hardware. Um tipo validado
+permite calcular o período antes de escrever nas portas e preservar
+a razão exata divisor/frequência nominal para contabilizar tempo.
+
+A programação faz-se com IRQ0 mascarado. Se uma escrita falhar mantém-se a
+linha mascarada até uma configuração completa. O driver fica disponível
+para integração quando houver um consumidor de ticks no kernel.
+
+### D-120 — Parar o PIT antes da transferência do IRQ0 (2026-11-26, CODEX)
+
+`Pit::stop` escreve o controlo do canal 0 em modo 0 e deixa-o à espera
+de um novo contador. Antes da paragem, o núcleo mascara IRQ0 e trata
+interrupções que o PIC já tenha registado. A CI verifica a cadeia de
+entrega através do autoteste do #15, que exige dois IRQ0 depois de
+programar o modo periódico.
+
+### D-128 — Ligar o PIT legado ao scheduler (2026-11-26, CODEX)
+
+O driver programa o canal 0 com uma frequência pedida de 100 Hz e
+regista a linha ISA 0 depois de obter as portas e configurar o período.
+O handler pede preempção através de `sched::tick()`. O núcleo decide
+a troca de thread após o EOI.
+
+Os autotestes do núcleo que programam o PIT têm o seu próprio registo
+de IRQ0. O novo autoteste usa o driver do arranque e verifica duas
+trocas de contexto durante a execução de uma thread ocupada.
+
+### D-151 — Tic do scheduler pelo LAPIC com referência PIT (2026-11-27, CODEX)
+
+A opção `lapic-scheduler-timer` calibra o contador local com IRQ0 e a entrada
+LAPIC mascarados. Mede dois períodos do PIT a cerca de 200 Hz, limita o
+número de leituras e repete medições inconsistentes até três tentativas.
+Com uma medição válida, usa o temporizador LAPIC em modo periódico a 100 Hz
+no CPU de arranque. O PIT continua disponível para o scheduler quando o
+LAPIC está indisponível ou a calibração não é fiável.
+### D-117 — Descodificar o modo base do rato PS/2 (2026-11-26, CODEX)
+
+O rato em modo base envia um cabeçalho e dois bytes de deslocamento.
+O bit 3 do cabeçalho indica a posição esperada do início. Os bits de
+sinal completam valores de movimento com nove bits, e o eixo Y é
+invertido para coordenadas de ecrã. Um overflow deixa apenas esse
+eixo sem movimento válido e preserva os botões do relatório.
+
+O decoder espera exclusivamente bytes AUX do modo de três bytes,
+depois do tratamento das respostas de comandos. Um erro de
+transporte descarta o pacote parcial. Para retomar, o transporte
+estabelece a fronteira do pacote seguinte.
+
+### D-103 — Transporte i8042 através de `PortBlock` (2026-11-25, CODEX)
+O crate interno `kitty-i8042` usa `kitty-hal` para configurar o teclado
+em Set 2 sem tradução. Mantém as IRQs do controlador desligadas até
+confirmar o modo do teclado e limita a espera e os reenvios. A leitura
+em interrupção recolhe um byte por chamada, com a origem e o resultado
+da validação de paridade e timeout.
+
+O transporte é partilhável com a futura porta auxiliar. O descodificador
+do teclado recebe só bytes validados da sua porta e pode limpar o estado
+quando o controlador sinaliza uma perda.
+
+### D-104 — Fila limitada para o teclado PS/2 em IRQ1 (2026-11-25, CODEX)
+O handler recolhe um byte por IRQ e guarda as teclas descodificadas numa
+fila de 64 eventos. Um erro do teclado ou uma fila cheia gera `Lost` antes
+dos eventos seguintes, para que o consumidor limpe teclas que julgava
+premidas. A porta auxiliar segue um percurso distinto.
+
+A fila mantém o trabalho em interrupção limitado e usa memória fixa. O
+teste QEMU envia uma tecla normal e uma estendida e valida as pressões e
+libertações pela saída série de um build de teste.
+
+### D-118 — Respostas AUX e recuperação do teclado no i8042 (2026-11-26, CODEX)
+
+O mesmo bloco de portas serve o teclado e o rato. Durante a preparação,
+o driver fecha as portas e drena a saída. Reencaminha cada comando do
+rato com `0xD4` e aceita apenas respostas com o bit AUX. Confirma o
+ID padrão zero antes de habilitar a produção de relatórios e o IRQ12.
+
+O modo de teclado preparado antes da configuração AUX serve de
+fallback. O driver desativa a porta AUX, drena dados e repõe a
+configuração anterior. Uma falha na reposição é comunicada a quem
+regista as linhas ISA, para que as mantenha mascaradas.
+
+### D-119 — Fila PS/2 partilhada e validação em IRQ12 (2026-11-26, CODEX)
+
+IRQ1 e IRQ12 partilham o controlador. O estado do i8042 decide se cada
+byte vai para o Set 2 ou para o descodificador do rato. A fila de
+64 entradas conserva a ordem de conclusão dos eventos. Uma perda
+descarta entradas anteriores e publica `Lost` para o consumidor
+limpar o estado de teclas e botões.
+
+Se a origem AUX e a posição do byte corrompido forem conhecidas,
+o descodificador conta e descarta os restantes bytes desse pacote.
+Quando a posição deixa de ser conhecida, a leitura de relatórios
+fica suspensa até nova configuração. O teste QEMU verifica que
+o deslocamento e ambos os estados do botão chegam pelo handler de IRQ12.
+### D-133 — Traduzir teclas ISO PT-PT para a consola (2026-11-26, CODEX)
+
+`PortugueseKeyboard` aplica modificadores e teclas mortas às posições
+físicas PS/2. Produz sequências completas de até oito bytes, sem heap.
+O código de edição usa o formato da secção 6 do PR #52. Um evento de
+perda repõe todo o estado do layout para evitar manter modificadores
+ou combinações de acentos depois de uma sequência incompleta.
+
+### D-140 — Descodificar snapshots de configuração PCI (2026-11-26, CODEX)
+
+`kitty-pci` exige um cabeçalho completo de 64 bytes para os layouts 0 e
+1. Interpreta os campos little-endian e conserva os BARs em bruto. A
+lista de capacidades convencional só é seguida quando o estado a
+anuncia. Os links ficam limitados a `0x40`–`0xfc`, alinhados a quatro
+bytes e dentro do slice. Um mapa de bits impede voltar ao mesmo offset.
+O descodificador usa Rust seguro, sem alocação nem dependências. A
+obtenção do snapshot e a validação de recursos ficam na futura camada
+de acesso à configuração PCI.
+
+### D-124 — Verificar preempção, espera e pilhas de threads na CI (2026-11-26, CODEX)
+
+O arranque normal verifica os autotestes do scheduler cooperativo e da
+fila de espera. O cenário `selftest-preempt` exige que threads ocupadas
+progridam com ticks de hardware e que uma interrupção acorde a thread
+que espera enquanto o CPU está em idle.
+
+O cenário `selftest-thread-stack-overflow` exige o código de saída de
+panic e o relatório #DF na pilha IST depois dos autotestes do scheduler.
+Cada cenário guarda um log série em BIOS e UEFI, em debug e release.
+
+### D-136 — Amostrar os ciclos do scheduler em arranques QEMU (2026-11-26, CODEX)
+
+`bench-scheduler` reutiliza a captura série e o código de saída do teste
+de arranque. Recolhe o valor `rdtsc` já medido pelo autoteste cooperativo
+do kernel, descarta o primeiro arranque e resume as sete amostras
+seguintes. O teste do parser corre no host e em Miri. A medição em TCG
+fica disponível para recolha explícita, sem limiar de regressão na CI.
+
+### D-129 — Limitar e validar as linhas da shell (2026-11-26, CODEX)
+
+O parser recebe até 1 024 bytes de UTF-8 e guarda até 16 palavras num
+buffer de capacidade fixa. As aspas e escapes preservam espaços e
+argumentos vazios. A validação recusa controlos fora da tabulação e
+linhas com delimitadores incompletos antes de executar um comando.
+`help` e `echo` escrevem num destino `fmt::Write` concedido pelo
+chamador. A biblioteca pode ser testada no host e em Miri.
+
+### D-130 — Editar linhas em fronteiras UTF-8 (2026-11-26, CODEX)
+
+`LineBuffer` conserva até 1 024 bytes de texto e um cursor num
+offset de carácter válido. Inserção e remoção preservam os bytes
+dos restantes caracteres. Uma inserção acima do limite ou com um
+controlo recusado deixa a edição disponível. O parser recebe o
+slice utilizado da linha quando o comando é submetido.
+
+### D-131 — Descodificar o fluxo de entrada da consola (2026-11-26, CODEX)
+
+`ShellSession` mantém o estado da descodificação e da edição entre
+leituras. Usa o formato proposto na secção 6 do PR #52. Lê UTF-8 e as
+sequências de edição byte a byte num buffer de até quatro bytes. A
+apresentação recebe o estado do editor e os eventos de edição, envio
+e cancelamento. Enter consome a linha antes de escrever o resultado,
+para que uma falha de escrita deixe a sessão pronta para outra linha.
+
+### D-108 — Formato USTAR só de leitura para o initrd (2026-11-25, CODEX)
+
+O initrd usa registos de 512 bytes, cabeçalhos USTAR com soma de
+verificação e campos de tamanho em octal. O parser aceita ficheiros
+regulares, incluindo o tipo 7 com a semântica de ficheiro regular,
+e diretórios. Os dados de um ficheiro são emprestados ao consumidor com
+o comprimento exato. Os metadados de proprietário e modo ficam fora
+da interpretação do formato inicial.
+
+Todos os cabeçalhos passam pela validação antes de devolver o arquivo.
+A política do initrd exige diretórios com tamanho zero, campos de nome e
+prefixo preenchidos com zeros após um NUL, dois blocos de fim a zero e
+padding final a zero. A validação conta as entradas para dimensionar o
+índice do VFS.
+Caminhos UTF-8 podem começar com `./`. O resultado canónico exclui
+componentes vazias, `.` interiores e `..`. Tipos especiais, links e
+cabeçalhos de extensão são recusados. A montagem no VFS valida conflitos
+entre nomes. O acesso às páginas do módulo é tratado na #22.
+
+[POSIX.1-2024, formato USTAR](https://pubs.opengroup.org/onlinepubs/9799919799/utilities/pax.html#tag_20_94_13_06)
+
+### D-109 — Índice inicial do VFS sobre o initrd (2026-11-25, CODEX)
+
+A primeira raiz só de leitura mantém uma entrada de índice por cabeçalho
+USTAR e empresta os dados do módulo. A montagem valida o arquivo completo
+e ordena as entradas pela sequência de componentes do caminho. Entradas
+com o mesmo caminho ficam adjacentes. Um ficheiro que seja prefixo de
+outro caminho fica imediatamente antes do primeiro descendente. A
+montagem recusa ambos os conflitos antes de disponibilizar a raiz.
+
+A pesquisa usa busca binária. Os nomes com um prefixo comum formam um
+intervalo pelo qual se listam os filhos de um diretório, incluindo os
+implícitos. O índice aceita até 65 536 cabeçalhos. O VFS usa a contagem
+da validação USTAR para fazer uma reserva de memória falível antes de
+preencher o índice. A leitura por offset copia apenas bytes do ficheiro
+para um buffer já validado.
+
+### D-110 — Superfícies BGRA8888 seguras em user space (2026-11-25, CODEX)
+
+`kitty-gfx` recebe slices separados para leitura e escrita exclusiva.
+O layout BGRA8888 usa quatro bytes por píxel, com pitch explícito por
+linha. A validação da geometria limita todos os acessos até ao último
+píxel visível. Primitivas aceitam coordenadas com sinal e recortam
+antes de escrever. O blit preserva a posição relativa dos píxeis ao
+recortar as duas superfícies e copia o alfa sem o misturar.
+
+As linhas avançam pelo eixo principal, com o passo inicial calculado
+no recorte para manter o arredondamento dos mesmos píxeis. O buffer
+permanece em memória de user space. O formato do framebuffer do
+dispositivo será tratado na apresentação depois de concedido DISPLAY.
+
+### D-111 — Apresentação explícita a partir do buffer de desenho (2026-11-25, CODEX)
+
+`DoubleBuffer` mantém duas superfícies independentes com as mesmas
+dimensões e pitches próprios. O desenho só altera o buffer traseiro.
+A apresentação copia toda a área visível ou apenas o retângulo pedido.
+A biblioteca reutiliza o recorte do blit e preserva o padding. O par
+de empréstimos mutáveis garante acesso exclusivo a cada buffer.
+
+### D-125 — Limitar as regiões alteradas de um frame (2026-11-26, CODEX)
+
+`Damage` recorta as regiões às dimensões da superfície e agrupa as
+sobreposições. Guarda até 16 retângulos numa lista de capacidade fixa.
+Se faltar espaço, marca todo o frame. Assim, a memória fica limitada
+e o compositor conserva todas as zonas que precisa de redesenhar.
+
+O compositor recompõe cada região antes de chamar `present_damage`.
+A apresentação rejeita dimensões diferentes e limpa a lista só depois
+de copiar todas as regiões.
+
+### D-126 — Compor camadas BGRA8888 com alfa direto (2026-11-26, CODEX)
+
+`Canvas::blend` usa a mesma geometria de recorte que `blit`. A mistura
+source-over usa aritmética inteira e divide os canais pela soma dos
+pesos antes de arredondar o alfa final. A operação interpreta diretamente
+os canais guardados em BGRA8888. `blit` continua a fazer a cópia integral
+dos bytes para as operações de apresentação.
+
+### D-127 — Recompor o cursor dentro das regiões alteradas (2026-11-26, CODEX)
+
+O cursor empresta uma imagem BGRA8888 e valida o ponto ativo dentro
+dela. O movimento limita esse ponto ao ecrã e regista os dois limites
+da imagem em `Damage`. O desenho aplica source-over dentro da
+interseção do cursor com cada região recomposta. A região antiga
+volta a mostrar o fundo ou a janela que estava por baixo.
+
+### D-139 — Manter a geometria das janelas numa pilha limitada (2026-11-26, CODEX)
+
+A pilha do compositor guarda até 32 identificadores únicos e a geometria
+correspondente. A seleção começa no topo e converte a posição absoluta
+em coordenadas locais. O desenho percorre a ordem inversa da seleção.
+A pilha usa o mesmo `Damage` que o cursor e a apresentação. Ao subir uma
+janela, regista apenas as interseções com as camadas ultrapassadas.
+Mover e remover exigem recompor os limites visíveis afetados, incluindo
+as camadas subjacentes visíveis através de regiões transparentes.
+
+### D-116 — Empacotar initrd opcional na ESP e na ISO (2026-11-26, CODEX)
+
+`xtask --initrd` lê um arquivo regular entre 1 byte e 128 MiB, o limite
+que o núcleo usa para receber o módulo em `docs/INTERFACES.md`.
+Valida-o com o VFS antes de regenerar o meio de arranque e usa os mesmos
+bytes para escrever `/boot/initrd.tar`. A configuração do Limine associa
+a marca `kitty-initrd` ao módulo.
+
+Em complemento à D-016, o xtask pode usar crates por caminho do próprio
+workspace para partilhar a validação com o núcleo. O carregador do
+initrd depende de `kitty-vfs` e a política sobre crates externos da
+D-016 aplica-se à ferramenta.
+
+### D-123 — Publicar a raiz do initrd após validar o arquivo (2026-11-26, CODEX)
+
+`devices::init` monta `Platform::initrd` depois de o heap estar pronto.
+O VFS valida todo o USTAR e o índice antes de guardar a raiz. Os dados
+dos ficheiros permanecem nas páginas só de leitura reservadas pelo
+núcleo. Um arquivo recusado deixa a raiz indisponível e o arranque
+continua com a razão na consola série.
+
+O `xtask test-initrd` verifica um ficheiro conhecido, uma imagem em que
+o checksum do cabeçalho é inválido e a ausência de módulo. Os ensaios
+usam meios de arranque próprios em `build/initrd-tests/`. O comando
+normal `--initrd` valida o arquivo no host antes de preparar o meio.
 
 ### D-150 — Fonte e recursos originais da identidade kitty (2026-11-27, CODEX)
 

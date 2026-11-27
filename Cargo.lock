@@ -3,15 +3,83 @@
 version = 4
 
 [[package]]
+name = "kitty-acpi"
+version = "0.1.0"
+
+[[package]]
+name = "kitty-apic"
+version = "0.1.0"
+dependencies = [
+ "kitty-hal",
+]
+
+[[package]]
+name = "kitty-gfx"
+version = "0.1.0"
+
+[[package]]
 name = "kitty-hal"
+version = "0.1.0"
+
+[[package]]
+name = "kitty-i8042"
+version = "0.1.0"
+dependencies = [
+ "kitty-hal",
+]
+
+[[package]]
+name = "kitty-initrd"
 version = "0.1.0"
 
 [[package]]
 name = "kitty-kernel"
 version = "0.1.0"
 dependencies = [
+ "kitty-acpi",
+ "kitty-apic",
  "kitty-hal",
+ "kitty-pit",
+ "kitty-ps2",
+ "kitty-vfs",
  "limine",
+]
+
+[[package]]
+name = "kitty-pci"
+version = "0.1.0"
+
+[[package]]
+name = "kitty-pit"
+version = "0.1.0"
+dependencies = [
+ "kitty-hal",
+]
+
+[[package]]
+name = "kitty-ps2"
+version = "0.1.0"
+dependencies = [
+ "kitty-hal",
+ "kitty-i8042",
+]
+
+[[package]]
+name = "kitty-shell"
+version = "0.1.0"
+
+[[package]]
+name = "kitty-uart"
+version = "0.1.0"
+dependencies = [
+ "kitty-hal",
+]
+
+[[package]]
+name = "kitty-vfs"
+version = "0.1.0"
+dependencies = [
+ "kitty-initrd",
 ]
 
 [[package]]
@@ -23,3 +91,6 @@ checksum = "29363c0f37e66e18575fadf7141c56ee7ea04ae5fecbeb25eff303f77af203a9"
 [[package]]
 name = "xtask"
 version = "0.1.0"
+dependencies = [
+ "kitty-vfs",
+]
