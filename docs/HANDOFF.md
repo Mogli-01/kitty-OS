@@ -1536,3 +1536,32 @@ Formato:
   ficheiros para os processos quando o user mode estiver disponível.
 - **Avisos** — o autoteste usa arquivos e meios de arranque próprios
   em `build/initrd-tests/`.
+
+### [2026-11-27] — CLAUDE (arte do Pantufa)
+
+- **Feito** — crate `kitty-pantufa` (`art/pantufa`, D-152): paleta
+  «Serão de Inverno», `Canvas` em índices de paleta com elipses,
+  triângulos, linhas, contorno automático e blits, fonte 5×7, o Pantufa
+  (sentado, enrolado, a espreguiçar-se, em bola) e a animação de arranque
+  completa (`BootSplash`), mais `present_bgra` para BGRA8888. 12 testes no
+  host; compila para `x86_64-unknown-none`. O exemplo `boot_png` grava
+  frames em PNG. A referência visual de todos os ecrãs (login, janelas,
+  ícones, alertas do IDS, kernel panic, proteção de ecrã, sons) está em
+  `docs/identidade/pantufa.html`.
+- **PRs abertos** — ramo `claude/pantufa-arte`.
+- **Proteções de segurança alteradas** — o crate não tem `unsafe` e
+  recorta todas as escritas; `present_bgra` valida largura, altura, pitch
+  e tamanho do buffer antes de escrever. A revisão de segurança encontrou
+  overflows e um ciclo quase infinito em `line` com coordenadas hostis
+  (NaN, ±∞, `i32::MIN`): corrigido com limite de ±2^30 nas conversões,
+  somas saturantes em `blit`/`grid`/`text`, escala de texto até 64 e
+  escala do gato entre 0,25 e 4. Teste de regressão
+  `hostile_coordinates_are_safe`.
+- **Bloqueado por / à espera do Codex** — ligar o ecrã de arranque ao
+  framebuffer (Fase 10).
+- **Próximo passo sugerido para o Codex** — mostrar `BootSplash` no
+  framebuffer com as fases reais (contrato em `docs/INTERFACES.md`) e
+  portar os restantes ecrãs da referência para o compositor.
+- **Avisos** — a fonte 5×7 só tem maiúsculas e tira os acentos. Ainda
+  faltam as poses de andar, de costas e eriçado (estão na referência).
+  `BootSplash` ocupa ~12 KiB: não o pôr numa pilha pequena do kernel.
