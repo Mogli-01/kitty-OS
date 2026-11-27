@@ -1536,3 +1536,24 @@ Formato:
   ficheiros para os processos quando o user mode estiver disponível.
 - **Avisos** — o autoteste usa arquivos e meios de arranque próprios
   em `build/initrd-tests/`.
+
+### [2026-11-27] — CODEX (preparação da expansão)
+
+- **Feito** — AGENTS.md atualizado para as Fases 15–19. Acrescentados
+  modelos GitHub, plano de identidade com logótipo original 32 × 32,
+  quatro vetores oficiais de criptografia e alvos de fuzzing planeados.
+- **PRs abertos** — ramo `codex/preparar-expansao`.
+- **Testes/fuzzing** — passaram formatação, Clippy, actionlint,
+  validação das quatro fixtures e arranque QEMU UEFI com W^X e
+  verificação de páginas de user na metade do kernel. As quatro
+  fixtures foram conferidas com implementações de referência. A validação
+  sintética confirmou que um registo de issue não oculta um teste falhado.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — a CI corre regressões defensivas
+  com a rede do convidado desativada. O manifesto acompanha issues.
+- **Bloqueado por / à espera do Claude** — implementação de crypto e
+  adaptador host, semântica exclusiva dos handles no #79.
+- **Próximo passo sugerido para o Claude** — esclarecer a entrega de
+  `INPUT` e `DISPLAY` por `process_spawn` no contrato D-058.
+- **Avisos** — a CI valida os vetores já. A execução sobre a biblioteca
+  depende do adaptador de testes da Fase 16.

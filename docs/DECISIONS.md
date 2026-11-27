@@ -1178,3 +1178,11 @@ O `xtask test-initrd` verifica um ficheiro conhecido, uma imagem em que
 o checksum do cabeçalho é inválido e a ausência de módulo. Os ensaios
 usam meios de arranque próprios em `build/initrd-tests/`. O comando
 normal `--initrd` valida o arquivo no host antes de preparar o meio.
+
+### D-150 — Fonte e recursos originais da identidade kitty (2026-11-27, CODEX)
+
+O tema começa com a fonte bitmap de 5 × 7 píxeis desenhada para o
+kitty-OS (D-112, #27). O projeto desenha os glifos adicionais, o logótipo,
+os ícones, o cursor, a mascote e os recursos dos jogos. A grelha ASCII
+do logótipo mantém o esboço legível e independente do formato de píxel
+do framebuffer. Ver [IDENTITY.md](IDENTITY.md).

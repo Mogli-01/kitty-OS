@@ -17,3 +17,7 @@ dos sete autotestes de falha do kernel. A pilha IST recebe o double fault,
 as páginas de código e da IDT recusam escritas, o bit NX impede executar
 dados e a página de guarda após uma alocação grande apanha a escrita fora
 do buffer. Os logs ficam em `build/memory-tests/<firmware>-<perfil>/`.
+
+Ver também as [regressões de segurança](security/redteam/README.md),
+os [vetores oficiais de criptografia](crypto/README.md) e os
+[alvos de fuzzing planeados](fuzz-targets.md).

@@ -12,14 +12,20 @@ Dono de: **drivers** (`drivers/`: APIC, timer, teclado, UART completo, …),
 **ligação dos drivers ao kernel** (`kernel/src/devices/`, em Rust seguro),
 **VFS/initrd** (`fs/`), **shell e userland** (`userland/`), **testes**
 (`tests/`, `cargo xtask test`), **fuzzing**, **CI** (`.github/workflows/`),
-**benchmarks** e **documentação de utilizador**.
+**benchmarks**, **documentação de utilizador**, **rede** (`net/`),
+**áudio** (`audio/`), **gestão de pacotes** (`pkg/`, kpkg), **IDS** (`ids/`),
+aplicações de login e auditoria e a identidade kitty (ecrã de arranque,
+tema, ícones, mascote, easter eggs e jogos). Em hardware real, também
+xHCI, USB HID, NVMe e framebuffer GOP.
 
 ## Áreas proibidas (do Claude)
 Não editar diretamente:
 - `kernel/src/arch/`, `kernel/src/mm/`, `kernel/src/sync/`,
   `kernel/src/sched/`, `kernel/src/syscall/`, `kernel/src/security/`,
-  `kernel/src/console/` (núcleo da consola; consolas novas entram como
-  drivers que implementam o trait `Console`), `kernel/src/boot_info.rs`,
+  `kernel/src/caps/`, `kernel/src/audit/`, `kernel/src/crypto/`,
+  `kernel/src/firewall/`, `kernel/src/console/` (núcleo da consola;
+  consolas novas entram como drivers que implementam o trait `Console`),
+  `kernel/src/boot_info.rs`,
   `kernel/src/main.rs`, `kernel/src/panic.rs`, `kernel/linker-*.ld`,
   `kernel/build.rs`, `rust-toolchain.toml`, `.cargo/config.toml`
 - `CLAUDE.md`
@@ -46,6 +52,24 @@ Se precisares de uma mudança aí, abre uma issue com a etiqueta
 - `cargo fmt --all --check` e `cargo clippy --workspace -- -D warnings`
   têm de passar.
 - Código e commits em inglês; documentação de coordenação em português.
+
+## Revisão de segurança
+
+- Consultar `docs/REDTEAM.md` e `docs/SECURITY.md`. As rondas começam
+  no fim da Fase 6. Cada equipa revê as áreas da outra e corrige a sua.
+- Limitar a validação ao kitty-OS em QEMU ou ao hardware autorizado
+  do projeto. Ensaios de rede ficam numa rede virtual isolada, sem
+  acesso à Internet e sem tráfego para serviços de terceiros.
+- `tests/security/redteam/` é partilhada para acrescentar testes de
+  regressão. O runner e a CI pertencem ao Codex. Usar dados de teste
+  públicos ou sintéticos e respeitar as licenças dos materiais.
+- Registar uma issue por falha, com severidade, impacto, evidência
+  defensiva e etiquetas `vulnerabilidade`, `red-team` e a do dono.
+  Aplicar as regras de divulgação do projeto.
+- Acompanhar as falhas abertas no manifesto. A correção deixa um teste
+  permanente, atualiza `docs/SECURITY.md` quando muda uma proteção e
+  referencia a issue. Atualizar o placar ao fechar uma ronda, após
+  corrigir os problemas críticos e altos.
 
 ## Formato do HANDOFF (acrescentar a docs/HANDOFF.md no fim de cada sessão)
 
