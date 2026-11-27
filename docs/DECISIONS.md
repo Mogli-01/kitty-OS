@@ -1187,3 +1187,12 @@ contagem de seis segundos que se pode interromper. Isto permite
 experimentar o tema com BIOS e UEFI sem depender da API de ecrã do
 compositor. Os comandos de teste, benchmark e arranque sem a opção
 usam o tempo de espera predefinido de zero segundos.
+
+### D-155 — Reproduzir o ecrã animado antes da consola (2026-11-27, CODEX)
+
+A decisão D-154 é substituída para `--splash`. O núcleo empresta o
+framebuffer ao driver antes de o entregar à consola. A espera do Limine
+regressa a zero. O driver usa o PIT enquanto as interrupções estão
+desligadas, desenha os quadros com operações seguras e devolve as portas
+antes da inicialização normal. Cada espera pelo contador tem um limite.
+O resto do ecrã fica estático enquanto só os olhos e a barra são redesenhados.

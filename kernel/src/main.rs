@@ -47,9 +47,15 @@ use boot_info::BootInfo;
 /// Architecture-independent kernel entry point, called by the arch layer once
 /// the bootloader hand-off has been validated.
 pub fn kmain(mut boot: BootInfo) -> ! {
+    #[cfg(feature = "boot-splash")]
+    let splash_played = boot.framebuffer.as_mut().is_some_and(devices::splash::show);
     console::init(boot.framebuffer.take());
 
     kprintln!("Hello from kitty-OS");
+    #[cfg(feature = "boot-splash")]
+    if splash_played {
+        kprintln!("[splash] animation complete");
+    }
     if let Some(loader) = boot.bootloader {
         kprintln!("[boot] loaded by {} {}", loader.name, loader.version);
     }

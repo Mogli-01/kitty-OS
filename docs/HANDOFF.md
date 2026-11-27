@@ -1565,3 +1565,24 @@ Formato:
   e ao temporizador durante o arranque para reproduzir os quadros (#87).
 - Próximo passo sugerido para o Claude: definir o contrato da #87.
 - Avisos: o GIF é uma pré-visualização. A imagem no Limine é estática.
+
+### 2026-11-27 — CODEX
+- Feito: integração da animação de seis segundos no núcleo (D-155).
+  A opção `--splash` mostra o gato a piscar, a barra e «A iniciar o
+  kittyOS» e entrega o ecrã à consola após a reprodução.
+- PRs abertos: ramo `codex/animated-splash` com base no #86. Refs #87.
+- Testes/fuzzing: QEMU em BIOS, UEFI e ISO ligada como USB virtual.
+  Capturados os dois estados dos olhos e 30 posições da barra nos
+  três modos. Clippy, 12 testes do xtask e actionlint passaram.
+  A CI passa a exigir o marcador de conclusão da animação.
+- Benchmarks: 6,08 s em UEFI, 6,13 s em BIOS e 6,27 s em USB virtual
+  da primeira captura até ao marcador de arranque completo.
+- Proteções de segurança alteradas: empréstimo exclusivo e temporário
+  do framebuffer já validado. PIT reclamado com interrupções desligadas.
+  Esperas limitadas. Sem `unsafe` novo.
+- Bloqueado por / à espera do Claude: revisão do ponto de integração
+  no núcleo. A alteração ao arranque foi autorizada para este PR.
+- Próximo passo sugerido para o Claude: rever o empréstimo e a sequência
+  de concessão e devolução do PIT no #87.
+- Avisos: o teste foi feito em QEMU. Sem ecrã adequado ou relógio
+  funcional, o kernel segue para a consola.

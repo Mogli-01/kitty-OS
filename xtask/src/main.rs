@@ -129,24 +129,10 @@ fn main() -> ExitCode {
     let result = match cmd.as_str() {
         "build" => build_kernel(&opts, false).map(|p| println!("kernel: {}", p.display())),
         "esp" => build_kernel(&opts, false)
-            .and_then(|k| {
-                make_esp(
-                    &k,
-                    opts.load_initrd()?.as_deref(),
-                    &build_dir(),
-                    opts.splash,
-                )
-            })
+            .and_then(|k| make_esp(&k, opts.load_initrd()?.as_deref(), &build_dir()))
             .map(|_| ()),
         "iso" => build_kernel(&opts, false)
-            .and_then(|k| {
-                make_iso(
-                    &k,
-                    opts.load_initrd()?.as_deref(),
-                    &build_dir(),
-                    opts.splash,
-                )
-            })
+            .and_then(|k| make_iso(&k, opts.load_initrd()?.as_deref(), &build_dir()))
             .map(|_| ()),
         "run" => run(&opts),
         "test" => test(&opts),
@@ -225,6 +211,9 @@ fn build_kernel(opts: &Opts, qemu_exit: bool) -> Result<PathBuf> {
     let mut features = opts.features.clone();
     if qemu_exit {
         features.push("qemu-exit".into());
+    }
+    if opts.splash {
+        features.push("boot-splash".into());
     }
     if !features.is_empty() {
         cmd.arg("--features").arg(features.join(","));
@@ -315,7 +304,7 @@ timeout: 0
 
 /// Lays out an EFI System Partition as a plain folder. QEMU can expose a
 /// folder as a FAT disk (vvfat), so UEFI boot needs no image tools at all.
-fn make_esp(kernel: &Path, archive: Option<&[u8]>, output: &Path, splash: bool) -> Result<PathBuf> {
+fn make_esp(kernel: &Path, archive: Option<&[u8]>, output: &Path) -> Result<PathBuf> {
     let limine = limine_dir()?;
     let esp = output.join("esp");
     if esp.exists() {
@@ -325,18 +314,18 @@ fn make_esp(kernel: &Path, archive: Option<&[u8]>, output: &Path, splash: bool) 
         &limine.join("BOOTX64.EFI"),
         &esp.join("EFI/BOOT/BOOTX64.EFI"),
     )?;
-    stage_boot_files(&esp, kernel, archive, splash)?;
+    stage_boot_files(&esp, kernel, archive)?;
     Ok(esp)
 }
 
 /// Builds a hybrid ISO that boots on both BIOS and UEFI.
-fn make_iso(kernel: &Path, archive: Option<&[u8]>, output: &Path, splash: bool) -> Result<PathBuf> {
+fn make_iso(kernel: &Path, archive: Option<&[u8]>, output: &Path) -> Result<PathBuf> {
     let limine = limine_dir()?;
     let iso_root = output.join("iso_root");
     if iso_root.exists() {
         fs::remove_dir_all(&iso_root).map_err(|e| format!("cleaning: {e}"))?;
     }
-    stage_boot_files(&iso_root, kernel, archive, splash)?;
+    stage_boot_files(&iso_root, kernel, archive)?;
     for f in [
         "limine-bios.sys",
         "limine-bios-cd.bin",
@@ -377,30 +366,17 @@ fn make_iso(kernel: &Path, archive: Option<&[u8]>, output: &Path, splash: bool) 
     Ok(iso)
 }
 
-fn stage_boot_files(
-    media: &Path,
-    kernel: &Path,
-    archive: Option<&[u8]>,
-    splash: bool,
-) -> Result<()> {
+fn stage_boot_files(media: &Path, kernel: &Path, archive: Option<&[u8]>) -> Result<()> {
     let boot = media.join("boot");
     copy(kernel, &boot.join(KERNEL_NAME))?;
     if let Some(archive) = archive {
         let path = boot.join("initrd.tar");
         fs::write(&path, archive).map_err(|e| format!("writing {}: {e}", path.display()))?;
     }
-    if splash {
-        let wallpaper = boot.join("kitty-welcome.png");
-        fs::write(
-            &wallpaper,
-            include_bytes!("../../assets/boot/kitty-welcome.png"),
-        )
-        .map_err(|e| format!("writing {}: {e}", wallpaper.display()))?;
-    }
     let config_dir = boot.join("limine");
     fs::create_dir_all(&config_dir).map_err(|e| format!("mkdir {}: {e}", config_dir.display()))?;
     let config = config_dir.join("limine.conf");
-    fs::write(&config, initrd::limine_config(archive.is_some(), splash))
+    fs::write(&config, initrd::limine_config(archive.is_some()))
         .map_err(|e| format!("writing {}: {e}", config.display()))
 }
 
@@ -480,10 +456,10 @@ fn qemu_media_command(
     cmd.args(["-machine", "q35", "-cpu", "max", "-m", "256M", "-no-reboot"]);
 
     if opts.bios {
-        let iso = make_iso(kernel, archive, output, opts.splash)?;
+        let iso = make_iso(kernel, archive, output)?;
         cmd.arg("-cdrom").arg(iso);
     } else {
-        let esp = make_esp(kernel, archive, output, opts.splash)?;
+        let esp = make_esp(kernel, archive, output)?;
         let (code, vars) = find_ovmf(&qemu)?;
         cmd.arg("-drive").arg(format!(
             "if=pflash,format=raw,unit=0,readonly=on,file={}",
