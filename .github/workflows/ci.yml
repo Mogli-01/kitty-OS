@@ -47,6 +47,8 @@ jobs:
       - run: cargo clippy --workspace --locked --release -- -D warnings
       - name: Build release without test features
         run: cargo build --workspace --locked --release
+      - name: Validate kernel ELF load segments
+        run: cargo xtask test-kernel-elf --release
 
   uart:
     name: UART driver (host and Miri)

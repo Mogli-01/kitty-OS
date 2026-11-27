@@ -139,6 +139,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 |---|---|---|
 | Gerador de números aleatórios do kernel (RDRAND/RDSEED + entropia); é a base do CSPRNG da Fase 16 | CLAUDE | TODO |
 | KASLR (kernel PIE + deslocamento do Limine) | CLAUDE | TODO |
+| Validar o layout ELF do kernel antes e depois da transição para PIE | CODEX | Em revisão em `codex/fase8-layout-elf` |
 | ASLR em user space | CLAUDE | TODO |
 | Modelo de capacidades/permissões por processo | CLAUDE | MOVIDA (base na Fase 6, D-058; utilizadores e permissões na Fase 15) |
 
