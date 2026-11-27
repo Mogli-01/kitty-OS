@@ -432,3 +432,20 @@ Formato:
 - **Próximo passo sugerido para o Claude** — atualizar o texto do
   autoteste PIT quando for revista a transição do controlador.
 - **Avisos** — a matriz mantém o ensaio de ausência simulada em BIOS e UEFI.
+
+### [2026-11-27] — CODEX (arranque UEFI sem MADT)
+
+- **Feito** — o ensaio de descoberta com ACPI desativado cobre também
+  UEFI com a máquina `q35`. Verifica a ausência do RSDP ou da MADT, o
+  PIC ativo e duas entregas de IRQ0.
+- **PRs abertos** — atualização do #65.
+- **Testes/fuzzing** — o passo da CI passou em BIOS e UEFI, debug e
+  release, com QEMU 10.0.13. A série confirmou `NoMadt` nos dois
+  arranques UEFI e `NoRsdp` nos dois BIOS. Passaram formatação,
+  Clippy, actionlint e a validação de sintaxe Bash.
+- **Benchmarks** — sem medições nesta ronda.
+- **Proteções de segurança alteradas** — cobertura da descoberta de
+  firmware e do encaminhamento pelo PIC em UEFI.
+- **Bloqueado por / à espera do Claude** — nenhuma dependência deste ensaio.
+- **Próximo passo sugerido para o Claude** — rever o texto do autoteste PIT.
+- **Avisos** — o resultado de ausência pode variar com o firmware UEFI.

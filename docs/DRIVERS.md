@@ -31,6 +31,7 @@ Só neste modo de teste, a entrada do driver recebe uma MADT ausente
 simulada. O ensaio exige o marcador da simulação, a seleção do PIC e
 a entrega de dois IRQ0. A descoberta ACPI do núcleo corre normalmente.
 
-A matriz BIOS também arranca com a máquina `pc,acpi=off` e a feature
-`selftest-xapic`. Este ensaio exige que a descoberta assinale `NoRsdp`,
-que o PIC permaneça ativo e que o timer entregue dois IRQ0.
+A matriz também arranca com a feature `selftest-xapic` e o ACPI
+desativado no QEMU. Em BIOS usa `pc,acpi=off` e exige `NoRsdp`.
+Em UEFI usa `q35,acpi=off` e aceita `NoMadt` ou `NoRsdp`. Nos dois
+modos, o PIC tem de permanecer ativo e o timer tem de entregar dois IRQ0.

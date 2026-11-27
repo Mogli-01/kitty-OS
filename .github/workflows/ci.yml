@@ -105,16 +105,21 @@ jobs:
             --expect 'controller: 8259 PIC' \
             --expect 'hardware IRQ0 (PIT) delivered twice'
 
+          no_acpi_machine=q35
+          missing_table='NoMadt|NoRsdp'
           if [[ "$FIRMWARE" == bios ]]; then
             # SeaBIOS on the pc machine boots without an RSDP when ACPI is off.
-            no_acpi_qemu="$RUNNER_TEMP/kitty-qemu-no-acpi"
-            cat > "$no_acpi_qemu" <<'EOF'
+            no_acpi_machine=pc
+            missing_table=NoRsdp
+          fi
+          no_acpi_qemu="$RUNNER_TEMP/kitty-qemu-no-acpi"
+          cat > "$no_acpi_qemu" <<'EOF'
           #!/usr/bin/env bash
           set -euo pipefail
           args=()
           while (($#)); do
             if [[ "$1" == -machine ]]; then
-              args+=(-machine pc,acpi=off)
+              args+=(-machine "$KITTY_NO_ACPI_MACHINE,acpi=off")
               shift 2
             else
               args+=("$1")
@@ -123,12 +128,13 @@ jobs:
           done
           exec qemu-system-x86_64 "${args[@]}"
           EOF
-            chmod +x "$no_acpi_qemu"
-            KITTY_QEMU="$no_acpi_qemu" run_case xapic-no-rsdp --features selftest-xapic \
-              --expect '[acpi] no usable MADT (NoRsdp)' \
+          chmod +x "$no_acpi_qemu"
+          KITTY_QEMU="$no_acpi_qemu" KITTY_NO_ACPI_MACHINE="$no_acpi_machine" \
+            run_case xapic-firmware-no-madt --features selftest-xapic \
               --expect 'controller: 8259 PIC' \
               --expect 'hardware IRQ0 (PIT) delivered twice'
-          fi
+          grep -E -- "\\[acpi\\] no usable MADT \\(($missing_table)\\)" \
+            build/serial-logs/xapic-firmware-no-madt.log
 
           run_case page-fault --features selftest-page-fault --expect-panic
           grep -F -- '=== Page Fault (#PF) (vector 14)' build/serial-logs/page-fault.log
