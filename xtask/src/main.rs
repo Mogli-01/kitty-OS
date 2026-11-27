@@ -69,6 +69,7 @@ struct Opts {
     expect_panic: bool,
     expect: Vec<String>,
     initrd: Option<PathBuf>,
+    splash: bool,
 }
 
 impl Opts {
@@ -85,6 +86,7 @@ fn main() -> ExitCode {
         match a.as_str() {
             "--release" => opts.release = true,
             "--bios" => opts.bios = true,
+            "--splash" => opts.splash = true,
             "--expect-panic" => opts.expect_panic = true,
             "--initrd" => match args.next() {
                 Some(path) if opts.initrd.is_none() => opts.initrd = Some(PathBuf::from(path)),
@@ -120,13 +122,31 @@ fn main() -> ExitCode {
         eprintln!("xtask: use --initrd with a command that prepares boot media");
         return ExitCode::FAILURE;
     }
+    if opts.splash && !matches!(cmd.as_str(), "esp" | "iso" | "run") {
+        eprintln!("xtask: use --splash with esp, iso or run");
+        return ExitCode::FAILURE;
+    }
     let result = match cmd.as_str() {
         "build" => build_kernel(&opts, false).map(|p| println!("kernel: {}", p.display())),
         "esp" => build_kernel(&opts, false)
-            .and_then(|k| make_esp(&k, opts.load_initrd()?.as_deref(), &build_dir()))
+            .and_then(|k| {
+                make_esp(
+                    &k,
+                    opts.load_initrd()?.as_deref(),
+                    &build_dir(),
+                    opts.splash,
+                )
+            })
             .map(|_| ()),
         "iso" => build_kernel(&opts, false)
-            .and_then(|k| make_iso(&k, opts.load_initrd()?.as_deref(), &build_dir()))
+            .and_then(|k| {
+                make_iso(
+                    &k,
+                    opts.load_initrd()?.as_deref(),
+                    &build_dir(),
+                    opts.splash,
+                )
+            })
             .map(|_| ()),
         "run" => run(&opts),
         "test" => test(&opts),
@@ -139,7 +159,7 @@ fn main() -> ExitCode {
         "test-initrd" => initrd_tests::run(&opts),
         _ => {
             eprintln!(
-                "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--initrd path] [--expect-panic] [--expect text]"
+                "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--initrd path] [--expect-panic] [--expect text] [--splash]"
             );
             eprintln!("       cargo xtask test-memory [--release] [--bios]");
             eprintln!("       cargo xtask test-visual [--release] [--bios]");
@@ -295,7 +315,7 @@ timeout: 0
 
 /// Lays out an EFI System Partition as a plain folder. QEMU can expose a
 /// folder as a FAT disk (vvfat), so UEFI boot needs no image tools at all.
-fn make_esp(kernel: &Path, archive: Option<&[u8]>, output: &Path) -> Result<PathBuf> {
+fn make_esp(kernel: &Path, archive: Option<&[u8]>, output: &Path, splash: bool) -> Result<PathBuf> {
     let limine = limine_dir()?;
     let esp = output.join("esp");
     if esp.exists() {
@@ -305,18 +325,18 @@ fn make_esp(kernel: &Path, archive: Option<&[u8]>, output: &Path) -> Result<Path
         &limine.join("BOOTX64.EFI"),
         &esp.join("EFI/BOOT/BOOTX64.EFI"),
     )?;
-    stage_boot_files(&esp, kernel, archive)?;
+    stage_boot_files(&esp, kernel, archive, splash)?;
     Ok(esp)
 }
 
 /// Builds a hybrid ISO that boots on both BIOS and UEFI.
-fn make_iso(kernel: &Path, archive: Option<&[u8]>, output: &Path) -> Result<PathBuf> {
+fn make_iso(kernel: &Path, archive: Option<&[u8]>, output: &Path, splash: bool) -> Result<PathBuf> {
     let limine = limine_dir()?;
     let iso_root = output.join("iso_root");
     if iso_root.exists() {
         fs::remove_dir_all(&iso_root).map_err(|e| format!("cleaning: {e}"))?;
     }
-    stage_boot_files(&iso_root, kernel, archive)?;
+    stage_boot_files(&iso_root, kernel, archive, splash)?;
     for f in [
         "limine-bios.sys",
         "limine-bios-cd.bin",
@@ -357,17 +377,30 @@ fn make_iso(kernel: &Path, archive: Option<&[u8]>, output: &Path) -> Result<Path
     Ok(iso)
 }
 
-fn stage_boot_files(media: &Path, kernel: &Path, archive: Option<&[u8]>) -> Result<()> {
+fn stage_boot_files(
+    media: &Path,
+    kernel: &Path,
+    archive: Option<&[u8]>,
+    splash: bool,
+) -> Result<()> {
     let boot = media.join("boot");
     copy(kernel, &boot.join(KERNEL_NAME))?;
     if let Some(archive) = archive {
         let path = boot.join("initrd.tar");
         fs::write(&path, archive).map_err(|e| format!("writing {}: {e}", path.display()))?;
     }
+    if splash {
+        let wallpaper = boot.join("kitty-welcome.png");
+        fs::write(
+            &wallpaper,
+            include_bytes!("../../assets/boot/kitty-welcome.png"),
+        )
+        .map_err(|e| format!("writing {}: {e}", wallpaper.display()))?;
+    }
     let config_dir = boot.join("limine");
     fs::create_dir_all(&config_dir).map_err(|e| format!("mkdir {}: {e}", config_dir.display()))?;
     let config = config_dir.join("limine.conf");
-    fs::write(&config, initrd::limine_config(archive.is_some()))
+    fs::write(&config, initrd::limine_config(archive.is_some(), splash))
         .map_err(|e| format!("writing {}: {e}", config.display()))
 }
 
@@ -447,10 +480,10 @@ fn qemu_media_command(
     cmd.args(["-machine", "q35", "-cpu", "max", "-m", "256M", "-no-reboot"]);
 
     if opts.bios {
-        let iso = make_iso(kernel, archive, output)?;
+        let iso = make_iso(kernel, archive, output, opts.splash)?;
         cmd.arg("-cdrom").arg(iso);
     } else {
-        let esp = make_esp(kernel, archive, output)?;
+        let esp = make_esp(kernel, archive, output, opts.splash)?;
         let (code, vars) = find_ovmf(&qemu)?;
         cmd.arg("-drive").arg(format!(
             "if=pflash,format=raw,unit=0,readonly=on,file={}",

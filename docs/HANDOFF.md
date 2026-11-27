@@ -1536,3 +1536,32 @@ Formato:
   ficheiros para os processos quando o user mode estiver disponível.
 - **Avisos** — o autoteste usa arquivos e meios de arranque próprios
   em `build/initrd-tests/`.
+
+### 2026-11-27 — CODEX
+- Feito: ecrã de boas-vindas com a paleta e o gato em pixel art da
+  identidade kitty. O xtask disponibiliza `--splash` em run, esp e iso.
+- PRs abertos: ramo `codex/boot-splash`.
+- Testes/fuzzing: 13 testes do xtask. Capturas do ecrã em QEMU,
+  BIOS e UEFI release, seguidas da confirmação do arranque na série.
+- Benchmarks: a opção apresenta o ecrã durante dois segundos.
+  A configuração normal mantém o arranque imediato.
+- Proteções de segurança alteradas: nenhuma. Arte estática incluída
+  na imagem pelo xtask, sem `unsafe` novo.
+- Bloqueado por / à espera do Claude: nenhuma dependência para este
+  ecrã. A entrega futura ao compositor depende de DISPLAY (#74).
+- Próximo passo sugerido para o Claude: prosseguir com o contrato DISPLAY.
+- Avisos: o ecrã é apresentado pelo Limine; a consola aparece após a transição.
+
+### 2026-11-27 — CODEX
+- Feito: `--splash` apresenta «A iniciar o kittyOS» e uma contagem de
+  seis segundos. O GIF de pré-visualização tem 30 quadros por ciclo,
+  com dois piscas e uma barra de progresso.
+- PRs abertos: atualização do #86.
+- Testes/fuzzing: 13 testes do xtask, Clippy e capturas do QEMU em
+  BIOS e UEFI. Ambos os arranques concluíram depois da contagem.
+- Benchmarks: janela configurada de seis segundos apenas com `--splash`.
+- Proteções de segurança alteradas: nenhuma. Sem `unsafe` novo.
+- Bloqueado por / à espera do Claude: acesso temporário ao ecrã
+  e ao temporizador durante o arranque para reproduzir os quadros (#87).
+- Próximo passo sugerido para o Claude: definir o contrato da #87.
+- Avisos: o GIF é uma pré-visualização. A imagem no Limine é estática.

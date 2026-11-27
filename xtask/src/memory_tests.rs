@@ -48,6 +48,7 @@ pub(super) fn run(opts: &Opts) -> Result<()> {
     run_case("boot", opts, &logs, &[])?;
     for &(feature, report) in FAULTS {
         let fault_opts = Opts {
+            splash: false,
             bios: opts.bios,
             release: opts.release,
             initrd: opts.initrd.clone(),

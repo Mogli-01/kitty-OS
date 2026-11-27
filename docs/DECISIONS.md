@@ -1178,3 +1178,12 @@ O `xtask test-initrd` verifica um ficheiro conhecido, uma imagem em que
 o checksum do cabeçalho é inválido e a ausência de módulo. Os ensaios
 usam meios de arranque próprios em `build/initrd-tests/`. O comando
 normal `--initrd` valida o arquivo no host antes de preparar o meio.
+
+### D-154 — Ecrã de boas-vindas opcional no Limine (2026-11-27, CODEX)
+
+O xtask inclui a arte estática na ESP ou na ISO quando se seleciona
+`--splash`. O Limine apresenta-a antes de lançar o kernel, com uma
+contagem de seis segundos que se pode interromper. Isto permite
+experimentar o tema com BIOS e UEFI sem depender da API de ecrã do
+compositor. Os comandos de teste, benchmark e arranque sem a opção
+usam o tempo de espera predefinido de zero segundos.
