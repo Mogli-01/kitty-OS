@@ -16,6 +16,8 @@
 #[cfg(feature = "xapic")]
 mod apic;
 mod initrd;
+#[cfg(feature = "pantufa")]
+pub(crate) mod pantufa;
 mod pit;
 mod ps2;
 #[cfg(all(

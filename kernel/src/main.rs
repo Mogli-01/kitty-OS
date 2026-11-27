@@ -47,7 +47,10 @@ use boot_info::BootInfo;
 /// Architecture-independent kernel entry point, called by the arch layer once
 /// the bootloader hand-off has been validated.
 pub fn kmain(mut boot: BootInfo) -> ! {
-    console::init(boot.framebuffer.take());
+    let framebuffer = boot.framebuffer.take();
+    #[cfg(feature = "pantufa")]
+    let framebuffer = framebuffer.and_then(devices::pantufa::begin);
+    console::init(framebuffer);
 
     kprintln!("Hello from kitty-OS");
     if let Some(loader) = boot.bootloader {
@@ -101,6 +104,8 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     kprintln!("[mm] running on the kernel stack (guard page below it)");
     mm::heap::init();
     mm::heap::selftest();
+    #[cfg(feature = "pantufa")]
+    devices::pantufa::stage(devices::pantufa::Stage::Memory);
     sched::init();
     kprintln!(
         "[mm] kernel heap ready ({} pages mapped); heap self-test passed",
@@ -190,6 +195,12 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     };
     devices::init(&platform);
     arch::enable_interrupts();
+    #[cfg(feature = "pantufa")]
+    {
+        devices::pantufa::stage(devices::pantufa::Stage::Interrupts);
+        devices::pantufa::stage(devices::pantufa::Stage::Drivers);
+        devices::pantufa::refresh();
+    }
     assert!(
         sync::irq_spinlock::selftest(),
         "IrqSpinLock self-test failed"
@@ -248,13 +259,24 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
 
     kprintln!("[boot] boot complete, idling with interrupts enabled");
 
+    #[cfg(feature = "pantufa")]
+    devices::pantufa::boot_ready();
+
     #[cfg(feature = "qemu-exit")]
-    arch::qemu::exit(arch::qemu::ExitCode::Success);
+    {
+        #[cfg(feature = "pantufa")]
+        while devices::pantufa::refresh() {
+            arch::x86_64::cpu::enable_interrupts_and_halt();
+        }
+        arch::qemu::exit(arch::qemu::ExitCode::Success);
+    }
 
     // The boot thread becomes the idle thread: run whatever is ready, and
     // sleep (interrupts on) when nothing is.
     #[cfg(not(feature = "qemu-exit"))]
     loop {
+        #[cfg(feature = "pantufa")]
+        devices::pantufa::refresh();
         sched::yield_now();
         arch::x86_64::cpu::enable_interrupts_and_halt();
     }

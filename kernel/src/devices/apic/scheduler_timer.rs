@@ -57,10 +57,14 @@ pub(in crate::devices) fn init() -> bool {
     }) {
         kprintln!("[lapic] probe thread unavailable: {:?}", error);
     }
+    #[cfg(feature = "pantufa")]
+    crate::devices::pantufa::clock_ready();
     true
 }
 
 fn on_tick(_: Vector) {
+    #[cfg(feature = "pantufa")]
+    crate::devices::pantufa::tick();
     #[cfg(all(feature = "selftest-lapic-scheduler", feature = "qemu-exit"))]
     crate::devices::timer_probe::count_irq();
     sched::tick();

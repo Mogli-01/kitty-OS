@@ -17,6 +17,8 @@ pub(super) fn init(archive: Option<&'static [u8]>) {
         }
     };
     *ROOT.lock() = Some(root);
+    #[cfg(feature = "pantufa")]
+    super::pantufa::stage(super::pantufa::Stage::Files);
     crate::kprintln!("[vfs] initrd mounted read-only");
 
     #[cfg(feature = "selftest-initrd")]

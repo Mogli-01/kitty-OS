@@ -69,6 +69,7 @@ struct Opts {
     expect_panic: bool,
     expect: Vec<String>,
     initrd: Option<PathBuf>,
+    pantufa: bool,
 }
 
 impl Opts {
@@ -85,6 +86,7 @@ fn main() -> ExitCode {
         match a.as_str() {
             "--release" => opts.release = true,
             "--bios" => opts.bios = true,
+            "--pantufa" => opts.pantufa = true,
             "--expect-panic" => opts.expect_panic = true,
             "--initrd" => match args.next() {
                 Some(path) if opts.initrd.is_none() => opts.initrd = Some(PathBuf::from(path)),
@@ -120,6 +122,10 @@ fn main() -> ExitCode {
         eprintln!("xtask: use --initrd with a command that prepares boot media");
         return ExitCode::FAILURE;
     }
+    if opts.pantufa && !matches!(cmd.as_str(), "esp" | "iso" | "run") {
+        eprintln!("xtask: use --pantufa with esp, iso or run");
+        return ExitCode::FAILURE;
+    }
     let result = match cmd.as_str() {
         "build" => build_kernel(&opts, false).map(|p| println!("kernel: {}", p.display())),
         "esp" => build_kernel(&opts, false)
@@ -139,7 +145,7 @@ fn main() -> ExitCode {
         "test-initrd" => initrd_tests::run(&opts),
         _ => {
             eprintln!(
-                "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--initrd path] [--expect-panic] [--expect text]"
+                "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--initrd path] [--expect-panic] [--expect text] [--pantufa]"
             );
             eprintln!("       cargo xtask test-memory [--release] [--bios]");
             eprintln!("       cargo xtask test-visual [--release] [--bios]");
@@ -203,6 +209,9 @@ fn build_kernel(opts: &Opts, qemu_exit: bool) -> Result<PathBuf> {
         cmd.arg("--release");
     }
     let mut features = opts.features.clone();
+    if opts.pantufa {
+        features.push("pantufa".into());
+    }
     if qemu_exit {
         features.push("qemu-exit".into());
     }

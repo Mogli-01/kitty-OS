@@ -75,6 +75,13 @@ pub fn init(framebuffer: Option<FrameBuffer>) {
     consoles.fb = framebuffer.map(FbConsole::new);
 }
 
+/// Takes ownership of the framebuffer when the boot animation finishes.
+#[cfg(feature = "pantufa")]
+pub(crate) fn attach_framebuffer(framebuffer: FrameBuffer) {
+    let framebuffer = FbConsole::new(framebuffer);
+    CONSOLES.lock().fb = Some(framebuffer);
+}
+
 /// Implementation detail of [`kprint!`]/[`kprintln!`].
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments<'_>) {

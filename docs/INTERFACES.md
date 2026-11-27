@@ -526,6 +526,13 @@ se `ready` ainda não chegou, o gato fica agachado em loop. O fim
 já estiver pronto). A animação nunca atrasa o arranque. Os sons, quando
 existirem, tocam aos 1,5 s (jingle) e aos 2,38 s (miau) de tempo de cena.
 
+Com a opção `pantufa`, `FrameBuffer::bgra_view` empresta em exclusivo
+as linhas validadas e devolve o pitch apenas para canais B, G e R com
+8 bits nas posições 0, 8 e 16. O consumidor usa a largura e altura do
+mesmo `FrameBuffer`. No fim, `console::attach_framebuffer` recebe a
+propriedade do framebuffer. A saída série mantém-se ativa durante
+todo o arranque.
+
 `cargo run -p kitty-pantufa --example boot_png` grava frames em
 `target/pantufa/` para rever a arte sem arrancar o sistema.
 

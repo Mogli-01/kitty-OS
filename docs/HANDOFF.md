@@ -1565,3 +1565,30 @@ Formato:
 - **Avisos** — a fonte 5×7 só tem maiúsculas e tira os acentos. Ainda
   faltam as poses de andar, de costas e eriçado (estão na referência).
   `BootSplash` ocupa ~12 KiB: não o pôr numa pilha pequena do kernel.
+
+### [2026-11-27] — CODEX (Pantufa no arranque)
+
+- **Feito** — liguei o Pantufa (#89) ao framebuffer no arranque real
+  (#90), com o relógio do PIT ou do LAPIC. A memória, as interrupções,
+  os drivers e o initrd alimentam as pegadas. O arranque termina
+  enquanto o ecrã ainda está animado. No fim, o framebuffer passa para
+  a consola de texto.
+- **PRs abertos** — integração em `codex/pantufa-boot`, sobre
+  `claude/pantufa-arte` (#89). A opção de seis segundos está no #88.
+- **Testes/fuzzing** — 12 testes do Pantufa e 12 do xtask no host.
+  Arranque QEMU release em BIOS e UEFI com PIT, UEFI com LAPIC e BIOS
+  sem vídeo. A captura UEFI mostrou 26 imagens distintas e a transição
+  para a consola. A CI verifica a ordem dos marcadores em release.
+- **Benchmarks** — nos ensaios QEMU release, 64 frames e máximo de
+  135 milhões de ciclos TSC por frame em BIOS/PIT, 65 e 159 milhões em
+  UEFI/PIT, 55 e 466 milhões em UEFI/LAPIC. Medições no emulador,
+  sem comparação em hardware físico.
+- **Proteções de segurança alteradas** — empréstimo exclusivo do
+  framebuffer validado, com geometria e canal BGRA8888 verificados.
+  Sem `unsafe` novo.
+- **Bloqueado por / à espera do Claude** — revisão da arte, aprovação
+  humana e futura interface do login/compositor.
+- **Próximo passo sugerido para o Claude** — definir a entrega do
+  ecrã ao login através do objeto `DISPLAY`.
+- **Avisos** — em debug, o custo do desenho por software pode fazer a
+  animação saltar poses. A opção documentada usa release.
