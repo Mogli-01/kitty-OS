@@ -70,7 +70,8 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | SMAP (CR4.21, se suportado); janela `stac`/`clac` de uma instrução; `clac` à entrada do dispatch | o kernel ler/escrever memória de user sem querer | ATIVA (provado por `selftest-smap`) | 6 |
 | UMIP (CR4.11, se suportado) | user space ler GDT/IDT (`sgdt`/`sidt`) e descobrir endereços | ATIVA (prova em ring 3 virá com a Fase 6b) | 6 |
 | Validação de todos os argumentos das syscalls | ataques via syscall | PLANEADA | 6 |
-| `UserSlice`/`UserPtr` + `copy_from_user`/`copy_to_user`; #PF na cópia → `Fault` (nunca panic) | TOCTOU, ponteiros para o kernel, crash por ponteiro mau | ATIVA | 6 |
+| `UserSlice`/`UserPtr` + `copy_from_user`/`copy_to_user`; #PF na cópia → `Fault` (nunca panic), só se o CR2 for de user e sem `RSVD` | TOCTOU, ponteiros para o kernel, crash por ponteiro mau, corrupção mascarada | ATIVA | 6 |
+| Invariante: a metade de baixo só tem páginas U (D-054) | `copy_*_user` alcançar páginas de supervisor mapeadas em baixo | REGRA (auditoria na 6b) | 6 |
 | Espaços de endereçamento separados por processo | um processo ler outro | PLANEADA | 6 |
 | Página nula nunca mapeada | null deref explorável | PLANEADA | 6 |
 | RNG do kernel (RDRAND/RDSEED + entropia) | aleatoriedade previsível | PLANEADA | 8 |

@@ -206,10 +206,13 @@ fn with_test_page<R>(flags: MapFlags, fill: &[u8], f: impl FnOnce() -> R) -> Opt
     let phys = frame.addr();
     vmm::with_kernel_space(|s| s.map_4k(virt, phys, flags)).and_then(Result::ok)?;
     let result = f();
-    if let Some(Ok(p)) = vmm::with_kernel_space(|s| s.unmap_4k(virt)) {
-        let _ = p; // same frame as `frame`, which is freed when dropped below
+    match vmm::with_kernel_space(|s| s.unmap_4k(virt)) {
+        // Unmapped: the frame can go back to the PMM.
+        Some(Ok(_)) => drop::<PhysFrame>(frame),
+        // Still mapped with the user bit: never free it, or a user-visible
+        // alias of reused memory would remain. Leak it instead.
+        _ => core::mem::forget(frame),
     }
-    drop::<PhysFrame>(frame);
     Some(result)
 }
 

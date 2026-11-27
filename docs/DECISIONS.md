@@ -468,3 +468,15 @@ continua sem initrd (diagnóstico), com a razão escrita no log.
   a flag AC ao entrar numa interrupção, por isso `trap_dispatch` faz `clac`
   à entrada; sem isso, um handler que interrompesse uma cópia correria com
   o SMAP desligado. O `iretq` repõe a AC de quem foi interrompido.
+- **Revisto depois do `security-reviewer`:** o fixup só se aplica se o
+  endereço da falha (CR2) estiver na metade de user e o código de erro não
+  tiver `RSVD` (tabelas corrompidas); uma falha do lado do kernel é
+  corrupção e continua fatal, em vez de virar um `E_FAULT` silencioso.
+- **Invariante (a manter nas fases seguintes):** a metade de baixo de
+  qualquer espaço de endereçamento **só tem páginas de user (U=1)**. O SMAP
+  só protege páginas com U; uma página de supervisor ali (trampolim de APs,
+  mapeamento de identidade, estruturas por processo) ficaria acessível a
+  `copy_*_user`. Na 6b, uma auditoria da metade de user verifica isto.
+- **Para a 6c:** o `IA32_FMASK` do `syscall` tem de limpar também a **AC**
+  (bit 18), além de IF/DF/TF: o ring 3 pode pôr AC=1 com `popf`, e a entrada
+  por `syscall` não passa pelo `clac` do dispatch.
