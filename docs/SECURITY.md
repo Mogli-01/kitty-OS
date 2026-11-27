@@ -94,6 +94,7 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | Capacidades APIC: base do MSR, I/O APIC só se declarado na MADT, dono único, UC/NX (D-042) | driver mapear/aceder a MMIO arbitrário | ATIVA | 4 |
 | ICR do local APIC fechado; allow-list de modos de entrega e vetores 0x20–0xEF em LVTs e redireções; seletor do I/O APIC sob lock e reposto (D-042) | driver "seguro" a acordar outros CPUs com código arbitrário, resetá-los, ou entregar IRQs em vetores de exceção | ATIVA | 4 |
 | Módulo initrd: marca exata, único, tamanho limitado, todo dentro de memória de módulos, só de leitura e NX (D-043) | initrd falso/ambíguo, slice para fora do módulo, escrita no initrd | ATIVA | 7 |
+| Ecrã de arranque só por lease exclusiva do framebuffer: slice validado (sem ponteiros), sem alocação em IRQ, mensagens repostas (D-062) | código de splash escrever fora do framebuffer; perder diagnósticos | ATIVA | 10 |
 | Comandos do i8042 por allow-list; bit NMI-disable do CMOS sempre limpo (D-038) | reset da máquina, A20 desligado (corrupção de memória) ou NMIs desligados por um driver "seguro" | ATIVA | 4 |
 | SMEP (CR4.20, se suportado) | o kernel executar código de user ("ret2user") | ATIVA (provado por `selftest-smep`) | 6 |
 | SMAP (CR4.21, se suportado); janela `stac`/`clac` de uma instrução; `clac` à entrada do dispatch | o kernel ler/escrever memória de user sem querer | ATIVA (provado por `selftest-smap`) | 6 |

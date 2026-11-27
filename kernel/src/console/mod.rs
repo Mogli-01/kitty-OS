@@ -11,6 +11,7 @@ mod font;
 mod framebuffer;
 
 use alloc::boxed::Box;
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::{self, Write};
 
@@ -36,6 +37,11 @@ impl Console for SerialPort {
 struct Consoles {
     serial: Option<SerialPort>,
     fb: Option<FbConsole>,
+    /// Whether the framebuffer is lent out (`lend_framebuffer`).
+    lent: bool,
+    /// Text written while the framebuffer was lent, replayed on return
+    /// (bounded: the oldest text is dropped first).
+    pending: String,
     /// Consoles registered at runtime (drivers, Phase 4+).
     extra: Vec<Box<dyn Console>>,
 }
@@ -47,6 +53,20 @@ impl Write for Consoles {
         }
         if let Some(fb) = self.fb.as_mut() {
             fb.write_str(s);
+        } else if self.lent {
+            // The buffer was reserved by `lend_framebuffer` (thread
+            // context): never allocate here, kprintln may run in an IRQ.
+            let cap = self.pending.capacity();
+            if s.len() <= cap {
+                if self.pending.len() + s.len() > cap {
+                    let excess = self.pending.len() + s.len() - cap;
+                    let cut = (excess..=self.pending.len())
+                        .find(|&i| self.pending.is_char_boundary(i))
+                        .unwrap_or(self.pending.len());
+                    self.pending.drain(..cut);
+                }
+                self.pending.push_str(s);
+            }
         }
         for c in self.extra.iter_mut() {
             c.write_str(s);
@@ -55,9 +75,14 @@ impl Write for Consoles {
     }
 }
 
+/// Most text kept while the framebuffer is lent.
+const PENDING_MAX: usize = 16 * 1024;
+
 static CONSOLES: IrqSpinLock<Consoles> = IrqSpinLock::new(Consoles {
     serial: None,
     fb: None,
+    lent: false,
+    pending: String::new(),
     extra: Vec::new(),
 });
 
@@ -73,6 +98,110 @@ pub fn init(framebuffer: Option<FrameBuffer>) {
     let mut consoles = CONSOLES.lock();
     consoles.serial = SerialPort::init_com1();
     consoles.fb = framebuffer.map(FbConsole::new);
+}
+
+/// Pixel layout of the lent framebuffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PixelFormat {
+    /// 32 bits per pixel, bytes in memory B, G, R, unused (red at bit 16,
+    /// green at 8, blue at 0, 8 bits each): what Limine gives on QEMU and
+    /// on almost every UEFI GOP.
+    Bgra8888,
+    /// Any other 32-bpp layout; use `FramebufferLease::channels`.
+    Other,
+}
+
+/// Temporary, exclusive use of the boot framebuffer (issue #87, D-062).
+///
+/// While a lease exists the text console does not draw: kernel messages
+/// still go to the serial port and are kept (up to 16 KiB) to be shown when
+/// the lease ends. Dropping the lease gives the screen back to the console,
+/// which clears it and replays those messages.
+///
+/// The lease hands out the pixel memory as a plain `&mut [u8]` with a
+/// validated geometry, never a pointer: code using it stays safe Rust and
+/// cannot write outside the visible framebuffer.
+///
+/// Limits: during a lease a kernel panic is reported on the serial port
+/// only (the panic path cannot take the screen from the lease holder).
+pub struct FramebufferLease {
+    fb: Option<FrameBuffer>,
+}
+
+impl FramebufferLease {
+    /// Width in pixels.
+    pub fn width(&self) -> usize {
+        self.fb.as_ref().map_or(0, FrameBuffer::width)
+    }
+
+    /// Height in pixels.
+    pub fn height(&self) -> usize {
+        self.fb.as_ref().map_or(0, FrameBuffer::height)
+    }
+
+    /// Bytes per row (at least `width * 4`).
+    pub fn pitch(&self) -> usize {
+        self.fb.as_ref().map_or(0, FrameBuffer::pitch)
+    }
+
+    /// Pixel layout.
+    pub fn format(&self) -> PixelFormat {
+        let Some(fb) = self.fb.as_ref() else {
+            return PixelFormat::Other;
+        };
+        let (r, g, b) = fb.channels();
+        if (r.shift, r.size, g.shift, g.size, b.shift, b.size) == (16, 8, 8, 8, 0, 8) {
+            PixelFormat::Bgra8888
+        } else {
+            PixelFormat::Other
+        }
+    }
+
+    /// Channel layout (for [`PixelFormat::Other`]).
+    pub fn channels(
+        &self,
+    ) -> Option<(
+        crate::boot_info::ChannelMask,
+        crate::boot_info::ChannelMask,
+        crate::boot_info::ChannelMask,
+    )> {
+        self.fb.as_ref().map(FrameBuffer::channels)
+    }
+
+    /// The visible pixel memory: `pitch * height` bytes, row by row.
+    pub fn pixels_mut(&mut self) -> &mut [u8] {
+        match self.fb.as_mut() {
+            Some(fb) => fb.pixels_mut(),
+            None => &mut [],
+        }
+    }
+}
+
+impl Drop for FramebufferLease {
+    fn drop(&mut self) {
+        let Some(fb) = self.fb.take() else { return };
+        let mut consoles = CONSOLES.lock();
+        let mut console = FbConsole::new(fb);
+        let pending = core::mem::take(&mut consoles.pending);
+        console.write_str(&pending);
+        consoles.fb = Some(console);
+        consoles.lent = false;
+    }
+}
+
+/// Takes the framebuffer away from the text console until the returned
+/// lease is dropped. `None` if there is no framebuffer or it is already
+/// lent.
+pub fn lend_framebuffer() -> Option<FramebufferLease> {
+    let mut consoles = CONSOLES.lock();
+    consoles.fb.as_ref()?;
+    let mut pending = String::new();
+    // Best effort: without memory the messages only go to the serial port.
+    let _ = pending.try_reserve_exact(PENDING_MAX);
+    consoles.pending = pending;
+    let fb = consoles.fb.take()?.into_framebuffer();
+    consoles.lent = true;
+    Some(FramebufferLease { fb: Some(fb) })
 }
 
 /// Implementation detail of [`kprint!`]/[`kprintln!`].

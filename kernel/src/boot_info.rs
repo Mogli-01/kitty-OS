@@ -174,6 +174,24 @@ impl FrameBuffer {
         self.height
     }
 
+    /// Bytes from one row to the next.
+    pub fn pitch(&self) -> usize {
+        self.pitch
+    }
+
+    /// Channel layout of a pixel: `(red, green, blue)`.
+    pub fn channels(&self) -> (ChannelMask, ChannelMask, ChannelMask) {
+        (self.red, self.green, self.blue)
+    }
+
+    /// The visible pixel memory: exactly `pitch * height` bytes, so every
+    /// `(x < width, y < height)` pixel is inside it.
+    pub fn pixels_mut(&mut self) -> &mut [u8] {
+        let visible = self.pitch * self.height;
+        let len = visible.min(self.pixels.len());
+        &mut self.pixels[..len]
+    }
+
     /// Converts an 8-bit-per-channel RGB colour into the native pixel value.
     pub fn color(&self, r: u8, g: u8, b: u8) -> u32 {
         let chan = |v: u8, m: ChannelMask| {

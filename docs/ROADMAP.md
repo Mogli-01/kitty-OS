@@ -157,6 +157,8 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Fontes bitmap, depois PSF e TrueType simples | CODEX | TODO |
 | Double buffering | CODEX | Dois buffers com apresentação total ou parcial em revisão no ramo `codex/double-buffer` |
 | Framebuffer mapeado com write-combining (usa a API de PAT da Fase 3) | CODEX | TODO |
+| Ecrã de arranque: lease do framebuffer, `time::monotonic_ms`, progresso do arranque e thread de splash (#87) | CLAUDE | FEITO |
+| Contrato do objeto `DISPLAY` em INTERFACES.md (#74) | CLAUDE | FEITO (implementação depois da 6c) |
 | Objeto `DISPLAY`: `display_map(h)` exige um handle com `MAP`, que o `init` dá só ao compositor; a consola do kernel larga o ecrã (D-058) | CLAUDE | TODO |
 | Identidade "kitty": ecrã de arranque com o logótipo do gato e uma animação simples | CODEX | TODO |
 

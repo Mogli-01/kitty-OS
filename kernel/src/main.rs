@@ -27,6 +27,7 @@ extern crate alloc;
 #[allow(unsafe_code)]
 pub mod arch;
 pub mod boot_info;
+pub mod bootstage;
 pub mod console;
 pub mod devices;
 pub mod firmware;
@@ -39,6 +40,7 @@ pub mod security;
 #[allow(unsafe_code)]
 pub mod sync;
 pub mod syscall;
+pub mod time;
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
@@ -62,6 +64,7 @@ pub fn kmain(mut boot: BootInfo) -> ! {
     kprintln!("[cpu] breakpoint exception handled, execution resumed");
 
     let vmm = mm::init(&boot);
+    bootstage::reached(bootstage::Stage::Memory);
     let stats = mm::pmm::stats();
     kprintln!(
         "[mm] physical memory: {} MiB managed, {} MiB free; frame allocator self-test passed",
@@ -188,8 +191,15 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         madt: acpi.as_ref().ok().map(|t| &t.madt[..]),
         initrd,
     };
+    let has_initrd = platform.initrd.is_some();
     devices::init(&platform);
+    bootstage::reached(bootstage::Stage::Drivers);
+    if has_initrd {
+        bootstage::reached(bootstage::Stage::Files);
+    }
     arch::enable_interrupts();
+    bootstage::reached(bootstage::Stage::Interrupts);
+    bootstage::start_splash();
     assert!(
         sync::irq_spinlock::selftest(),
         "IrqSpinLock self-test failed"
@@ -246,6 +256,20 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     #[cfg(feature = "selftest-heap-overflow")]
     arch::x86_64::selftest::heap_overflow();
 
+    assert!(
+        bootstage::selftest_time(),
+        "monotonic clock self-test failed"
+    );
+    #[cfg(feature = "selftest-fb-lease")]
+    {
+        assert!(
+            bootstage::selftest_lease(),
+            "framebuffer lease self-test failed"
+        );
+        kprintln!("[boot] framebuffer lease self-test passed");
+    }
+
+    bootstage::mark_ready();
     kprintln!("[boot] boot complete, idling with interrupts enabled");
 
     #[cfg(feature = "qemu-exit")]
