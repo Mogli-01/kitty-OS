@@ -60,7 +60,7 @@ preparado para a interface gráfica (Fases 10–14).
 | Descoberta ACPI (RSDP → MADT validada e copiada) + capacidades APIC filtradas (#18) | CLAUDE | FEITO |
 | Descodificador MADT para endereços APIC, overrides ISA e rotas NMI locais | CODEX | Em revisão no #20. Integração de hardware depende da #18 e do #35 |
 | Driver do Local APIC + IO APIC | CODEX | Drivers #21/#37, integração opcional #62 e testes do caminho PIC com MADT ausente simulada e firmware sem tabela em BIOS e UEFI no #65 |
-| Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | Timer local one-shot e periódico validado com o IRQ mascarado em QEMU. Faltam calibração, entrega ao handler e ligação ao scheduler |
+| Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | Duas entregas do timer local e EOI verificados em QEMU no ramo `codex/lapic-timer-irq`. PIT ligado ao scheduler no #48. Calibração e tick pelo LAPIC pendentes |
 | Driver do teclado PS/2 | CODEX | TODO |
 | Driver UART completo (interrupções, input) | CODEX | TODO |
 
