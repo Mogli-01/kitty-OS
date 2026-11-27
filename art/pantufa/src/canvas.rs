@@ -283,6 +283,73 @@ impl<'a> Canvas<'a> {
         }
     }
 
+    /// Ordered 50 % dither: every other pixel in a checkerboard (`sparse`:
+    /// one pixel in four, on even rows and columns).
+    pub fn dither_rect(&mut self, x: i32, y: i32, w: i32, h: i32, color: u8, sparse: bool) {
+        let (x0, x1) = Self::span(x, x.saturating_add(w).saturating_sub(1), self.width);
+        let (y0, y1) = Self::span(y, y.saturating_add(h).saturating_sub(1), self.height);
+        for j in y0..=y1 {
+            for i in x0..=x1 {
+                let on = if sparse {
+                    i % 2 == 0 && j % 2 == 0
+                } else {
+                    (i + j) % 2 == 0
+                };
+                if on {
+                    self.set(i, j, color);
+                }
+            }
+        }
+    }
+
+    /// Short spikes on top of each column of the sprite (bristling fur
+    /// seen from the front): 1 pixel every 3 columns, 2 every 6.
+    pub fn spikes(&mut self, color: u8) {
+        for x in 0..self.width {
+            if let Some(y) = (0..self.height).find(|&y| self.px[y * self.width + x] != TRANSPARENT)
+            {
+                let (x, y) = (x as i32, y as i32);
+                if x % 3 == 0 {
+                    self.set(x, y - 1, color);
+                }
+                if x % 6 == 0 {
+                    self.set(x, y - 2, color);
+                }
+            }
+        }
+    }
+
+    /// Bristling fur all around a sprite: some pixels of the `color`
+    /// contour grow outwards by 1–2 pixels. Rows from `floor_y` down are
+    /// left alone so the paws stay on the ground.
+    pub fn fuzz(&mut self, color: u8, floor_y: i32) {
+        let (w, h) = (self.width as i32, self.height as i32);
+        // Decide on the original contour, then grow: no cascading.
+        for y in 0..h.min(floor_y) {
+            for x in 0..w {
+                if self.get(x, y) != color || (x * 7 + y * 13) % 3 != 0 {
+                    continue;
+                }
+                for (dx, dy) in [(0, -1), (-1, 0), (1, 0), (-1, -1), (1, -1)] {
+                    let out = self.get(x + dx, y + dy);
+                    let inside = self.get(x - dx, y - dy);
+                    if out == TRANSPARENT && inside != TRANSPARENT && inside != MARK {
+                        self.set(x + dx, y + dy, MARK);
+                        if (x + y) % 2 == 0 && self.get(x + 2 * dx, y + 2 * dy) == TRANSPARENT {
+                            self.set(x + 2 * dx, y + 2 * dy, MARK);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        for p in self.px.iter_mut() {
+            if *p == MARK {
+                *p = color;
+            }
+        }
+    }
+
     /// Replaces each palette index with `table[index]`; transparent pixels
     /// stay transparent. With [`crate::palette::DARKER`] this dims a scene.
     pub fn remap(&mut self, table: &[u8; COLORS]) {
@@ -310,4 +377,21 @@ impl<'a> Canvas<'a> {
             }
         }
     }
+}
+
+/// Draws a piece of scenery into `scratch` (as a `w`×`h` canvas), outlines
+/// it and copies it onto `b` at `(x, y)`. Scratch must hold `w * h` bytes.
+pub(crate) fn with_outline(
+    b: &mut Canvas<'_>,
+    scratch: &mut [u8],
+    (x, y, w, h): (i32, i32, usize, usize),
+    draw: impl FnOnce(&mut Canvas<'_>),
+) {
+    let Some(mut t) = Canvas::new(w, h, scratch) else {
+        return;
+    };
+    t.clear(TRANSPARENT);
+    draw(&mut t);
+    t.outline(crate::palette::idx::OUTLINE);
+    b.blit(&t, x, y, false);
 }

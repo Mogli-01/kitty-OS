@@ -160,6 +160,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Objeto `DISPLAY`: `display_map(h)` exige um handle com `MAP`, que o `init` dá só ao compositor; a consola do kernel larga o ecrã (D-058) | CLAUDE | TODO |
 | Identidade "kitty": arte e animação de arranque do Pantufa (crate `kitty-pantufa`, D-152) | CLAUDE | Em revisão no ramo `claude/pantufa-arte` |
 | Identidade "kitty": mostrar o ecrã de arranque no framebuffer com `kitty-pantufa` (fases reais, sem atrasar o arranque) | CODEX | TODO |
+| Identidade "kitty": arte das restantes cenas (sala do wallpaper, desligar, kernel panic, poses e cabeça) em `kitty-pantufa` | CLAUDE | Em revisão no ramo `claude/pantufa-ecras` |
 
 ## Fase 11 — Input
 | Tarefa | Dono | Estado |

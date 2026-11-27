@@ -529,6 +529,45 @@ existirem, tocam aos 1,5 s (jingle) e aos 2,38 s (miau) de tempo de cena.
 `cargo run -p kitty-pantufa --example boot_png` grava frames em
 `target/pantufa/` para rever a arte sem arrancar o sistema.
 
+Outras cenas e peças (mesma cena de 320×180, mesma paleta):
+
+```rust
+pub struct Room;          // ~64 KiB: static ou heap, nunca por valor na pilha
+impl Room {
+    pub const SOFA_SPOT: (f32, f32);
+    pub fn build(&mut self, sky: Sky, lamp_on: bool); // só redesenha se mudar
+    pub fn draw(&mut self, scene: &mut Canvas<'_>, t_ms: u32);
+    pub fn sleeping_cat(t_ms: u32) -> CatStyle;       // o gato do sofá
+}
+pub struct Shutdown;      // ~77 KiB com a sala
+impl Shutdown {
+    pub fn draw(&mut self, scene: &mut Canvas<'_>, t_ms: u32, done: bool) -> BootFrame;
+}
+pub struct PanicScene;    // ~11 KiB: static, para o panic não precisar de memória
+impl PanicScene {
+    pub fn draw(&mut self, scene: &mut Canvas<'_>, kind: PanicKind,
+                code: &str, details: &[&str], t_ms: u32);
+}
+pub fn draw_cat(scene, &mut CatSprite, x, y, &CatStyle); // Sit, Back, Curl, Stretch, Ball, Walk, Puff
+pub fn draw_head(scene, &mut HeadSprite, x, y, scale, &HeadStyle); // login, notificações, botão iniciar
+```
+
+`Room` desenha a sala uma vez e, por frame, só o tempo lá fora (chuva à
+noite, nuvens de dia, pássaros ao pôr do sol) e o vapor da caneca; o
+gato vai por cima, em `SOFA_SPOT`. `Shutdown` segue a mesma regra do
+arranque: com `done` ainda falso, o gato dorme em loop e o ecrã só fica
+negro (`finished`) 400 ms depois de `done`. `PanicScene` desenha sem
+relógio (`t_ms = u32::MAX` dá o frame final), mostra até
+`PANIC_MAX_LINES` (7) linhas de até `PANIC_MAX_CHARS` (50) carateres e
+corta o resto; quem chama decide o texto e não deve pôr endereços que o
+user space possa ler. No kernel, a `PanicScene` e o buffer de 57 600
+bytes da cena ficam em `static`s reservados no arranque (o panic pode
+correr numa pilha IST de 16 KiB) e acedem-se com `try_lock`. `Room`,
+`Shutdown` e `PanicScene` não têm `Default`: só se criam com `new()` em
+contexto `const`.
+`cargo run -p kitty-pantufa --example scenes_png` grava as poses e as
+cenas em `target/pantufa/`.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |
