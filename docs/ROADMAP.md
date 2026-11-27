@@ -122,7 +122,7 @@ preparado para a interface gráfica (Fases 10–14).
 ## Fase 11 — Input
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Driver de rato PS/2 | CODEX | Ligação por IRQ12 e testes QEMU em revisão no ramo `codex/ps2-input` |
+| Driver de rato PS/2 | CODEX | Ligação por IRQ12 em revisão (#34). A matriz PS/2 inclui verificação do controlador no ramo `codex/ps2-test-controller` |
 | Driver USB HID (teclado e rato) | CODEX | TODO |
 | Sistema de eventos de input unificado (`InputEvent`: teclado + rato) | CODEX | Fila PS/2 interna em revisão; timestamps e entrega por `INPUT` pendentes |
 | Entrega dos eventos ao user space só ao processo com a capacidade `INPUT` (D-019) | CLAUDE | TODO |

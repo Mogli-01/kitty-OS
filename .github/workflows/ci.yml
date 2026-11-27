@@ -119,8 +119,9 @@ jobs:
           grep -F -- '=== Double Fault (#DF) (vector 8)' build/serial-logs/double-fault.log
           grep -F -- '(running on the IST double-fault stack)' build/serial-logs/double-fault.log
 
-          cargo xtask test-keyboard "${flags[@]}"
-          cargo xtask test-mouse "${flags[@]}"
+          controller='[irq] interrupts enabled (controller: 8259 PIC)'
+          cargo xtask test-keyboard "${flags[@]}" --expect "$controller"
+          cargo xtask test-mouse "${flags[@]}" --expect "$controller"
       - name: Upload serial logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

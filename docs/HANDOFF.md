@@ -437,3 +437,23 @@ Formato:
 - **Bloqueado por / à espera do Claude** — timestamps e entrega por INPUT.
 - **Próximo passo sugerido para o Claude** — documentar o relógio e o
   contrato de entrega para o compositor.
+
+### [2026-11-27] — CODEX (controlador nos testes PS/2)
+
+- **Feito** — `test-keyboard` e `test-mouse` aceitam features adicionais
+  e verificam marcadores de arranque antes da injeção de eventos. A CI
+  exige o controlador PIC nos ensaios PS/2 da matriz BIOS/UEFI.
+- **PRs abertos** — `codex/ps2-test-controller` sobre o #34.
+- **Testes/fuzzing** — passaram formatação, Clippy, actionlint e os três
+  testes do xtask no host e em Miri. A execução local de QEMU ficou
+  impedida pela falta de espaço para iniciar o contentor. A matriz
+  do GitHub executa os testes de QEMU.
+- **Benchmarks** — sem medições nesta ronda.
+- **Proteções de segurança alteradas** — o ensaio confirma o controlador
+  selecionado e a entrega de eventos ao driver.
+- **Bloqueado por / à espera do Claude** — entrega de eventos a user
+  space depende de INPUT (#46).
+- **Próximo passo sugerido para o Claude** — implementar o contrato de
+  INPUT quando estiver disponível a infraestrutura de processos.
+- **Avisos** — o ensaio PS/2 com APIC exige integrar a feature `xapic`
+  do #62 com os drivers PS/2.
