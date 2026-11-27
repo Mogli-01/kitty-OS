@@ -53,13 +53,22 @@ impl<T> SpinLock<T> {
         // Acquire on success: everything the previous holder wrote before its
         // Release store is visible to us. Relaxed on failure: we learned
         // nothing and touch no protected data.
-        self.locked
+        // Count *before* taking the lock: otherwise a preemption between the
+        // successful CAS and the increment would see "no lock held" while
+        // this lock is in fact taken (security review of Phase 5).
+        super::preempt::acquire();
+        let guard = self
+            .locked
             .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             .ok()
             .map(|_| SpinLockGuard {
                 lock: self,
                 _not_send: PhantomData,
-            })
+            });
+        if guard.is_none() {
+            super::preempt::release();
+        }
+        guard
     }
 }
 
@@ -106,5 +115,6 @@ impl<T> Drop for SpinLockGuard<'_, T> {
     fn drop(&mut self) {
         // Release: our writes to the data happen-before the next Acquire.
         self.lock.locked.store(false, Ordering::Release);
+        super::preempt::release();
     }
 }
