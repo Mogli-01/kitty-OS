@@ -25,3 +25,8 @@ cargo xtask test --bios --release --features selftest-xapic
 O teste exige o nome do controlador APIC e duas confirmações de EOI.
 O marcador antigo do autoteste PIT ainda menciona o PIC no núcleo.
 A feature fica opcional enquanto as integrações dos outros drivers são revistas.
+
+A CI também corre `cargo xtask test --features selftest-xapic-no-madt`.
+Só neste modo de teste, a entrada do driver recebe uma MADT ausente
+simulada. O ensaio exige o marcador da simulação, a seleção do PIC e
+a entrega de dois IRQ0. A descoberta ACPI do núcleo corre normalmente.

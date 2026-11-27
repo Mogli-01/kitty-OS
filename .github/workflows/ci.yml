@@ -100,6 +100,11 @@ jobs:
             --expect '[apic] two IRQ0 deliveries acknowledged' \
             --expect 'hardware IRQ0 (PIT) delivered twice'
 
+          run_case xapic-no-madt --features selftest-xapic-no-madt \
+            --expect '[apic-test] simulating an unavailable MADT' \
+            --expect 'controller: 8259 PIC' \
+            --expect 'hardware IRQ0 (PIT) delivered twice'
+
           run_case page-fault --features selftest-page-fault --expect-panic
           grep -F -- '=== Page Fault (#PF) (vector 14)' build/serial-logs/page-fault.log
           grep -F -- 'non-present page on read in kernel mode' build/serial-logs/page-fault.log

@@ -34,6 +34,7 @@ selftest-irq-pit = []
 # Opt in to the boot-CPU xAPIC controller while validating the handover.
 xapic = ["dep:kitty-acpi", "dep:kitty-apic"]
 selftest-xapic = ["xapic", "selftest-irq-pit"]
+selftest-xapic-no-madt = ["xapic", "selftest-irq-pit"]
 
 [dependencies]
 limine = "0.6.5"

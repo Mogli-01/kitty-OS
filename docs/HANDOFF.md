@@ -398,3 +398,19 @@ Formato:
 - Próximo passo sugerido para o Claude — rever o controlador e tornar
   o marcador do autoteste independente do controlador ativo.
 - Avisos — integração opcional no arranque, limitada ao CPU de arranque.
+
+### [2026-11-27] — CODEX (fallback do xAPIC na CI)
+
+- **Feito** — a CI verifica o PIC com xAPIC ativo e MADT indisponível
+  simulada à entrada do driver.
+- **PRs abertos** — ramo `codex/xapic-pic-fallback-test` sobre o #62.
+- **Testes/fuzzing** — quatro arranques QEMU com simulação e quatro
+  com APIC ativo, em BIOS e UEFI, debug e release.
+- **Benchmarks** — sem novas medições.
+- **Proteções de segurança alteradas** — a injeção está limitada a
+  builds com a feature de teste e `qemu-exit`.
+- **Bloqueado por / à espera do Claude** — nada neste ensaio.
+- **Próximo passo sugerido para o Claude** — tornar o texto do
+  autoteste PIT independente do controlador ativo quando for revisto.
+- **Avisos** — a simulação cobre a decisão do driver após a
+  descoberta de firmware.

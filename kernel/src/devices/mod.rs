@@ -36,5 +36,17 @@ pub struct Platform<'a> {
 /// register IRQ lines.
 pub fn init(_platform: &Platform<'_>) {
     #[cfg(feature = "xapic")]
-    apic::init(_platform.madt);
+    {
+        let madt = if cfg!(all(
+            feature = "qemu-exit",
+            feature = "selftest-xapic-no-madt"
+        )) {
+            // Simulate an unavailable MADT at the driver boundary.
+            crate::kprintln!("[apic-test] simulating an unavailable MADT");
+            None
+        } else {
+            _platform.madt
+        };
+        apic::init(madt);
+    }
 }
