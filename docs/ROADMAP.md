@@ -73,7 +73,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Driver do Local APIC + IO APIC | CODEX | TODO |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | TODO |
 | Driver do teclado PS/2 | CODEX | TODO |
-| Driver UART completo (interrupções, input) | CODEX | Configuração e polling de TX/RX testados no ramo `codex/uart-16550`. Integração com portas e IRQ pendente |
+| Driver UART completo (interrupções, input) | CODEX | I/O por polling (#59) e fontes de IRQ de receção em revisão no ramo `codex/uart-rx-irq`. Ligação a uma UART real aguarda #72 |
 
 | Descodificador MADT para endereços APIC, overrides ISA e rotas NMI locais | CODEX | Em revisão no #20. Integração de hardware depende da #18 e do #35 |
 | Driver do Local APIC + IO APIC | CODEX | Drivers #21/#37, integração opcional #62 e testes do caminho PIC com MADT ausente simulada e firmware sem tabela em BIOS e UEFI no #65 |

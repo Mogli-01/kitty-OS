@@ -219,3 +219,59 @@ fn rejected_accesses_are_reported_without_losing_a_saved_rx_error() {
     );
     uart.ports.assert_consumed();
 }
+
+#[test]
+fn enables_only_receive_sources_before_opening_the_irq_gate() {
+    let script = configured_script(&[write(1, 0x05), write(4, 0x0b), write(4, 0x03), write(1, 0)]);
+    let mut uart = Uart16550::new(Ports::new(&script));
+    assert_eq!(uart.set_receive_interrupts(true), Err(Error::NotConfigured));
+    assert_eq!(uart.interrupt_cause(), Err(Error::NotConfigured));
+    uart.configure(DIVISOR).unwrap();
+    assert_eq!(uart.set_receive_interrupts(true), Ok(()));
+    assert_eq!(uart.set_receive_interrupts(false), Ok(()));
+    uart.ports.assert_consumed();
+}
+
+#[test]
+fn rolls_back_a_rejected_enable_and_closes_both_paths_when_disabling() {
+    let script = configured_script(&[
+        write(1, 0x05),
+        Access::Write(4, 0x0b, None),
+        write(4, 0x03),
+        write(1, 0),
+        Access::Write(4, 0x03, None),
+        write(1, 0),
+    ]);
+    let mut uart = Uart16550::new(Ports::new(&script));
+    uart.configure(DIVISOR).unwrap();
+    assert_eq!(
+        uart.set_receive_interrupts(true),
+        Err(Error::PortRejected { offset: 4 })
+    );
+    assert_eq!(
+        uart.set_receive_interrupts(false),
+        Err(Error::PortRejected { offset: 4 })
+    );
+    uart.ports.assert_consumed();
+}
+
+#[test]
+fn distinguishes_interrupt_causes_with_fifo_bits_set() {
+    let cases = [
+        (0xcf, None),
+        (0xc0, Some(InterruptCause::ModemStatus)),
+        (0xc2, Some(InterruptCause::TransmitterEmpty)),
+        (0xc4, Some(InterruptCause::ReceiveData)),
+        (0xc6, Some(InterruptCause::ReceiveLineStatus)),
+        (0xc8, Some(InterruptCause::Reserved(8))),
+        (0xcc, Some(InterruptCause::ReceiveTimeout)),
+    ];
+    let reads: Vec<_> = cases.iter().map(|&(value, _)| read(2, value)).collect();
+    let script = configured_script(&reads);
+    let mut uart = Uart16550::new(Ports::new(&script));
+    uart.configure(DIVISOR).unwrap();
+    for (_, expected) in cases {
+        assert_eq!(uart.interrupt_cause(), Ok(expected));
+    }
+    uart.ports.assert_consumed();
+}
