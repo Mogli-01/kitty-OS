@@ -194,13 +194,18 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         None => panic!("scheduler self-test failed"),
     }
 
+    assert!(sched::wait::selftest(), "wait queue self-test failed");
+    kprintln!("[sched] wait queue self-test passed: waiter blocked, woken, value seen");
+
     #[cfg(feature = "selftest-preempt")]
     {
         assert!(
             arch::x86_64::selftest::preempt(),
             "preemption self-test failed"
         );
-        kprintln!("[sched] preemption self-test passed: busy threads were preempted by the timer");
+        kprintln!(
+            "[sched] preemption self-test passed: busy threads were preempted, idle + wake from IRQ work"
+        );
     }
 
     #[cfg(feature = "selftest-thread-stack-overflow")]

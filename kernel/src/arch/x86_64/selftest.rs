@@ -199,7 +199,11 @@ pub fn preempt() -> bool {
     fn worker_b() {
         busy(&B);
     }
+    static TICKS: AtomicU64 = AtomicU64::new(0);
+    static TICK_QUEUE: crate::sched::WaitQueue = crate::sched::WaitQueue::new();
     fn on_tick(_: Vector) {
+        TICKS.fetch_add(1, Ordering::Release);
+        TICK_QUEUE.wake_all(); // waking from an IRQ handler
         crate::sched::tick();
     }
 
@@ -232,10 +236,19 @@ pub fn preempt() -> bool {
     while DONE.load(Ordering::Acquire) < 2 {
         crate::sched::yield_now();
     }
+    crate::sched::yield_now(); // reap the dead workers
+
+    // The boot thread now sleeps on a wait queue with nothing else ready:
+    // the scheduler must fall back to the idle thread (sti; hlt), and the
+    // timer IRQ handler must wake us. Three ticks prove it repeatedly.
+    let start = TICKS.load(Ordering::Acquire);
+    TICK_QUEUE.wait_until(|| TICKS.load(Ordering::Acquire) >= start + 3);
+    let woken_by_irq =
+        TICKS.load(Ordering::Acquire) >= start + 3 && super::cpu::interrupts_enabled();
+
     let _ = irq::unregister_isa(0);
     let _ = pit.write8(3, 0x30); // stop the PIT (mode 0, no count loaded)
-    crate::sched::yield_now(); // reap the dead workers
-    both_ran
+    both_ran && woken_by_irq
 }
 
 /// Runs a kernel thread that recurses into its stack guard page. Expect a
