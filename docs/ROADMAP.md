@@ -105,7 +105,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Entrada e tabela de syscalls | CLAUDE / CODEX | Entrada `syscall`, retorno IRETQ e consola em revisão em `codex/fase7-syscalls`. Faltam handles de ficheiros e integração de `init` |
 | `UserPtr<T>`, `copy_from_user` / `copy_to_user` (com recuperação de #PF) | CLAUDE | FEITO |
 | Espaços de endereçamento separados por processo; entrada em ring 3, `TSS.RSP0`, `swapgs`, exceções de user matam o processo, FPU/SSE por thread (6b) | CLAUDE | FEITO |
-| ELF loader | CLAUDE | TODO |
+| ELF loader | CLAUDE / CODEX | Carregamento estático de `/sbin/init` em revisão em `codex/fase7-init` |
 | GUI-PREP/CAPS: objetos do kernel + tabela de handles por processo, com direitos (D-018, D-051) | CLAUDE | TODO |
 | CAPS: ABI "capability-first": toda a syscall com efeito fora do próprio processo recebe um handle; sem nomes nem caminhos globais; bits de direitos 16–31 reservados por tipo de objeto; `E_BADSIG` reservado (D-058) | CLAUDE | TODO |
 | CAPS: `process_spawn(imagem, handles[])`, a única forma de dar autoridade a um processo novo (por defeito, nenhuma) | CLAUDE | TODO |

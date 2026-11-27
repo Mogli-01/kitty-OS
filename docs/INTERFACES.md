@@ -435,8 +435,10 @@ assinado em `rax`.
 A consola exige o handle 0 concedido ao processo. As transferências são
 limitadas a 4 KiB. A leitura bloqueia enquanto não houver input. O driver
 PS/2 envia UTF-8 e teclas de edição pela função `console::input_push`.
-A primeira imagem `/sbin/init` e os handles de ficheiros ficam para os
-PRs seguintes.
+O núcleo procura `/sbin/init` no initrd. Um ELF64 estático válido
+arranca em Ring 3 com o handle de consola. Um ficheiro ausente ou
+recusado produz um diagnóstico e o núcleo continua.
+Os handles de ficheiros ficam para o próximo PR.
 
 ### Memória de user: `mm::user` (Fase 6a) — INSTÁVEL
 Fornece: CLAUDE (`kernel/src/mm/user.rs`). Usa: núcleo (syscalls).

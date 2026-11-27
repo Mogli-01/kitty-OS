@@ -44,3 +44,11 @@ fn check_fixture(root: &InitrdFs<'_>) -> bool {
             entries.any(|entry| entry.name == "kitty.txt" && entry.kind == Kind::File)
         })
 }
+
+pub(crate) fn initrd_file(path: &str) -> Option<&'static [u8]> {
+    let inode = ROOT.lock().as_ref()?.lookup(path).ok()?;
+    match inode {
+        kitty_vfs::Inode::File(file) => Some(file.as_bytes()),
+        kitty_vfs::Inode::Directory => None,
+    }
+}

@@ -277,6 +277,19 @@ jobs:
           cargo xtask test-keyboard "${flags[@]}" --expect "$controller"
           cargo xtask test-mouse "${flags[@]}" --expect "$controller"
           cargo xtask test-initrd "${flags[@]}"
+          fixture=$(mktemp -d)
+          mkdir -p "$fixture/root/sbin"
+          as tests/phase7/init.S -o "$fixture/init.o"
+          ld -nostdlib -static -z max-page-size=4096 "$fixture/init.o" -o "$fixture/root/sbin/init"
+          tar --format=ustar -cf "$fixture/valid.tar" -C "$fixture/root" sbin/init
+          printf 'invalid ELF\n' > "$fixture/root/sbin/init"
+          tar --format=ustar -cf "$fixture/invalid.tar" -C "$fixture/root" sbin/init
+          run_case init-elf --initrd "$fixture/valid.tar" \
+            --expect '[init-test] static ELF executed from initrd'
+          run_case init-invalid --initrd "$fixture/invalid.tar" \
+            --expect '[init] /sbin/init missing or invalid (Format)'
+          grep -F -- '[init] /sbin/init missing or invalid (missing file)' build/serial-logs/boot.log
+
       - name: Upload serial logs and framebuffer capture
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
