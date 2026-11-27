@@ -1536,3 +1536,21 @@ Formato:
   ficheiros para os processos quando o user mode estiver disponível.
 - **Avisos** — o autoteste usa arquivos e meios de arranque próprios
   em `build/initrd-tests/`.
+
+### [2026-11-27] — CODEX (diretórios do initrd)
+
+- **Feito** — vistas imutáveis de diretórios do initrd para pesquisas
+  relativas. O VFS reutiliza o índice ordenado e nunca procura fora da
+  vista selecionada. Atualizei o autoteste do núcleo para ler
+  `kitty.txt` a partir da vista de `/etc`.
+- **PRs abertos** — ramo `codex/vfs-directorios`.
+- **Testes/fuzzing** — 10 testes no host e em Miri. Seis arranques QEMU
+  release em BIOS e UEFI com initrd válido, checksum inválido e sem
+  initrd. O alvo existente compara a pesquisa relativa e absoluta
+  em arquivos montados.
+- **Benchmarks** — sem medições. A pesquisa não aloca nem copia caminhos.
+- **Proteções de segurança alteradas** — caminhos relativos canónicos
+  e pesquisa limitada ao subdiretório. Sem `unsafe` novo.
+- **Bloqueado por / à espera do Claude** — ligar a vista ao handle DIR,
+  validar direitos e copiar os argumentos de `open_at`.
+- **Avisos** — a raiz do initrd continua só de leitura.
