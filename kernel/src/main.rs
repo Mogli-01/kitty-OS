@@ -107,6 +107,20 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         mm::heap::stats().pages
     );
 
+    let prot = arch::x86_64::cpu::enable_user_protections();
+    kprintln!(
+        "[cpu] user-mode protections: SMEP {}, SMAP {}, UMIP {}",
+        if prot.smep { "on" } else { "UNSUPPORTED" },
+        if prot.smap { "on" } else { "UNSUPPORTED" },
+        if prot.umip { "on" } else { "UNSUPPORTED" }
+    );
+    assert!(mm::user::selftest(), "user-copy self-test failed");
+    kprintln!("[mm] user-copy self-test passed (round trip, fault recovery, range checks)");
+    #[cfg(feature = "selftest-smap")]
+    mm::user::smap_violation();
+    #[cfg(feature = "selftest-smep")]
+    mm::user::smep_violation();
+
     match mm::vmm::mmio_selftest() {
         Some(v) => kprintln!("[mm] MMIO self-test passed (local APIC version {:#x})", v),
         None => panic!("MMIO self-test failed"),
@@ -194,13 +208,18 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         None => panic!("scheduler self-test failed"),
     }
 
+    assert!(sched::wait::selftest(), "wait queue self-test failed");
+    kprintln!("[sched] wait queue self-test passed: waiter blocked, woken, value seen");
+
     #[cfg(feature = "selftest-preempt")]
     {
         assert!(
             arch::x86_64::selftest::preempt(),
             "preemption self-test failed"
         );
-        kprintln!("[sched] preemption self-test passed: busy threads were preempted by the timer");
+        kprintln!(
+            "[sched] preemption self-test passed: busy threads were preempted, idle + wake from IRQ work"
+        );
     }
 
     #[cfg(feature = "selftest-thread-stack-overflow")]
