@@ -394,9 +394,76 @@ pub fn wake_all(&self) -> usize;                       // também em handlers de
 | `UserPtr<T>`, `copy_from_user`, `copy_to_user` | CLAUDE | CODEX (VFS) | 6 |
 | ABI das syscalls (números, registos, códigos de erro) | CLAUDE | CODEX (userland) | 6 |
 | `trait FileSystem` / `trait Inode` do VFS | CODEX | CLAUDE (syscalls) | 7 |
-| Handles e direitos: `Handle`, `Rights { READ, WRITE, MAP, TRANSFER, … }`, `handle_close`, `handle_duplicate(h, rights_menores)` | CLAUDE | CODEX (userland) | 6 |
+| Handles e direitos: `Handle`, `Rights` (bits 0–15 genéricos `READ, WRITE, MAP, TRANSFER, DUP, EXEC`; 16–31 por tipo), `handle_close`, `handle_dup(h, rights_menores)`, `handle_info(h)` (D-058) | CLAUDE | CODEX (userland) | 6 |
+| `process_spawn(imagem: Handle, handles: UserSlice<(Handle, Rights)>) -> Handle` — a única forma de dar autoridade a um processo novo (D-058) | CLAUDE | CODEX (init, shell) | 6 |
+| `open_at(dir: Handle, caminho, rights) -> Handle`, sem caminhos globais; o VFS recusa sair do diretório do handle (D-058) | CLAUDE (syscall) + CODEX (VFS) | ambos | 7 |
 | `struct InputEvent` unificado (teclado + rato: tipo, código, valor, timestamp) e `input::push(InputEvent)` chamada pelos drivers | CODEX (formato) + CLAUDE (entrega) | ambos | 11 |
 | Syscalls de memória partilhada: `shm_create(size) -> Handle`, `shm_map(h, CacheType) -> UserPtr`, `shm_unmap` | CLAUDE | CODEX | 12 |
 | Syscalls de canais: `channel_create() -> (Handle, Handle)`, `channel_send(h, bytes, handles)`, `channel_recv(h, …)` (bloqueante e não bloqueante), tamanho máximo fixo por mensagem | CLAUDE | CODEX | 12 |
-| Capacidades `DISPLAY` (`display_map() -> framebuffer WC + geometria`) e `INPUT` (`input_open() -> Handle` de canal de eventos) | CLAUDE | CODEX (compositor) | 10–11 |
+| Objetos `DISPLAY` (`display_map(h) -> framebuffer WC + geometria`, exige `MAP`) e `INPUT` (`input_read(h, …)`); os handles são dados pelo kernel ao `init`, sem syscall de "abrir" (D-058) | CLAUDE | CODEX (compositor) | 10–11 |
 | Protocolo compositor ↔ aplicações (criar janela, anexar buffer, damage, eventos, foco) | CLAUDE (spec) | CODEX (implementação) | 13 |
+
+## Esboços das Fases 15–17 (só desenho, vão mudar)
+
+Assinaturas para o Codex poder planear. Nenhuma está implementada; cada
+uma passa a INSTÁVEL na secção "Disponíveis hoje" quando entrar.
+
+### Capacidades (Fase 6 → 15) — CLAUDE
+```rust
+// syscalls (rax = número; erros < 0 como na D-049, + E_BADSIG = -11)
+handle_close(h) -> 0
+handle_dup(h, rights) -> h2          // rights ⊆ rights(h), exige DUP
+handle_info(h) -> (kind: u16, rights: u32)
+process_spawn(image: Handle /*EXEC*/, handles: *const (u32, u32), n) -> Handle
+// Fase 15: identidade e sessões
+process_identity(h_proc) -> (uid, gid)         // exige READ no processo
+session_create(h_accounts, uid, auth_token) -> h_session   // só o login
+```
+Tipos de objetos reservados: `CONSOLE`, `FILE`, `DIR`, `PROCESS`,
+`CHANNEL`, `SHM`, `INPUT`, `DISPLAY`, `AUDIO`, `NET`, `SOCKET`,
+`FIREWALL`, `AUDIT`, `ACCOUNTS`.
+
+### Auditoria (Fase 15) — CLAUDE
+```rust
+// dentro do kernel (núcleo, drivers, VFS e stack de rede podem chamar)
+pub fn audit::record(event: AuditEvent);   // nunca bloqueia, nunca aloca no caminho de IRQ
+pub struct AuditEvent {
+    pub time_ns: u64, pub uid: u32, pub pid: u32,
+    pub kind: AuditKind,       // OpenProtected, NetRequest, PermChange, AuthFail, CapDenied, …
+    pub object: u32,           // id estável do objeto, nunca um endereço do kernel
+    pub result: i32,           // 0 ou código de erro
+}
+// user space: só quem tem um handle AUDIT com AUDIT_READ (a sessão de admin)
+audit_read(h_audit, buf, max) -> n        // devolve eventos inteiros; o primeiro pode ser "perdidos: N"
+```
+
+### Criptografia (Fase 16) — CLAUDE, `kernel/src/crypto` (educativa, não auditada)
+```rust
+pub fn sha256(data: &[u8]) -> [u8; 32];
+pub fn chacha20poly1305_seal(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], buf: &mut [u8]) -> [u8; 16];
+pub fn chacha20poly1305_open(key: &[u8; 32], nonce: &[u8; 12], aad: &[u8], buf: &mut [u8], tag: &[u8; 16]) -> Result<(), CryptoError>; // tag comparada em tempo constante
+pub fn ed25519_verify(public: &[u8; 32], msg: &[u8], sig: &[u8; 64]) -> Result<(), CryptoError>;
+pub fn argon2id(password: &[u8], salt: &[u8], params: Argon2Params, out: &mut [u8]) -> Result<(), CryptoError>;
+pub fn rng::fill(out: &mut [u8]);           // CSPRNG do kernel
+// user space
+random_fill(buf, len) -> n                  // sem handle (D-058)
+```
+A assinatura (`ed25519_sign`) vive só na ferramenta do xtask, no host: a
+chave privada nunca entra no kernel nem no repositório.
+
+### Hooks do firewall (Fase 17) — CLAUDE fornece, CODEX (stack de rede) chama
+```rust
+pub enum Verdict { Accept, Drop, Reject }
+pub struct PacketMeta { pub dir: Direction, pub proto: Proto, pub src: IpPort, pub dst: IpPort,
+                        pub socket: Option<SocketId>, pub len: u16 }
+pub fn firewall::check_inbound(meta: &PacketMeta) -> Verdict;   // antes de entregar a um socket
+pub fn firewall::check_outbound(meta: &PacketMeta) -> Verdict;  // antes de enviar
+pub fn firewall::check_bind(owner: Pid, proto: Proto, port: u16) -> Verdict;
+pub fn firewall::check_connect(owner: Pid, dst: IpPort) -> Verdict;
+// user space
+fw_add_rule(h_fw, rule) -> id          // admin: exige FW_ADMIN
+fw_add_block(h_fw, match, ttl_s) -> id // IDS: exige só FW_ADD_BLOCK (nunca abre)
+fw_events(h_fw, buf, max) -> n         // metadados para o IDS, fila limitada
+```
+Regras: os hooks são chamados em contexto de IRQ ou de thread, nunca
+alocam e nunca bloqueiam. Sem regra que aceite, a entrada é `Drop`.

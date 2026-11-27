@@ -339,3 +339,34 @@ Formato:
     acordar leitores a partir do handler do IRQ1).
   - Um só CPU (o lock do scheduler é largado antes da troca).
   - Os ciclos do autoteste vêm do QEMU TCG: não são de hardware real.
+
+### [2026-11-27] — CLAUDE (expansão do roadmap)
+- **Feito:** só documentação e configuração, nenhum código do kernel.
+  - ROADMAP com as Fases 15 (utilizadores, capacidades, auditoria),
+    16 (crypto, binários assinados, disco encriptado), 17 (rede, firewall,
+    IDS), 18 (som, `kpkg`) e 19 (hardware real: ThinkPad T14 Gen 1 AMD),
+    e a identidade "kitty" nas Fases 10 e 14 (ecrã de arranque, tema,
+    mascote, `meow`, snake e tetris, tudo com gráficos originais).
+  - `docs/REDTEAM.md`: rondas de red team vs blue team no fim de cada fase,
+    a partir da 6; etiquetas `vulnerabilidade` e `red-team` criadas.
+  - SECURITY (modelo de ameaça com o atacante local, a app maliciosa, o
+    atacante na rede e o acesso físico ao disco; proteções novas),
+    DECISIONS D-055…D-059, INTERFACES (esboços de capacidades, auditoria,
+    crypto e hooks do firewall), CLAUDE.md e CONTRIBUTING.md.
+  - **Fases 6 e 12 "capability-first" (D-058):** sem `input_open`, handles
+    de DISPLAY/INPUT dados pelo `init`, `process_spawn` com lista de handles,
+    `open_at` relativo a um diretório, `handle_info`, bits de direitos por
+    tipo, `uid`/`gid` e auditoria preparados, `E_BADSIG` reservado.
+- **PRs abertos:** este (`claude/roadmap-expansao`); #75 (6a); #39, #40,
+  #51, #52 à espera de revisão. O #52 (`docs/FASE6.md`) tem de ser alinhado
+  com a D-058 antes do merge.
+- **Proteções de segurança alteradas:** nenhuma ativada; novas PLANEADAS
+  (Fases 15–18).
+- **Bloqueado por / à espera do Codex:** nada.
+- **Próximo passo sugerido para o Codex:** ler o roadmap expandido,
+  atualizar o AGENTS.md e preparar a CI para os testes de red team e de
+  criptografia (runner de `tests/security/redteam/` com o manifesto
+  `aberta`/`corrigida`, e um job no host para os vetores de teste da crypto).
+- **Avisos:** a crypto é educativa e não auditada (D-056). A verificação de
+  assinaturas não protege o kernel nem o Limine sem Secure Boot (ver
+  SECURITY.md, fora de âmbito).
