@@ -37,8 +37,10 @@ pub enum LegacyDevice {
     /// Second serial port (COM2, 16550-compatible): 0x2F8-0x2FF, offsets
     /// 0-7; its interrupt is ISA IRQ 3 (`irq::register_isa(3, …)`). COM1
     /// is **not** claimable: it stays the kernel's diagnostics and panic
-    /// channel (issue #72, D-061). A UART cannot do DMA and no register of
-    /// it affects anything but the UART itself, so no value filter.
+    /// channel (issue #72, D-061). Its registers only affect the UART (and
+    /// its modem and IRQ lines); the DMA that some Super I/O UARTs (IrDA)
+    /// can request needs the 8237 DMA controller, which is never
+    /// claimable. Hence no value filter.
     Com2,
 }
 
@@ -116,7 +118,9 @@ impl LegacyPorts {
         }
         let port = self.device.base().checked_add(offset)?;
         // SAFETY: `port` is one of the allow-listed registers of a device
-        // that has no DMA capability (PS/2 controller, PIT, CMOS, COM2). Reads have
+        // that cannot perform DMA on its own (PS/2 controller, PIT, CMOS,
+        // COM2: UART DMA would need the 8237, which no driver can claim).
+        // Reads have
         // no system-wide effect. Writes that could affect the whole machine
         // (i8042 output port / reset / line pulses, CMOS NMI-disable bit) are
         // filtered by `write8` *before* reaching this port, so the remaining

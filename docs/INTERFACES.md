@@ -361,13 +361,23 @@ pub const CONVENTIONAL_LEN: usize = 256;   // cabeçalho + listas de capacidades
 - **Âmbito:** segmento 0, barramentos 0–255, só o espaço convencional (256 B). O ECAM/MCFG (espaço estendido) vem num contrato posterior.
 - **Exclusão mútua:** o núcleo é o único dono das portas 0xCF8/0xCFC. Cada `read_config` faz a seleção e as leituras sob um único `IrqSpinLock`, por isso a cópia é consistente e nunca se mistura com outro leitor.
 - **Só leitura:** não há escrita de configuração. Escrever pode mover BARs para cima da RAM ou ligar o bus mastering (DMA); isso fica para o contrato de atribuição de recursos.
-- **Enumeração:** percorrer barramento/dispositivo/função. A função 0 com bit 7 do header type indica um dispositivo multifunção. `Absent` não é um erro, é "não há nada aqui".
+- **Enumeração:** percorrer barramento/dispositivo/função.
+  - O header type está no offset 0x0E. Só se sondam as funções 1–7 se o bit 7 do header type da função 0 estiver ligado (alguns dispositivos antigos repetem a função 0 nas outras).
+  - `Absent` não é um erro, é "não há nada aqui".
+  - Com o CRS Software Visibility de PCIe ligado (não está por omissão), o vendor pode aparecer como 0x0001; nesse caso a função está a arrancar e não deve ser usada.
+- **Custo:** um `read_config` de 256 B faz ~130 acessos a portas com as interrupções desligadas (~100–200 µs em hardware real). Serve para a enumeração; não é para leituras frequentes.
 - Marcador de arranque: `[pci] read-only configuration access ready (host bridge vendor 0x....)`.
 
 ### UART para drivers: COM2 (`LegacyDevice::Com2`) — INSTÁVEL
 Fornece: CLAUDE (issue #72, D-061). Usa: CODEX (`kitty-uart`).
-- O driver reclama `legacy::claim(LegacyDevice::Com2)`, que dá um `PortBlock` com os offsets 0–7 a partir de 0x2F8 (sem filtro de valores, porque uma UART não faz DMA nem afeta mais nada), e regista a IRQ com `arch::irq::register_isa(3, handler)`.
-- **A ordem é obrigatória:** primeiro configurar a UART com as interrupções da UART desligadas (IER = 0, OUT2 = 0), depois publicar o estado do driver, depois `register_isa(3, …)`, e só no fim ligar IER/OUT2. O núcleo envia o EOI. Para parar: desligar IER/OUT2 primeiro e só depois `unregister`.
+- O driver reclama `legacy::claim(LegacyDevice::Com2)`, que dá um `PortBlock` com os offsets 0–7 a partir de 0x2F8, e regista a IRQ com `arch::irq::register_isa(3, handler)`.
+  - Não há filtro de valores: os registos só afetam a UART, as linhas de modem e a IRQ.
+  - Qualquer DMA de UARTs Super I/O precisaria do 8237, e o **8237 nunca pode ser reclamado** (é um invariante de `legacy`).
+- **Testar a presença é obrigatório:** sem um segundo `-serial` no QEMU, ou sem COM2 no hardware, as portas flutuam (leituras dão 0xFF e o LSR diz sempre "dados prontos").
+  - Antes de `register_isa`: escrever e ler de volta pelo menos dois valores no scratch register (offset 7), e/ou fazer o teste de loopback da MCR. Se falhar, o driver não se ativa.
+  - Todos os ciclos de espera têm um limite de iterações.
+- **A ordem é obrigatória:** configurar com as interrupções da UART desligadas (IER = 0, OUT2 = 0) → publicar o estado do driver → `register_isa(3, …)` → ligar IER/OUT2. O núcleo envia o EOI.
+- **Para parar:** pôr IER e OUT2 a 0 → `irq::unregister_isa(3)` → largar o `LegacyPorts`. O `Drop` só liberta a posse das portas e não desliga a UART: se ficar ligada, as IRQ 3 continuam a chegar como inesperadas.
 - **A COM1 (0x3F8) não pode ser reclamada:** continua a ser o canal de diagnóstico e de pânico do núcleo. Os caminhos de emergência nunca reconfiguram uma UART que pertença a outro dono. A saída de diagnóstico nunca se mistura com dados de user space.
 - **No QEMU:** o primeiro `-serial` é a COM1 e o segundo é a COM2. O `xtask` precisa de um segundo `-serial` (por exemplo `file:` ou `pty`) para o teste de receção.
 

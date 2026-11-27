@@ -90,18 +90,25 @@ static MECHANISM: IrqSpinLock<Option<Option<Mechanism>>> = IrqSpinLock::new(None
 
 fn probe() -> Option<Mechanism> {
     // SAFETY: 0xCF8 is CONFIG_ADDRESS of the PCI host bridge on every PC
-    // with PCI. Writing it only selects which configuration register 0xCFC
-    // exposes; it cannot start DMA or change the memory map.
+    // with PCI. It is only ever accessed as a dword; chipsets with this
+    // mechanism decode the neighbouring reset register (0xCF9) only for
+    // byte accesses, so a dword write here only selects which configuration
+    // register 0xCFC exposes. It cannot start DMA or change the memory map.
     let address = unsafe { Port::<u32>::new(0xCF8) };
     // SAFETY: 0xCFC is CONFIG_DATA. This module only ever *reads* it, and
     // reading conventional configuration registers has no side effects.
     let data = unsafe { Port::<u32>::new(0xCFC) };
     // The usual probe: the enable bit reads back on a machine with
     // mechanism #1; port 0xCF8 floats (all ones) or differs otherwise.
+    // Restore the old value only if the mechanism exists: without it the
+    // port floats (all ones), and writing 0xFF into the 0xCF9 byte lane
+    // could reset a machine that decodes it at any width (security review).
     let saved = address.read();
     address.write(0x8000_0000);
     let present = address.read() == 0x8000_0000;
-    address.write(saved);
+    if present {
+        address.write(saved);
+    }
     present.then_some(Mechanism { address, data })
 }
 
@@ -133,17 +140,30 @@ pub fn read_config(addr: PciAddress, dst: &mut [u8]) -> Result<(), ConfigError> 
 
 /// Boot self-test: the host bridge at 00:00.0 exists, a function number
 /// out of range is refused, a wrong length is refused, and an empty slot
-/// reads as absent. Returns the host bridge's vendor ID, or `None` (no PCI
-/// or a check failed).
-pub fn selftest() -> Option<u16> {
-    let host = PciAddress::new(0, 0, 0).ok()?;
+/// reads as absent. `Ok(None)`: this machine has no mechanism #1.
+/// `Err`: a check failed (a kernel bug, the caller panics).
+pub fn selftest() -> Result<Option<u16>, &'static str> {
+    let host = PciAddress::new(0, 0, 0).map_err(|_| "00:00.0 refused")?;
     let mut header = [0u8; HEADER_LEN];
-    read_config(host, &mut header).ok()?;
+    match read_config(host, &mut header) {
+        Err(ConfigError::Unavailable) => return Ok(None),
+        Err(_) => return Err("host bridge 00:00.0 not readable"),
+        Ok(()) => {}
+    }
     let vendor = u16::from_le_bytes([header[0], header[1]]);
     let bad_number = PciAddress::new(0, 32, 0) == Err(ConfigError::OutOfRange)
         && PciAddress::new(0, 0, 8) == Err(ConfigError::OutOfRange);
     let bad_len = read_config(host, &mut [0u8; 16]) == Err(ConfigError::OutOfRange);
     let empty = PciAddress::new(255, 31, 7).map(|a| read_config(a, &mut [0u8; HEADER_LEN]))
         == Ok(Err(ConfigError::Absent));
-    (bad_number && bad_len && empty).then_some(vendor)
+    if !bad_number {
+        return Err("device/function numbers out of range were accepted");
+    }
+    if !bad_len {
+        return Err("a length other than 64/256 was accepted");
+    }
+    if !empty {
+        return Err("an empty slot did not read as absent");
+    }
+    Ok(Some(vendor))
 }
