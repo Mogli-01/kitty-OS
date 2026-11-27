@@ -66,6 +66,25 @@ pub fn name(vector: u64) -> &'static str {
 
 /// Entry point from the trap stub.
 pub(super) fn handle(frame: &mut TrapFrame) {
+    // A page fault on the user-copy instruction is an expected outcome (a
+    // bad user pointer), not a kernel bug: resume at the copy's fixup,
+    // which returns an error to the caller. Only faults raised in ring 0
+    // at exactly that instruction qualify.
+    // The faulting address must be on the *user* side (the kernel side is
+    // always a valid kernel buffer: a fault there is memory corruption), and
+    // a reserved-bit fault means corrupted page tables: both stay fatal
+    // instead of being turned into a quiet E_FAULT (security review).
+    const PF_RESERVED_BIT: u64 = 1 << 3;
+    const USER_END: u64 = 0x0000_8000_0000_0000;
+    if frame.vector == VEC_PAGE_FAULT
+        && frame.cs & 3 == 0
+        && frame.error_code & PF_RESERVED_BIT == 0
+        && cpu::read_cr2() < USER_END
+        && let Some(fixup) = super::usercopy::fixup_for(frame.rip)
+    {
+        frame.rip = fixup;
+        return;
+    }
     match frame.vector {
         VEC_BREAKPOINT => {
             // `int3` is a trap: the saved RIP already points after it, so

@@ -36,6 +36,10 @@ selftest-irq-pit = []
 selftest-preempt = []
 # A kernel thread recurses into its stack guard page: expect a double fault.
 selftest-thread-stack-overflow = []
+# The kernel reads a user page directly: with SMAP, expect a #PF report.
+selftest-smap = []
+# The kernel executes a user page: with SMEP, expect a #PF report.
+selftest-smep = []
 
 [dependencies]
 limine = "0.6.5"

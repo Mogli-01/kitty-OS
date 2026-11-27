@@ -10,6 +10,7 @@ pub mod hhdm;
 pub mod paging;
 pub mod pmm;
 pub mod stack;
+pub mod user;
 pub mod vmm;
 
 pub use addr::{PhysAddr, VirtAddr};
