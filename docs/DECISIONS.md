@@ -1213,3 +1213,17 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
   - `map_page` recusa conteúdo maior do que uma página.
 
   Os testes do autoteste confirmam a limpeza dos seletores e da FPU: tirar uma das duas linhas do scheduler faz o autoteste falhar.
+
+
+### D-167 — ABI inicial da shell e retorno por IRETQ (2026-11-27, CODEX)
+
+A consola e os ficheiros da Fase 7 usam os números e assinaturas
+publicados em INTERFACES.md. A entrada é `syscall`, com a pilha do
+núcleo sincronizada com o RSP0. O retorno reutiliza o frame de traps
+e IRETQ depois de validar RIP e RSP e limitar os flags. Esta opção
+evita introduzir já um segundo caminho de retorno com SYSRETQ.
+
+O processo inicial recebe os handles de consola e da raiz do initrd.
+Os handles de ficheiro só permitem leitura, têm cursor e geração e
+são libertados ao morrer o processo. A tabela geral de capacidades e
+a transferência entre processos continuam a seguir D-058.

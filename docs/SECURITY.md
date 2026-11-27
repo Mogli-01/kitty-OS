@@ -98,7 +98,9 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | SMEP (CR4.20, se suportado) | o kernel executar código de user ("ret2user") | ATIVA (provado por `selftest-smep`) | 6 |
 | SMAP (CR4.21, se suportado); janela `stac`/`clac` de uma instrução; `clac` à entrada do dispatch | o kernel ler/escrever memória de user sem querer | ATIVA (provado por `selftest-smap`) | 6 |
 | UMIP (CR4.11, se suportado) | user space ler GDT/IDT (`sgdt`/`sidt`) e descobrir endereços | ATIVA (provado em ring 3 pelo autoteste da 6b: `sgdt` dá #GP) | 6 |
-| Validação de todos os argumentos das syscalls | ataques via syscall | PLANEADA | 6 |
+| Validação de argumentos das syscalls | cópias fora da memória do processo e acesso sem handle | PARCIAL (consola e ficheiros da Fase 7, em revisão) | 6–7 |
+| ELF estático de `/sbin/init` validado, segmentos sem sobreposição e sem W+X | carregar imagens inválidas e criar mapeamentos executáveis e graváveis | PARCIAL (em revisão) | 6–7 |
+| DIR do initrd só de leitura, pesquisa relativa e handles de ficheiro com geração | escrita no arquivo e reutilização de handles fechados | PARCIAL (em revisão) | 7 |
 | `UserSlice`/`UserPtr` + `copy_from_user`/`copy_to_user`; #PF na cópia → `Fault` (nunca panic), só se o CR2 for de user e sem `RSVD` | TOCTOU, ponteiros para o kernel, crash por ponteiro mau, corrupção mascarada | ATIVA | 6 |
 | Invariante: a metade de baixo só tem páginas U (D-054) | `copy_*_user` alcançar páginas de supervisor mapeadas em baixo | ATIVA (`map_user_frame` só cria páginas U; `audit_user_half` verifica antes de o processo correr) | 6 |
 | Espaços de endereçamento separados por processo (metade do kernel partilhada, metade de user própria; CR3 trocado em cada troca de thread) | um processo ler outro | ATIVA (D-060) | 6 |
