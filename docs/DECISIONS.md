@@ -1152,3 +1152,29 @@ A pilha usa o mesmo `Damage` que o cursor e a apresentação. Ao subir uma
 janela, regista apenas as interseções com as camadas ultrapassadas.
 Mover e remover exigem recompor os limites visíveis afetados, incluindo
 as camadas subjacentes visíveis através de regiões transparentes.
+
+### D-116 — Empacotar initrd opcional na ESP e na ISO (2026-11-26, CODEX)
+
+`xtask --initrd` lê um arquivo regular entre 1 byte e 128 MiB, o limite
+que o núcleo usa para receber o módulo em `docs/INTERFACES.md`.
+Valida-o com o VFS antes de regenerar o meio de arranque e usa os mesmos
+bytes para escrever `/boot/initrd.tar`. A configuração do Limine associa
+a marca `kitty-initrd` ao módulo.
+
+Em complemento à D-016, o xtask pode usar crates por caminho do próprio
+workspace para partilhar a validação com o núcleo. O carregador do
+initrd depende de `kitty-vfs` e a política sobre crates externos da
+D-016 aplica-se à ferramenta.
+
+### D-123 — Publicar a raiz do initrd após validar o arquivo (2026-11-26, CODEX)
+
+`devices::init` monta `Platform::initrd` depois de o heap estar pronto.
+O VFS valida todo o USTAR e o índice antes de guardar a raiz. Os dados
+dos ficheiros permanecem nas páginas só de leitura reservadas pelo
+núcleo. Um arquivo recusado deixa a raiz indisponível e o arranque
+continua com a razão na consola série.
+
+O `xtask test-initrd` verifica um ficheiro conhecido, uma imagem em que
+o checksum do cabeçalho é inválido e a ausência de módulo. Os ensaios
+usam meios de arranque próprios em `build/initrd-tests/`. O comando
+normal `--initrd` valida o arquivo no host antes de preparar o meio.

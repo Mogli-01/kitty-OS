@@ -54,6 +54,8 @@ selftest-smep = []
 # Prints decoded events to the serial console for the automated QEMU test.
 selftest-ps2-input = []
 selftest-ps2-keyboard = ["selftest-ps2-input"]
+# Checks the known file and directory in the xtask initrd fixture.
+selftest-initrd = []
 
 [dependencies]
 limine = "0.6.5"
@@ -63,3 +65,4 @@ kitty-apic = { path = "../drivers/apic", optional = true }
 
 kitty-pit = { path = "../drivers/pit" }
 kitty-ps2 = { path = "../drivers/ps2" }
+kitty-vfs = { path = "../fs/vfs" }

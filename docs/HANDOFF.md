@@ -1483,3 +1483,56 @@ Formato:
   associa as superfícies partilhadas às janelas pelo protocolo.
 - **Avisos** — a seleção usa a geometria e conserva a ordem das camadas.
   A fila de eventos e a política de foco ficam para a integração.
+
+### [2026-11-26] — CODEX (empacotamento do initrd)
+
+- **Feito** — opção `--initrd` para os comandos de imagem e QEMU,
+  configuração Limine e guia `BUILDING.md`. Decisão D-116.
+- **PRs abertos** — ramo `codex/empacotar-initrd` sobre o #24.
+- **Testes/fuzzing** — teste de configuração no host e em Miri.
+  BIOS e UEFI arrancaram com o arquivo incluído. O conteúdo extraído
+  da ISO coincide byte a byte com a origem. Um arquivo inválido
+  foi recusado antes de alterar a imagem existente.
+- **Benchmarks** — sem medição de impacto do módulo no arranque.
+- **Bloqueado por / à espera do Claude** — disponibilização dos bytes
+  do Limine ao núcleo e à raiz do VFS (#22).
+- **Próximo passo sugerido para o Claude** — usar a marca
+  `kitty-initrd` no contrato do módulo ou atualizar a #22 se mudar.
+
+### [2026-11-26] — CODEX (limite e entrega do initrd no xtask)
+
+- **Feito** — o xtask verifica o tamanho do arquivo antes de o carregar
+  e a CI exige que o núcleo confirme a receção do módulo.
+- **PRs abertos** — atualização do #31 sobre o #24.
+- **Testes/fuzzing** — o ensaio de arranque com arquivo corre em BIOS
+  e UEFI, com o perfil release. Compara também o conteúdo da imagem.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — o host aplica o mesmo limite de
+  128 MiB que o núcleo usa para o módulo.
+- **Bloqueado por / à espera do Claude** — a entrega está disponível no
+  #38. O parser e o VFS estão em revisão.
+- **Próximo passo sugerido para o Claude** — usar a raiz do VFS nas
+  futuras operações de ficheiros.
+- **Avisos** — o ensaio do #31 confirma que o núcleo recebe o módulo.
+  O PR de montagem verifica também a leitura do arquivo.
+
+### [2026-11-26] — CODEX (montagem do initrd no arranque)
+
+- **Feito** — montar a raiz só de leitura a partir de `Platform::initrd`
+  e guardar o índice após validação completa. Decisão D-123.
+- **PRs abertos** — ramo `codex/montar-initrd-arranque` sobre o #31.
+  #20, #23, #24 e #31 atualizados para o `main` que inclui o #38.
+- **Testes/fuzzing** — 12 arranques em QEMU 8.2.2 passaram em BIOS e
+  UEFI, debug e release. Verificaram o conteúdo de `/etc/kitty.txt` e a
+  sua entrada de diretório, a recusa de um checksum inválido e o arranque
+  sem módulo. Fuzzing ASan do parser e do VFS passou 396 842 e 293 504
+  casos, respetivamente.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — o VFS publica a raiz depois de
+  validar todos os cabeçalhos, tamanhos, nomes e conflitos do arquivo.
+- **Bloqueado por / à espera do Claude** — as operações de ficheiros
+  em user space dependem da ABI de syscalls e dos direitos por processo.
+- **Próximo passo sugerido para o Claude** — definir a interface de
+  ficheiros para os processos quando o user mode estiver disponível.
+- **Avisos** — o autoteste usa arquivos e meios de arranque próprios
+  em `build/initrd-tests/`.

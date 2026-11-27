@@ -41,6 +41,7 @@ dependencies = [
  "kitty-hal",
  "kitty-pit",
  "kitty-ps2",
+ "kitty-vfs",
  "limine",
 ]
 
@@ -90,3 +91,6 @@ checksum = "29363c0f37e66e18575fadf7141c56ee7ea04ae5fecbeb25eff303f77af203a9"
 [[package]]
 name = "xtask"
 version = "0.1.0"
+dependencies = [
+ "kitty-vfs",
+]
