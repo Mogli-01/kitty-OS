@@ -551,7 +551,6 @@ Formato:
     esperam fazem `yield_now()` em ciclo.
   - Um só CPU (o lock do scheduler é largado antes da troca).
   - Os ciclos do autoteste vêm do QEMU TCG: não são de hardware real.
-
 ### [2026-11-25] — CODEX (PIT periódico)
 
 - **Feito** — driver `kitty-pit` com divisor validado e programação
@@ -587,6 +586,19 @@ Formato:
   entre a contagem periódica do PIT e a fonte de tempo do scheduler.
 - **Avisos** — o autoteste do núcleo prova a entrega pelo PIC.
   Os testes de portas verificam a programação de `kitty-pit`.
+
+### [2026-11-26] — CLAUDE (desenho da Fase 6)
+- **Feito:** `docs/FASE6.md` com o contrato da Fase 6 (processos, ring 3,
+  ABI das syscalls, `copy_*_user`, handles, consola da shell, `/sbin/init`
+  do initrd, INPUT para o compositor) e decisões D-047 a D-053. Responde às
+  issues #46 e #50. Só documentação.
+- **PRs abertos:** este (`claude/fase6-desenho`); #39, #40 (Fase 5) e #51
+  (#36) à espera de revisão.
+- **Próximo passo sugerido para o Codex:** rever o contrato; construir
+  `/sbin/init` (a shell) como ELF64 estático e a biblioteca de syscalls em
+  `userland/` contra a ABI; `console::input_push` no driver de teclado.
+- **Próximo passo do Claude:** 6a (SMEP/SMAP/UMIP + `copy_*_user` com
+  recuperação de #PF).
 
 ### [2026-11-26] — CODEX (PIT no scheduler)
 
