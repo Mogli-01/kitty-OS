@@ -42,8 +42,27 @@ pub(crate) fn load(path: &Path) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-pub(crate) fn limine_config(with_initrd: bool) -> String {
-    let mut config = LIMINE_CONF.to_owned();
+// Give the artwork a brief, interruptible display before booting the kernel.
+const SPLASH_SETTINGS: &str = "\
+timeout: 2
+wallpaper: boot():/boot/kitty-welcome.png
+wallpaper_style: centered
+backdrop: 161B27
+term_background: FF161B27
+interface_branding: kitty-OS
+interface_branding_colour: 7
+interface_help_colour: 7
+term_palette: 161B27;FF9696;92D1BA;F3B477;25384F;D87F94;B5BED0;B5BED0
+term_palette_bright: 394159;FF9696;92D1BA;F3B477;465978;D87F94;F4EDE7;F4EDE7
+interface_help_hidden: yes
+";
+
+pub(crate) fn limine_config(with_initrd: bool, splash: bool) -> String {
+    let mut config = if splash {
+        LIMINE_CONF.replacen("timeout: 0\n", SPLASH_SETTINGS, 1)
+    } else {
+        LIMINE_CONF.to_owned()
+    };
     if with_initrd {
         config.push_str(
             "    module_path: boot():/boot/initrd.tar\n    module_string: kitty-initrd\n",
@@ -58,11 +77,19 @@ mod tests {
 
     #[test]
     fn adds_module_metadata_only_when_staging_initrd() {
-        assert_eq!(limine_config(false), LIMINE_CONF);
-        let enabled = limine_config(true);
+        assert_eq!(limine_config(false, false), LIMINE_CONF);
+        let enabled = limine_config(true, false);
         assert!(enabled.starts_with(LIMINE_CONF));
         assert!(enabled.ends_with(
             "    module_path: boot():/boot/initrd.tar\n    module_string: kitty-initrd\n"
         ));
+    }
+    #[test]
+    fn adds_splash_options_without_changing_initrd_or_default_timeout() {
+        let config = limine_config(true, true);
+        assert!(config.contains("timeout: 2\nwallpaper: boot():/boot/kitty-welcome.png\n"));
+        assert_eq!(config.matches("timeout:").count(), 1);
+        assert!(config.contains("module_string: kitty-initrd"));
+        assert!(!limine_config(false, false).contains("wallpaper"));
     }
 }

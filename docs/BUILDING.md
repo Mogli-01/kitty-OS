@@ -30,6 +30,19 @@ cargo xtask test --bios --release # teste automático em BIOS
 `cargo xtask iso --release` escreve `build/kitty-os.iso`. O xtask obtém
 a versão de Limine fixada pelo projeto na primeira preparação da imagem.
 
+## Ver o ecrã de boas-vindas
+
+```sh
+cargo xtask run --release --splash         # UEFI
+cargo xtask run --release --bios --splash  # BIOS
+cargo xtask iso --release --splash         # build/kitty-os.iso
+```
+
+O Limine mostra a arte do kitty-OS durante dois segundos e lança o
+kernel. Podes premir uma tecla para parar a contagem ou Enter para
+selecionar a entrada. `esp` também aceita `--splash`. Depois do ecrã
+de boas-vindas aparece a consola de arranque do kernel.
+
 ## Empacotar um initrd
 
 Crie uma pasta com ficheiros regulares e diretórios. Pode gerar o arquivo

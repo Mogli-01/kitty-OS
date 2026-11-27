@@ -1536,3 +1536,18 @@ Formato:
   ficheiros para os processos quando o user mode estiver disponível.
 - **Avisos** — o autoteste usa arquivos e meios de arranque próprios
   em `build/initrd-tests/`.
+
+### 2026-11-27 — CODEX
+- Feito: ecrã de boas-vindas com a paleta e o gato em pixel art da
+  identidade kitty. O xtask disponibiliza `--splash` em run, esp e iso.
+- PRs abertos: ramo `codex/boot-splash`.
+- Testes/fuzzing: 13 testes do xtask. Capturas do ecrã em QEMU,
+  BIOS e UEFI release, seguidas da confirmação do arranque na série.
+- Benchmarks: a opção apresenta o ecrã durante dois segundos.
+  A configuração normal mantém o arranque imediato.
+- Proteções de segurança alteradas: nenhuma. Arte estática incluída
+  na imagem pelo xtask, sem `unsafe` novo.
+- Bloqueado por / à espera do Claude: nenhuma dependência para este
+  ecrã. A entrega futura ao compositor depende de DISPLAY (#74).
+- Próximo passo sugerido para o Claude: prosseguir com o contrato DISPLAY.
+- Avisos: o ecrã é apresentado pelo Limine; a consola aparece após a transição.

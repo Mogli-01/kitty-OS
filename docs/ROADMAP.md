@@ -158,7 +158,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Double buffering | CODEX | Dois buffers com apresentação total ou parcial em revisão no ramo `codex/double-buffer` |
 | Framebuffer mapeado com write-combining (usa a API de PAT da Fase 3) | CODEX | TODO |
 | Objeto `DISPLAY`: `display_map(h)` exige um handle com `MAP`, que o `init` dá só ao compositor; a consola do kernel larga o ecrã (D-058) | CLAUDE | TODO |
-| Identidade "kitty": ecrã de arranque com o logótipo do gato e uma animação simples | CODEX | TODO |
+| Identidade "kitty": ecrã de arranque com o logótipo do gato e uma animação simples | CODEX | Ecrã estático opcional no Limine, validado em QEMU com BIOS e UEFI. Animação pendente |
 
 ## Fase 11 — Input
 | Tarefa | Dono | Estado |
