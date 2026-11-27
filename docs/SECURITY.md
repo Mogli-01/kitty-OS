@@ -66,11 +66,11 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | ICR do local APIC fechado; allow-list de modos de entrega e vetores 0x20–0xEF em LVTs e redireções; seletor do I/O APIC sob lock e reposto (D-042) | driver "seguro" a acordar outros CPUs com código arbitrário, resetá-los, ou entregar IRQs em vetores de exceção | ATIVA | 4 |
 | Módulo initrd: marca exata, único, tamanho limitado, todo dentro de memória de módulos, só de leitura e NX (D-043) | initrd falso/ambíguo, slice para fora do módulo, escrita no initrd | ATIVA | 7 |
 | Comandos do i8042 por allow-list; bit NMI-disable do CMOS sempre limpo (D-038) | reset da máquina, A20 desligado (corrupção de memória) ou NMIs desligados por um driver "seguro" | ATIVA | 4 |
-| SMEP | o kernel executar código de user | PLANEADA | 6 |
-| SMAP | o kernel ler/escrever memória de user sem querer | PLANEADA | 6 |
-| UMIP | user space ler GDT/IDT (`sgdt`/`sidt`) e descobrir endereços | PLANEADA | 6 |
+| SMEP (CR4.20, se suportado) | o kernel executar código de user ("ret2user") | ATIVA (provado por `selftest-smep`) | 6 |
+| SMAP (CR4.21, se suportado); janela `stac`/`clac` de uma instrução; `clac` à entrada do dispatch | o kernel ler/escrever memória de user sem querer | ATIVA (provado por `selftest-smap`) | 6 |
+| UMIP (CR4.11, se suportado) | user space ler GDT/IDT (`sgdt`/`sidt`) e descobrir endereços | ATIVA (prova em ring 3 virá com a Fase 6b) | 6 |
 | Validação de todos os argumentos das syscalls | ataques via syscall | PLANEADA | 6 |
-| `UserPtr<T>` + `copy_from_user`/`copy_to_user` | TOCTOU e ponteiros para o kernel | PLANEADA | 6 |
+| `UserSlice`/`UserPtr` + `copy_from_user`/`copy_to_user`; #PF na cópia → `Fault` (nunca panic) | TOCTOU, ponteiros para o kernel, crash por ponteiro mau | ATIVA | 6 |
 | Espaços de endereçamento separados por processo | um processo ler outro | PLANEADA | 6 |
 | Página nula nunca mapeada | null deref explorável | PLANEADA | 6 |
 | RNG do kernel (RDRAND/RDSEED + entropia) | aleatoriedade previsível | PLANEADA | 8 |

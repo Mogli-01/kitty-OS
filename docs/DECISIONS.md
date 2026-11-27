@@ -455,3 +455,16 @@ isso o `&'static [u8]` é sólido durante toda a vida do kernel.
 *Revisto depois do `security-reviewer`*, que confirmou o caso da
 sobreposição com a imagem do kernel. Sem módulo, ou módulo recusado: o arranque
 continua sem initrd (diagnóstico), com a razão escrita no log.
+
+### D-054 — Implementação da 6a: SMEP/SMAP/UMIP e `copy_*_user` (2026-11-27, CLAUDE)
+- SMEP, SMAP e UMIP são ligados no CR4 **só se o CPUID os reportar**
+  (escrever um bit reservado dá #GP); o arranque escreve na consola quais
+  ficaram ativos, para um CPU antigo sem SMAP não passar despercebido.
+- A cópia é um único `rep movsb` numa rotina em assembly com uma "tabela de
+  exceções" de uma entrada: um #PF em ring 0 **exatamente** nessa instrução
+  é recuperado saltando para um fixup que devolve erro. Qualquer outro #PF
+  do kernel continua a ser fatal.
+- `stac`/`clac` rodeiam só a cópia. **Detalhe importante:** o CPU não limpa
+  a flag AC ao entrar numa interrupção, por isso `trap_dispatch` faz `clac`
+  à entrada; sem isso, um handler que interrompesse uma cópia correria com
+  o SMAP desligado. O `iretq` repõe a AC de quem foi interrompido.

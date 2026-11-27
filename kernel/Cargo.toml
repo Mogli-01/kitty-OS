@@ -31,6 +31,10 @@ selftest-heap-overflow = []
 # Fires a real hardware interrupt (PIT IRQ0 through the 8259 PIC) and
 # checks it reaches its handler. Does not panic: expect exit code 33.
 selftest-irq-pit = []
+# The kernel reads a user page directly: with SMAP, expect a #PF report.
+selftest-smap = []
+# The kernel executes a user page: with SMEP, expect a #PF report.
+selftest-smep = []
 
 [dependencies]
 limine = "0.6.5"

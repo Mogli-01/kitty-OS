@@ -76,11 +76,11 @@ preparado para a interface gráfica (Fases 10–14).
 | Tarefa | Dono | Estado |
 |---|---|---|
 | `syscall`/`sysret`, tabela de syscalls, validação de TODOS os argumentos | CLAUDE | TODO |
-| `UserPtr<T>`, `copy_from_user` / `copy_to_user` | CLAUDE | TODO |
+| `UserPtr<T>`, `copy_from_user` / `copy_to_user` (com recuperação de #PF) | CLAUDE | FEITO |
 | Espaços de endereçamento separados por processo | CLAUDE | TODO |
 | ELF loader | CLAUDE | TODO |
 | GUI-PREP: objetos do kernel + tabela de handles por processo, com direitos (D-018) | CLAUDE | TODO |
-| SEGURANÇA: SMEP, SMAP, UMIP ativos | CLAUDE | TODO |
+| SEGURANÇA: SMEP, SMAP, UMIP ativos | CLAUDE | FEITO |
 | Biblioteca de syscalls para userland | CODEX | TODO |
 | Fuzzing das syscalls | CODEX | TODO |
 
