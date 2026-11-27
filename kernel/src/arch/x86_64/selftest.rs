@@ -171,3 +171,89 @@ pub fn irq_pit() -> bool {
     let _ = pit.write8(3, 0x30);
     delivered
 }
+
+/// Preemption self-test: two threads spin without ever yielding while the
+/// boot thread also spins; a PIT-driven `sched::tick` must make all three
+/// progress. Returns whether both workers ran and finished.
+#[cfg(feature = "selftest-preempt")]
+pub fn preempt() -> bool {
+    use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use kitty_hal::PortBlock;
+
+    use super::irq::{self, Vector};
+    use super::legacy::{self, LegacyDevice};
+
+    static A: AtomicU64 = AtomicU64::new(0);
+    static B: AtomicU64 = AtomicU64::new(0);
+    static STOP: AtomicBool = AtomicBool::new(false);
+    static DONE: AtomicU64 = AtomicU64::new(0);
+    fn busy(counter: &AtomicU64) {
+        while !STOP.load(Ordering::Acquire) {
+            counter.fetch_add(1, Ordering::Relaxed); // never yields
+        }
+        DONE.fetch_add(1, Ordering::Release);
+    }
+    fn worker_a() {
+        busy(&A);
+    }
+    fn worker_b() {
+        busy(&B);
+    }
+    fn on_tick(_: Vector) {
+        crate::sched::tick();
+    }
+
+    let Some(pit) = legacy::claim(LegacyDevice::Pit) else {
+        return false;
+    };
+    // ~1 kHz rate generator, programmed while IRQ0 is masked.
+    let programmed = pit.write8(3, 0x34).is_some()
+        && pit.write8(0, 0xA9).is_some()
+        && pit.write8(0, 0x04).is_some();
+    if !programmed || irq::register_isa(0, on_tick).is_err() {
+        return false;
+    }
+    if crate::sched::spawn("busy-a", worker_a).is_err()
+        || crate::sched::spawn("busy-b", worker_b).is_err()
+    {
+        return false;
+    }
+    // The boot thread spins too, without yielding: only preemption can let
+    // the workers run.
+    let mut spins = 0u64;
+    while (A.load(Ordering::Relaxed) == 0 || B.load(Ordering::Relaxed) == 0)
+        && spins < 2_000_000_000
+    {
+        core::hint::spin_loop();
+        spins += 1;
+    }
+    let both_ran = A.load(Ordering::Relaxed) > 0 && B.load(Ordering::Relaxed) > 0;
+    STOP.store(true, Ordering::Release);
+    while DONE.load(Ordering::Acquire) < 2 {
+        crate::sched::yield_now();
+    }
+    let _ = irq::unregister_isa(0);
+    let _ = pit.write8(3, 0x30); // stop the PIT (mode 0, no count loaded)
+    crate::sched::yield_now(); // reap the dead workers
+    both_ran
+}
+
+/// Runs a kernel thread that recurses into its stack guard page. Expect a
+/// double fault on the IST stack (the #PF cannot be delivered on the broken
+/// thread stack).
+#[cfg(feature = "selftest-thread-stack-overflow")]
+pub fn thread_stack_overflow() {
+    fn overflow() {
+        #[allow(unconditional_recursion)]
+        fn recurse(depth: u64) -> u64 {
+            let buf = core::hint::black_box([depth; 64]);
+            recurse(depth + 1) + buf[(depth % 64) as usize]
+        }
+        core::hint::black_box(recurse(0));
+    }
+    if crate::sched::spawn("overflow", overflow).is_ok() {
+        loop {
+            crate::sched::yield_now();
+        }
+    }
+}

@@ -83,6 +83,8 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | Deteção de double free e overflow de referências no PMM | dois donos para a mesma memória | ATIVA | 3 |
 | Heap: pedaços limpos ao libertar, links codificados e validados, deteção de double free (D-035) | fuga de dados antigos; use-after-free a corromper o alocador | ATIVA | 3 |
 | Heap: página de guarda depois de cada alocação grande | overflow de um buffer grande a corromper outro | ATIVA | 3 |
+| Pilhas das threads do kernel com página de guarda e espaço por mapear por cima; frames limpos ao libertar (D-045) | stack overflow silencioso entre threads; fuga de dados de uma thread morta | ATIVA | 5 |
+| Sem preempção com `SpinLock` preso; troca só depois do EOI (D-045) | deadlocks e IRQs presos por preempção no sítio errado | ATIVA | 5 |
 | Locks que desativam interrupções em todos os globais (D-037) | deadlocks em handlers de interrupção | ATIVA | 4 |
 | `cli`/`sti`/`hlt` como barreiras de memória do compilador (D-037) | acessos movidos para fora de secções críticas | ATIVA | 4 |
 | PIC remapeado para 0x20–0x2F e mascarado por omissão (D-039) | IRQs confundidos com exceções (0x08 = double fault); interrupções de dispositivos não pedidas | ATIVA | 4 |
