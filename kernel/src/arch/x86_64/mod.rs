@@ -2,6 +2,7 @@
 
 pub mod apic;
 pub mod boot;
+pub mod context;
 pub mod cpu;
 mod exceptions;
 pub mod gdt;
@@ -20,7 +21,9 @@ pub mod qemu;
     feature = "selftest-exec-data",
     feature = "selftest-write-idt",
     feature = "selftest-heap-overflow",
-    feature = "selftest-irq-pit"
+    feature = "selftest-irq-pit",
+    feature = "selftest-preempt",
+    feature = "selftest-thread-stack-overflow"
 ))]
 pub mod selftest;
 pub mod serial;
