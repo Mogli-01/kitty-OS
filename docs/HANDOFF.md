@@ -499,3 +499,20 @@ Formato:
 - **Próximo passo sugerido para o Claude** — manter o estado dessas
   interfaces no handoff.
 - **Avisos** — execução no host com uma fonte PSF2 fornecida pelo utilizador.
+
+### [2026-11-27] — CODEX (fontes da demonstração gráfica)
+
+- **Feito** — o exemplo valida todos os glifos usados nas duas janelas
+  e indica o primeiro carácter ausente antes de criar os ficheiros.
+- **PRs abertos** — atualização do #64.
+- **Testes/fuzzing** — 38 testes gráficos no host, fmt e Clippy
+  passaram. A fonte LatGrkCyr-12x22 produziu os dois PPM de referência
+  byte a byte. Uma fonte PSF2 sintética com os três acentos mas sem
+  o glifo de `T` foi recusada sem criar o diretório de saída.
+- **Benchmarks** — sem medições nesta ronda.
+- **Proteções de segurança alteradas** — validação da fonte fornecida
+  ao exemplo antes de escrever ficheiros no host.
+- **Bloqueado por / à espera do Claude** — consola e apresentação de
+  aplicações gráficas no QEMU.
+- **Próximo passo sugerido para o Claude** — manter o estado das
+  interfaces de consola e apresentação no handoff.

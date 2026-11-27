@@ -149,8 +149,9 @@ omitir ambos, essa célula mostra o fundo. O terminal pode consultar
 
 ## Ver o terminal em duas janelas no host
 
-Usa uma fonte PSF2 descomprimida até 12 × 24 píxeis que inclua `é`,
-`ã` e `ç`. Por exemplo, usa `LatGrkCyr-12x22.psfu` do projeto kbd.
+Usa uma fonte PSF2 descomprimida até 12 × 24 píxeis com um mapa Unicode.
+O exemplo exige um glifo para cada carácter que desenha, incluindo
+`é`, `ã` e `ç`. A fonte `LatGrkCyr-12x22.psfu` do projeto kbd é compatível.
 
 ```sh
 cargo run -p kitty-gfx --example terminal_windows --locked -- /caminho/fonte.psfu /tmp/kitty-terminal-demo

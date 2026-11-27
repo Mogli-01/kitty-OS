@@ -12,6 +12,8 @@ const WIDTH: u32 = 384;
 const HEIGHT: u32 = 192;
 const FRAME_BYTES: usize = (WIDTH * HEIGHT * 4) as usize;
 const MAX_FONT_BYTES: u64 = 4 * 1024 * 1024;
+const TERMINAL_TEXT: &str = "Terminal\n$ echo café\ncafé";
+const NOTICE_TEXT: &str = "Janela\nAção";
 const INK: Color = Color::rgb(244, 237, 231);
 const DESKTOP: Color = Color::rgb(22, 27, 39);
 
@@ -39,13 +41,16 @@ fn run() -> Result<(), String> {
     }
     let font = Psf2Font::parse(&bytes).map_err(|error| format!("invalid PSF2 font: {error:?}"))?;
     let (glyph_width, glyph_height) = font.bitmap().dimensions();
-    if glyph_width > 12
-        || glyph_height > 24
-        || font.glyph_for_char('é').is_none()
-        || font.glyph_for_char('ã').is_none()
-        || font.glyph_for_char('ç').is_none()
+    if glyph_width > 12 || glyph_height > 24 {
+        return Err("use a PSF2 font up to 12 × 24 pixels".into());
+    }
+    if let Some(character) = TERMINAL_TEXT
+        .chars()
+        .chain(NOTICE_TEXT.chars())
+        .filter(|&character| character != '\n')
+        .find(|&character| font.glyph_for_char(character).is_none())
     {
-        return Err("use a PSF2 font up to 12 × 24 pixels with é, ã and ç".into());
+        return Err(format!("PSF2 font lacks the demo glyph for {character:?}"));
     }
 
     let mut terminal = [0; 240 * 96 * 4];
@@ -57,7 +62,7 @@ fn run() -> Result<(), String> {
     draw_text(
         &mut layers[0],
         font,
-        "Terminal\n$ echo café\ncafé",
+        TERMINAL_TEXT,
         20,
         4,
         Color::rgb(37, 56, 79),
@@ -65,7 +70,7 @@ fn run() -> Result<(), String> {
     draw_text(
         &mut layers[1],
         font,
-        "Janela\nAção",
+        NOTICE_TEXT,
         13,
         3,
         Color::rgb(103, 49, 71),
