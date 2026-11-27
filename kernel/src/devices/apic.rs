@@ -11,6 +11,9 @@ use crate::arch::apic::{self, IoApicRegisters, LocalApicRegisters};
 use crate::arch::irq::{self, ISA_LINES, InterruptController, IrqError, Vector};
 use crate::sync::IrqSpinLock;
 
+#[cfg(all(feature = "selftest-lapic-timer", feature = "qemu-exit"))]
+mod timer_test;
+
 type Io = IoApic<IoApicRegisters>;
 
 #[derive(Clone, Copy)]
@@ -48,6 +51,8 @@ pub(super) fn init(madt: Option<&[u8]>) {
     // Publish the prepared state before the IRQ core can call any methods.
     *CONTROLLER.0.lock() = Some(state);
     irq::set_controller(&CONTROLLER);
+    #[cfg(all(feature = "selftest-lapic-timer", feature = "qemu-exit"))]
+    timer_test::start();
 }
 
 fn prepare(bytes: &[u8]) -> Result<State, &'static str> {
@@ -220,6 +225,10 @@ impl InterruptController for Controller {
             .lock()
             .as_mut()
             .is_some_and(|state| state.local.end_of_interrupt(vector.0).is_ok());
+        #[cfg(all(feature = "selftest-lapic-timer", feature = "qemu-exit"))]
+        if _acknowledged {
+            timer_test::acknowledged(vector);
+        }
         #[cfg(feature = "selftest-xapic")]
         if _acknowledged
             && vector.0 == IRQ0_VECTOR.load(Ordering::Relaxed)

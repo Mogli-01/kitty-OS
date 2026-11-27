@@ -35,3 +35,16 @@ A matriz também arranca com a feature `selftest-xapic` e o ACPI
 desativado no QEMU. Em BIOS usa `pc,acpi=off` e exige `NoRsdp`.
 Em UEFI usa `q35,acpi=off` e aceita `NoMadt` ou `NoRsdp`. Nos dois
 modos, o PIC tem de permanecer ativo e o timer tem de entregar dois IRQ0.
+
+### Verificar o timer do Local APIC
+
+`selftest-lapic-timer` reserva um vetor local do #51 e programa o
+contador da LVT em modo one-shot. O primeiro handler rearma o contador.
+O segundo mascara e pára o timer antes de libertar o vetor. A série só
+confirma o resultado depois de o núcleo enviar EOI para a segunda
+interrupção. O ensaio usa uma contagem curta para o QEMU.
+
+```sh
+cargo xtask test --features selftest-lapic-timer \
+  --expect '[apic] two local timer deliveries acknowledged'
+```

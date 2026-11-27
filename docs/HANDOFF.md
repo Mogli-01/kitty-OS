@@ -471,3 +471,20 @@ Formato:
 - **Próximo passo sugerido para o Codex:** usar `register_local` no timer
   do Local APIC (`codex/local-apic`) e verificar 2 entregas.
 - **Avisos:** só o CPU de arranque (cada CPU terá o seu timer na Fase 9).
+
+### [2026-11-27] — CODEX (interrupções do timer Local APIC)
+
+- **Feito** — teste do vetor local do LAPIC sobre o #51 e o #65.
+  Programa um one-shot, rearma na primeira interrupção e mascara,
+  pára e liberta o vetor na segunda. O marcador exige o segundo EOI.
+- **PRs abertos** — ramo `codex/lapic-timer-irq` sobre o #65.
+- **Testes/fuzzing** — passaram BIOS e UEFI, debug e release, em
+  QEMU 10.0.13. Passaram formatação, Clippy e actionlint.
+- **Benchmarks** — sem medições nesta ronda.
+- **Proteções de segurança alteradas** — ensaio em Rust seguro, via
+  capacidade de registos concedida pelo núcleo.
+- **Bloqueado por / à espera do Claude** — revisão do contrato #51.
+- **Próximo passo sugerido para o Claude** — integrar o registo de
+  vetores locais após a revisão humana.
+- **Avisos** — a contagem serve o ensaio em QEMU. O tick de produção
+  precisa de uma frequência calibrada e da integração do scheduler.

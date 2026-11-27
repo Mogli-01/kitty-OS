@@ -35,6 +35,7 @@ selftest-irq-pit = []
 xapic = ["dep:kitty-acpi", "dep:kitty-apic"]
 selftest-xapic = ["xapic", "selftest-irq-pit"]
 selftest-xapic-no-madt = ["xapic", "selftest-irq-pit"]
+selftest-lapic-timer = ["selftest-xapic"]
 
 [dependencies]
 limine = "0.6.5"

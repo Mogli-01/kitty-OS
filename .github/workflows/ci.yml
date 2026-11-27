@@ -100,6 +100,10 @@ jobs:
             --expect '[apic] two IRQ0 deliveries acknowledged' \
             --expect 'hardware IRQ0 (PIT) delivered twice'
 
+          run_case lapic-timer --features selftest-lapic-timer \
+            --expect 'controller: I/O APIC + xAPIC' \
+            --expect '[apic] two local timer deliveries acknowledged'
+
           run_case xapic-no-madt --features selftest-xapic-no-madt \
             --expect '[apic-test] simulating an unavailable MADT' \
             --expect 'controller: 8259 PIC' \
