@@ -621,3 +621,12 @@ a troca de thread após o EOI.
 Os autotestes do núcleo que programam o PIT têm o seu próprio registo
 de IRQ0. O novo autoteste usa o driver do arranque e verifica duas
 trocas de contexto durante a execução de uma thread ocupada.
+
+### D-151 — Tic do scheduler pelo LAPIC com referência PIT (2026-11-27, CODEX)
+
+A opção `lapic-scheduler-timer` calibra o contador local com IRQ0 e a entrada
+LAPIC mascarados. Mede dois períodos do PIT a cerca de 200 Hz, limita o
+número de leituras e repete medições inconsistentes até três tentativas.
+Com uma medição válida, usa o temporizador LAPIC em modo periódico a 100 Hz
+no CPU de arranque. O PIT continua disponível para o scheduler quando o
+LAPIC está indisponível ou a calibração não é fiável.

@@ -11,6 +11,8 @@ use crate::arch::apic::{self, IoApicRegisters, LocalApicRegisters};
 use crate::arch::irq::{self, ISA_LINES, InterruptController, IrqError, Vector};
 use crate::sync::IrqSpinLock;
 
+#[cfg(feature = "lapic-scheduler-timer")]
+pub(super) mod scheduler_timer;
 #[cfg(all(feature = "selftest-lapic-timer", feature = "qemu-exit"))]
 mod timer_test;
 

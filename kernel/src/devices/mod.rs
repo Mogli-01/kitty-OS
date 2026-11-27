@@ -15,6 +15,11 @@
 #[cfg(feature = "xapic")]
 mod apic;
 mod pit;
+#[cfg(all(
+    feature = "qemu-exit",
+    any(feature = "selftest-pit-driver", feature = "selftest-lapic-scheduler")
+))]
+mod timer_probe;
 
 /// Platform description handed to the drivers.
 pub struct Platform<'a> {
@@ -55,6 +60,10 @@ pub fn init(_platform: &Platform<'_>) {
         feature = "selftest-irq-pit",
         feature = "selftest-preempt"
     )) {
+        #[cfg(feature = "lapic-scheduler-timer")]
+        if apic::scheduler_timer::init() {
+            return;
+        }
         pit::init();
     }
 }

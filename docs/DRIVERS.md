@@ -91,3 +91,34 @@ linha. A CI executa o teste em BIOS e UEFI, em debug e release.
 cargo xtask test --features selftest-irq-pit --expect 'hardware IRQ0 (PIT) delivered twice'
 cargo xtask test --features selftest-pit-driver --expect '[pit] driver preempted a busy thread twice'
 ```
+
+## Temporizador LAPIC do scheduler
+
+A opção `lapic-scheduler-timer` seleciona o temporizador LAPIC no CPU de
+arranque quando o controlador xAPIC está disponível. Programa primeiro a
+entrada do temporizador local em modo one-shot, com a interrupção mascarada
+e o divisor em 16. Usa o PIT a cerca de 200 Hz como referência, também com
+IRQ0 mascarado. Um comando de latch (`0x00` na porta `0x43`) permite ler os
+dois bytes de uma só amostra na porta `0x40`, mesmo quando o contador avança
+entre as duas leituras.
+
+O driver mede dois períodos completos do PIT com três amostras do contador
+local. Limita as leituras por transição e as repetições da medição. Rejeita medições sem
+progresso, instáveis ou fora do intervalo do registo. Liberta o PIT e, se
+a medição for válida, carrega o período calculado para 100 Hz no LAPIC.
+Regista o handler antes de desmascarar a interrupção local. O handler chama
+`sched::tick()` e o núcleo confirma a interrupção antes de trocar de thread.
+
+Se faltar um xAPIC utilizável ou a calibração falhar, o PIT conduz o
+scheduler via IRQ0. Se a paragem do LAPIC falhar após um erro de configuração,
+o arranque termina para evitar ativar uma segunda fonte de ticks.
+O PIT também é a fonte predefinida quando a opção não está ativa.
+
+```sh
+cargo xtask test --features selftest-lapic-scheduler \
+  --expect '[lapic] driver preempted a busy thread twice'
+```
+
+O teste mantém uma thread ocupada e exige duas interrupções da fonte
+selecionada com trocas efetivas de thread. A CI também arranca com ACPI
+desativada e verifica as mesmas trocas pelo PIT através do PIC.

@@ -120,6 +120,12 @@ jobs:
             --expect 'controller: I/O APIC + xAPIC' \
             --expect '[apic] two local timer deliveries acknowledged'
 
+          run_case lapic-scheduler --features selftest-lapic-scheduler \
+            --expect 'controller: I/O APIC + xAPIC' \
+            --expect '[lapic] scheduler timer ready' \
+            --expect '[lapic] driver preempted a busy thread twice' \
+            --expect '[sched] cooperative self-test passed'
+
           run_case xapic-no-madt --features selftest-xapic-no-madt \
             --expect '[apic-test] simulating an unavailable MADT' \
             --expect 'controller: 8259 PIC' \
@@ -155,6 +161,12 @@ jobs:
               --expect 'hardware IRQ0 (PIT) delivered twice'
           grep -E -- "\\[acpi\\] no usable MADT \\(($missing_table)\\)" \
             build/serial-logs/xapic-firmware-no-madt.log
+
+          KITTY_QEMU="$no_acpi_qemu" KITTY_NO_ACPI_MACHINE="$no_acpi_machine" \
+            run_case lapic-scheduler-fallback --features lapic-scheduler-timer,selftest-pit-driver \
+              --expect 'controller: 8259 PIC' \
+              --expect '[pit] driver preempted a busy thread twice' \
+              --expect '[sched] cooperative self-test passed'
 
           run_case page-fault --features selftest-page-fault --expect-panic
           grep -F -- '=== Page Fault (#PF) (vector 14)' build/serial-logs/page-fault.log

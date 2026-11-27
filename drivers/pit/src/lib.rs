@@ -10,6 +10,7 @@ pub const INPUT_HZ: u32 = 1_193_182;
 const MAX_DIVISOR: u32 = 65_536;
 const CHANNEL_0: u16 = 0;
 const CONTROL: u16 = 3;
+const LATCH: u8 = 0x00;
 // Select channel 0, write LSB then MSB, mode 2 (rate generator), binary count.
 const PERIODIC: u8 = 0x34;
 // Mode 0 drives OUT low and waits for a new count before running.
@@ -46,7 +47,7 @@ impl Period {
     }
 }
 
-/// The granted port block refused a write.
+/// The granted port block refused an access.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PortRejected {
     pub offset: u16,
@@ -74,6 +75,17 @@ impl<P: PortBlock> Pit<P> {
         self.write(CONTROL, PERIODIC)?;
         self.write(CHANNEL_0, low)?;
         self.write(CHANNEL_0, high)
+    }
+
+    /// Reads a coherent channel 0 count after programming it for LSB/MSB access.
+    pub fn latch_count(&mut self) -> Result<u16, PortRejected> {
+        self.write(CONTROL, LATCH)?;
+        let read_byte = || {
+            self.ports
+                .read8(CHANNEL_0)
+                .ok_or(PortRejected { offset: CHANNEL_0 })
+        };
+        Ok(u16::from_le_bytes([read_byte()?, read_byte()?]))
     }
 
     /// Stops channel 0 without loading another count. Mask IRQ0 first and

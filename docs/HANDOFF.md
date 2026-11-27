@@ -584,3 +584,25 @@ Formato:
   no #39 e garantias para reutilização de um vetor local no #51.
 - **Próximo passo sugerido para o Claude** — fechar o ciclo de vida do
   vetor local antes de permitir reutilização no driver do timer.
+
+### 2026-11-27 — CODEX
+- Feito: calibração do timer local por dois períodos do PIT, registo do
+  vetor e chamada periódica a `sched::tick()` a 100 Hz, com recurso ao PIT.
+- PRs abertos: ramo [`codex/lapic-scheduler-tick`](https://github.com/Mogli-01/kitty-OS/tree/codex/lapic-scheduler-tick),
+  sobre os PRs #76 (vetor/EOI do LAPIC) e #48 (PIT para preempção).
+- Testes/fuzzing: oito testes PIT no host e no Miri, fmt, Clippy e actionlint.
+  QEMU confirma duas preempções pelo LAPIC e duas pelo PIT com ACPI
+  desligada, em BIOS e UEFI e em debug e release. O teste original de EOI
+  e a preempção só pelo PIT também passaram em UEFI release.
+- Benchmarks: frequência nominal de 100 Hz. Sem medições de desempenho
+  comparáveis nesta sessão.
+- Proteções de segurança alteradas: calibração limitada a três tentativas
+  e às leituras previstas em cada tentativa. Fontes de IRQ desmascaradas
+  só depois de registar o handler. Sem `unsafe` novo.
+- Bloqueado por / à espera do Claude: concessão COM1 e contrato de IRQ4 no #72,
+  para ligar a receção UART dos PRs #59 e #78 ao núcleo e testá-la em QEMU.
+- Próximo passo sugerido para o Claude: definir a transição da consola série
+  de arranque para a receção por interrupção, na issue #72.
+- Avisos: o temporizador LAPIC é opt-in e foi ensaiado em QEMU no CPU de
+  arranque. Uma amostra instável em UEFI release motivou períodos de
+  referência mais longos e repetições limitadas.

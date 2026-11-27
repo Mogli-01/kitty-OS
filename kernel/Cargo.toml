@@ -36,6 +36,8 @@ xapic = ["dep:kitty-acpi", "dep:kitty-apic"]
 selftest-xapic = ["xapic", "selftest-irq-pit"]
 selftest-xapic-no-madt = ["xapic", "selftest-irq-pit"]
 selftest-lapic-timer = ["selftest-xapic"]
+lapic-scheduler-timer = ["xapic"]
+selftest-lapic-scheduler = ["lapic-scheduler-timer"]
 
 # Two busy threads that never yield must both make progress (PIT ticks call
 # sched::tick). Does not panic: expect exit code 33.

@@ -8,7 +8,7 @@ use crate::sync::IrqSpinLock;
 use crate::{kprintln, sched};
 
 const IRQ_LINE: u8 = 0;
-const TICK_HZ: u32 = 100;
+pub(super) const TICK_HZ: u32 = 100;
 const PERIOD: Period = match Period::from_hz(TICK_HZ) {
     Some(period) => period,
     None => panic!("invalid scheduler timer rate"),
@@ -19,7 +19,7 @@ static TIMER: IrqSpinLock<Option<Pit<LegacyPorts>>> = IrqSpinLock::new(None);
 
 fn on_irq0(_: Vector) {
     #[cfg(all(feature = "selftest-pit-driver", feature = "qemu-exit"))]
-    probe::count_irq();
+    super::timer_probe::count_irq();
     sched::tick();
 }
 
@@ -49,36 +49,7 @@ pub(super) fn init() {
     );
 
     #[cfg(all(feature = "selftest-pit-driver", feature = "qemu-exit"))]
-    if let Err(error) = sched::spawn("pit-probe", probe::verify_preemption) {
+    if let Err(error) = sched::spawn("pit-probe", || super::timer_probe::verify_preemption("pit")) {
         kprintln!("[pit] probe thread unavailable: {:?}", error);
-    }
-}
-
-#[cfg(all(feature = "selftest-pit-driver", feature = "qemu-exit"))]
-mod probe {
-    use core::sync::atomic::{AtomicU64, Ordering};
-
-    use super::{kprintln, sched};
-
-    static IRQS: AtomicU64 = AtomicU64::new(0);
-
-    pub(super) fn count_irq() {
-        IRQS.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub(super) fn verify_preemption() {
-        for _ in 0..2 {
-            let irq = IRQS.load(Ordering::Relaxed);
-            let switches = sched::switches();
-            while IRQS.load(Ordering::Relaxed) == irq || sched::switches() == switches {
-                core::hint::spin_loop();
-            }
-        }
-        kprintln!("[pit] driver preempted a busy thread twice");
-        // Stay alive so the cooperative boot test sees the same thread count
-        // at entry and exit. QEMU exits through the standard boot-test path.
-        loop {
-            sched::yield_now();
-        }
     }
 }

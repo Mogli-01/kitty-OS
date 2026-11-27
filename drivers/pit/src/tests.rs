@@ -106,3 +106,24 @@ fn reports_a_rejected_stop_write() {
     assert_eq!(pit.stop(), Err(PortRejected { offset: 3 }));
     assert_eq!(pit.ports.writes.into_inner(), [(3, 0x30)]);
 }
+
+#[test]
+fn latches_and_reads_channel_zero_in_hardware_order() {
+    struct LatchPorts(RefCell<std::vec::IntoIter<u8>>);
+
+    impl PortBlock for LatchPorts {
+        fn read8(&self, offset: u16) -> Option<u8> {
+            assert_eq!(offset, CHANNEL_0);
+            self.0.borrow_mut().next()
+        }
+
+        fn write8(&self, offset: u16, value: u8) -> Option<()> {
+            assert_eq!((offset, value), (CONTROL, 0x00));
+            assert_eq!(self.0.borrow().len(), 2);
+            Some(())
+        }
+    }
+
+    let mut pit = Pit::new(LatchPorts(RefCell::new(std::vec![0x34, 0x12].into_iter())));
+    assert_eq!(pit.latch_count(), Ok(0x1234));
+}
