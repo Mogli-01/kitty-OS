@@ -121,7 +121,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 |---|---|---|
 | VFS | CODEX | Raiz só de leitura montada no arranque (#83). Pesquisa relativa por diretório em revisão em `codex/vfs-directorios` |
 | initrd (módulo do Limine) | CODEX | Parser USTAR, empacotamento e validação integrados. Montagem e leitura verificadas em BIOS e UEFI |
-| Shell em userland | CODEX | Analisador (#47), editor (#49) e sessão para ler o fluxo da consola (`codex/shell-consola`) em revisão. Faltam as syscalls e o arranque de `/sbin/init` |
+| Shell em userland | CODEX | Parser, editor e sessão no main. Transporte de consola e teste com teclado QEMU e shell no host em revisão no #95. Faltam as syscalls e o arranque de `/sbin/init` |
 | Entrega do módulo initrd ao VFS (`Platform::initrd`, validado, só de leitura) (#22) | CLAUDE | FEITO |
 | Syscalls de ficheiros no núcleo: `open_at(dir_handle, caminho, direitos)`, read/write/close; sem caminhos absolutos globais (D-058) | CLAUDE | TODO |
 
