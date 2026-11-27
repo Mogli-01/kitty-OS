@@ -455,3 +455,128 @@ isso o `&'static [u8]` é sólido durante toda a vida do kernel.
 *Revisto depois do `security-reviewer`*, que confirmou o caso da
 sobreposição com a imagem do kernel. Sem módulo, ou módulo recusado: o arranque
 continua sem initrd (diagnóstico), com a razão escrita no log.
+
+### D-055 — Capacidades em vez de só permissões estilo Unix (2026-11-27, CLAUDE)
+- **Decisão:** a autoridade no kitty-OS são **handles com direitos**
+  (D-018/D-051). Um processo só pode atuar sobre os objetos para os quais
+  tem um handle (ficheiro, diretório, rede, ecrã, input, áudio, auditoria),
+  e começa **sem nenhum**: quem o cria passa-lhe explicitamente os que deve
+  ter. Os UIDs/GIDs e as permissões de ficheiros (Fase 15) continuam a
+  existir, mas **só decidem que handles uma sessão recebe** (por exemplo, o
+  VFS recusa `open_at` num ficheiro de outro utilizador). Não há um UID 0
+  que salte as verificações: "admin" é uma sessão que recebeu certos
+  handles (`AUDIT`, gestão de contas) depois de autenticada.
+- **Porquê:**
+  - **Autoridade ambiente:** no Unix, qualquer programa do utilizador pode
+    abrir todos os ficheiros desse utilizador e falar com a rede. Um jogo
+    comprometido lê as chaves SSH. Com capacidades, o jogo só tem o ecrã,
+    o input e a sua pasta.
+  - **Confused deputy:** um serviço com privilégios que abre um caminho a
+    pedido de outro pode ser enganado a usar os seus próprios direitos. Com
+    handles, quem pede passa o handle, e o serviço usa só esse.
+  - **Menor privilégio por defeito**, que é o que precisam o sandbox das
+    apps (Fase 15) e os manifestos do `kpkg` (Fase 18).
+  - **Auditável:** a autoridade de um processo é a sua tabela de handles,
+    uma lista finita que se pode inspecionar e registar.
+- **Custo:** as syscalls e o IPC têm de nascer assim (D-058); adaptar
+  programas pensados para POSIX dá mais trabalho.
+
+### D-056 — Criptografia feita de raiz, educativa e não auditada (2026-11-27, CLAUDE)
+- **Decisão:** SHA-256, ChaCha20-Poly1305, Ed25519, Argon2id e o CSPRNG
+  são implementados por nós em `kernel/src/crypto` (Fase 16), sem crates
+  externos (mantém-se a regra dos crates permitidos). O módulo e a
+  documentação dizem sempre **"educativa, não auditada"**.
+- **Regras obrigatórias:**
+  - passar os **vetores de teste oficiais**: RFC 8439 (ChaCha20-Poly1305),
+    RFC 8032 (Ed25519, incluindo as verificações de maleabilidade: `S < L`
+    e pontos inválidos recusados), NIST FIPS 180-4 / CAVP (SHA-256) e
+    RFC 9106 (Argon2id). Os testes correm na CI no host e no arranque;
+  - **tempo constante** para tudo o que toca em segredos: comparação de
+    tags e hashes sem saída antecipada, sem ramos nem índices de tabelas
+    que dependam de dados secretos, aritmética de campo do Ed25519 sem
+    ramos. A revisão do red team procura isto de propósito;
+  - **nunca reutilizar um nonce** com a mesma chave (o disco usa nonces
+    derivados de forma única por bloco e versão);
+  - segredos apagados da memória quando deixam de ser precisos, com
+    escritas que o compilador não pode eliminar;
+  - sem `unsafe` em `crypto/` (o acesso a RDRAND/RDSEED fica em `arch/`).
+- **Porquê:** o objetivo do projeto é aprender, e implementar estas
+  primitivas ensina exatamente onde costumam falhar. **Mas** crypto caseira
+  não substitui bibliotecas auditadas: por isso o rótulo é obrigatório e o
+  modelo de ameaça (SECURITY.md) avisa para não guardar dados que precisem
+  mesmo de proteção.
+
+### D-057 — Firewall no kernel, IDS em user space (2026-11-27, CLAUDE)
+- **Decisão:** o **firewall** (Fase 17) fica no kernel, em
+  `kernel/src/firewall`, e a stack de rede chama-o em pontos fixos
+  (entrada, saída, novo socket, nova ligação). O **IDS** é um processo
+  de user space que recebe metadados e cópias limitadas dos pacotes, e
+  fala com o firewall por um handle `FIREWALL` com direitos limitados.
+- **Porquê:**
+  - **Aplicação** (enforcement) tem de estar no caminho de cada pacote e
+    fora do alcance dos processos: se o firewall estivesse em user space,
+    matar ou comprometer esse processo desligava a proteção. As regras são
+    simples (tuplos por processo, porta e endereço), por isso o código no
+    kernel é pequeno e rápido.
+  - **Deteção** é o contrário: muito parsing de dados hostis e heurísticas
+    que mudam. Em user space, um bug no IDS faz crashar só o IDS, não o
+    kernel, e pode ser atualizado e testado como qualquer programa.
+  - O handle do IDS só tem o direito de **acrescentar regras de bloqueio
+    temporárias**; nunca abre portas nem apaga regras do administrador.
+    Assim, um IDS comprometido não consegue abrir o firewall.
+- Regras por processo funcionam porque um socket é um objeto do kernel
+  criado a partir de um handle `NET` com direitos (`CONNECT`, `LISTEN`,
+  `BIND_LOW_PORT`…): o firewall sabe sempre a que processo pertence.
+
+### D-058 — Fases 6 e 12 "capability-first" (2026-11-27, CLAUDE)
+Ajusta o contrato da Fase 6 (`docs/FASE6.md`, D-049, D-051, D-053) e o
+desenho da Fase 12, para a Fase 15 não obrigar a refazer as syscalls.
+- **Regra da ABI:** toda a syscall com efeito fora do próprio processo
+  recebe um handle como primeiro argumento. Só não recebem handle:
+  `exit`, `yield`, `clock_now`, `random_fill` e as operações sobre a
+  própria tabela de handles (`handle_close`, `handle_dup`, `handle_info`).
+  Não há nomes nem caminhos globais.
+- **Direitos (`u32`):** bits 0–15 genéricos (`READ`, `WRITE`, `MAP`,
+  `TRANSFER`, `DUP`, `EXEC`, reservados os restantes); bits 16–31
+  **específicos de cada tipo** de objeto (por exemplo `NET_CONNECT`,
+  `NET_LISTEN`, `FW_ADD_BLOCK`, `AUDIT_READ`). Novos tipos não mudam a ABI.
+- **`handle_info(h) -> (tipo, direitos)`** desde a 6c, para um processo
+  saber o que tem sem tentar e falhar.
+- **`process_spawn(imagem, handles, n)`** é a única forma de criar um
+  processo e de lhe dar autoridade: a imagem é um handle de ficheiro com
+  `EXEC`; `handles` é uma lista de pares (handle, direitos), copiados com
+  direitos iguais ou menores. Um processo novo não herda nada por omissão.
+- **INPUT e DISPLAY deixam de ter syscalls de "abrir":** os objetos são
+  criados no arranque e o kernel dá os handles ao `init` (PID 1), que os
+  passa ao compositor com `process_spawn`. Substitui o `input_open()` da
+  D-053: a exclusividade vem de existir um só handle sem `DUP`; o resto da
+  D-053 (fila, perda, esvaziar ao fechar) mantém-se. `display_map(h)`
+  exige `MAP`.
+- **Ficheiros:** `open_at(dir_handle, caminho, direitos) -> h`, sempre
+  relativo a um diretório que o processo tem; `..` não sai do diretório do
+  handle (o VFS do Codex recusa). O `init` recebe um handle `READ` para a
+  raiz do initrd.
+- **Canais (Fase 12):** transferir um handle numa mensagem exige
+  `TRANSFER`, retira-o ao emissor (só fica com uma cópia se tiver `DUP` e
+  a pedir), e os direitos só podem diminuir.
+- **Preparação da Fase 15:** o processo tem `uid`/`gid` (0 = "sistema" até
+  lá) e as syscalls sensíveis chamam `audit::record` (sem efeito até à
+  Fase 15). **Preparação da Fase 16:** o código de erro `-11 E_BADSIG`
+  fica reservado já, para o ELF loader recusar programas não assinados.
+- **O `docs/FASE6.md` está no PR #52, ainda sem merge:** é alinhado com esta
+  decisão no próprio #52.
+
+### D-059 — Red team vs blue team (2026-11-27, CLAUDE)
+- **Decisão:** a partir da Fase 6, cada fase concluída acaba com uma ronda
+  de ataques cruzados (o Claude ataca a área do Codex e vice-versa), com as
+  regras em `docs/REDTEAM.md`. Cada falha tem um PoC que corre só no QEMU,
+  em `tests/security/redteam/`, e uma issue `vulnerabilidade`.
+- **Exceção à regra das áreas:** `tests/security/redteam/` é partilhada,
+  mas só para acrescentar o PoC das falhas que o próprio encontrou. O
+  runner e a CI continuam a ser do Codex.
+- **CI verde com falhas conhecidas:** cada PoC tem o estado `aberta` ou
+  `corrigida` num manifesto; com `aberta`, a CI espera que o PoC falhe
+  (xfail), e a correção muda-o para `corrigida`.
+- **Porquê:** quem escreve o código tem os mesmos pontos cegos quando o
+  revê. Um atacante diferente, com incentivo para encontrar falhas, vê
+  outras coisas. Os PoCs transformam cada falha num teste permanente.
