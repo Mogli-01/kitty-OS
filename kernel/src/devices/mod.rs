@@ -12,6 +12,17 @@
 //! device) and is written in safe Rust — `unsafe` is denied here by the
 //! crate-level lint. See docs/INTERFACES.md ("Interrupções (Fase 4)").
 
+#![forbid(unsafe_code)]
+#[cfg(feature = "xapic")]
+mod apic;
+mod pit;
+mod ps2;
+#[cfg(all(
+    feature = "qemu-exit",
+    any(feature = "selftest-pit-driver", feature = "selftest-lapic-scheduler")
+))]
+mod timer_probe;
+
 /// Platform description handed to the drivers.
 pub struct Platform<'a> {
     /// The ACPI MADT, already validated by the kernel (signature, length,
@@ -31,4 +42,35 @@ pub struct Platform<'a> {
 /// Starts every driver. Order matters (docs/INTERFACES.md, "Transição PIC
 /// para APIC"): the interrupt controller first, then the devices that
 /// register IRQ lines.
-pub fn init(_platform: &Platform<'_>) {}
+pub fn init(_platform: &Platform<'_>) {
+    #[cfg(feature = "xapic")]
+    {
+        let madt = if cfg!(all(
+            feature = "qemu-exit",
+            feature = "selftest-xapic-no-madt"
+        )) {
+            // Simulate an unavailable MADT at the driver boundary.
+            crate::kprintln!("[apic-test] simulating an unavailable MADT");
+            None
+        } else {
+            _platform.madt
+        };
+        apic::init(madt);
+    }
+    init_scheduler_timer();
+    ps2::init();
+}
+
+fn init_scheduler_timer() {
+    // These core self-tests each program the timer and own IRQ0 themselves.
+    if !cfg!(any(
+        feature = "selftest-irq-pit",
+        feature = "selftest-preempt"
+    )) {
+        #[cfg(feature = "lapic-scheduler-timer")]
+        if apic::scheduler_timer::init() {
+            return;
+        }
+        pit::init();
+    }
+}

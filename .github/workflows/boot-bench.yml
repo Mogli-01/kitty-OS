@@ -1,0 +1,53 @@
+name: Boot benchmark
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: Boot benchmark (BIOS, release)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: baseline-src
+          persist-credentials: false
+      - name: Install QEMU and xorriso
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 xorriso
+      - name: Build baseline kernel
+        working-directory: baseline-src
+        run: |
+          rustup toolchain install
+          cargo build --locked -p kitty-kernel --release --features qemu-exit
+      - name: Compare both kernels on this runner
+        shell: bash
+        env:
+          KITTY_BENCH_AGAINST: ${{ github.workspace }}/baseline-src/target/x86_64-unknown-none/release/kitty-kernel
+        run: |
+          rustup toolchain install
+          mkdir -p build
+          cargo xtask bench-boot --bios --release | tee build/boot-bench.log
+          grep -F 'boot_compare regression=' build/boot-bench.log
+          if grep -Fq 'boot_compare regression=true ' build/boot-bench.log; then
+            echo '::warning title=Boot time regression::The BIOS release median increased by at least 25% and 50 ms. See the benchmark artifact.'
+          fi
+      - name: Upload benchmark samples and serial logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: boot-benchmark-bios-release
+          path: |
+            build/boot-bench.log
+            build/serial-bench-base.log
+            build/serial-bench-boot.log
+          if-no-files-found: ignore

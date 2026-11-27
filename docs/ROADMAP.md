@@ -28,6 +28,12 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Consola de texto no framebuffer | CLAUDE | FEITO |
 | Panic handler com localização | CLAUDE | FEITO |
 | Teste de arranque no QEMU (isa-debug-exit) | CLAUDE → CODEX | FEITO (mínimo) |
+| Recuperação de falhas transitórias ao descarregar o Limine | CODEX | Em revisão no #56, com teste automático das tentativas |
+
+| Instalação do QEMU na CI a partir das fontes Ubuntu | CODEX | Em revisão no ramo `codex/ci-ubuntu-qemu` |
+
+| Captura e comparação visual do texto de arranque no framebuffer | CODEX | Em revisão no ramo `codex/teste-visual` |
+| Benchmark de arranque no QEMU | CODEX | Medição no #29 e comparação BIOS/release em revisão no ramo `codex/ci-benchmark` |
 | Teste de integração de panic no QEMU (código de saída e série) | CODEX | FEITO (CI da Fase 2) |
 
 ## Fase 2 — CPU: GDT, TSS, IDT, exceções
@@ -63,10 +69,23 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | PIC 8259 como controlador de arranque (remapeado, tudo mascarado) | CLAUDE | FEITO |
 | `kitty-hal` + portas legadas reclamáveis (i8042, PIT, CMOS) + `devices::init` | CLAUDE | FEITO |
 | Descoberta ACPI (RSDP → MADT validada e copiada) + capacidades APIC filtradas (#18) | CLAUDE | FEITO |
+| Descodificador MADT para endereços APIC, overrides ISA e rotas NMI locais | CODEX | Em revisão no #20. Fuzzing de pares de rotas ISA em `codex/madt-fuzz-isa-routes`. Integração de hardware em revisão no #62 |
 | Driver do Local APIC + IO APIC | CODEX | TODO |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | TODO |
 | Driver do teclado PS/2 | CODEX | TODO |
 | Driver UART completo (interrupções, input) | CODEX | Configuração e polling de TX/RX testados no ramo `codex/uart-16550`. Integração com portas e IRQ pendente |
+
+| Descodificador MADT para endereços APIC, overrides ISA e rotas NMI locais | CODEX | Em revisão no #20. Integração de hardware depende da #18 e do #35 |
+| Driver do Local APIC + IO APIC | CODEX | Drivers #21/#37, integração opcional #62 e testes do caminho PIC com MADT ausente simulada e firmware sem tabela em BIOS e UEFI no #65 |
+| Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | Duas entregas e EOI no #76. LAPIC calibrado pelo PIT e ligado a `sched::tick()` em `codex/lapic-scheduler-tick`. LAPIC e fallback pelo PIT verificados em QEMU (BIOS/UEFI, debug/release), integração pendente |
+| Driver legado PIT periódico (IRQ0) | CODEX | Programação e paragem no #19. Ligação a `sched::tick` a 100 Hz no #48, verificada na revisão do #39 |
+| Driver do teclado PS/2 | CODEX | Descodificador #14, transporte i8042 #16, teclado ligado ao IRQ1 no #17, testes com PIC e I/O APIC no #71. Em revisão |
+| Driver UART completo (interrupções, input) | CODEX | Driver 16550A no #59 e fontes de receção no #78. Ligação ao IRQ4 e teste de receção em QEMU dependem da concessão COM1 no #72 |
+
+| Descodificador Set 2 do teclado PS/2, testes no host e Miri | CODEX | FEITO |
+| Transporte i8042 (configuração Set 2 e leitura de bytes) | CODEX | FEITO |
+| Integração do teclado PS/2 no kernel e testes de IRQ1 em QEMU | CODEX | FEITO |
+| Driver UART completo (interrupções, input) | CODEX | TODO |
 
 ## Fase 5 — Scheduler
 | Tarefa | Dono | Estado |
@@ -77,7 +96,8 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | DESEMPENHO: medir a troca de contexto em ciclos (rdtsc) | CLAUDE | FEITO (autoteste no arranque) |
 | SEGURANÇA: pilhas de thread com página de guarda, limpas ao libertar; sem preempção com spinlock preso | CLAUDE | FEITO |
 | GUI-PREP: filas de espera (bloquear/acordar threads) — base do IPC e dos eventos de input | CLAUDE | FEITO |
-| Benchmarks automáticos (troca de contexto, syscalls) | CODEX | TODO |
+| Benchmark de `yield` cooperativo e troca de contexto | CODEX | `cargo xtask bench-scheduler` em revisão. Resultados em [BENCHMARKS.md](BENCHMARKS.md) |
+| Testes QEMU de preempção, espera e guarda das pilhas de threads | CODEX | #42 atualizado com o #40. Arranque, espera e preempção verificados em BIOS e UEFI |
 
 ## Fase 6 — User mode
 | Tarefa | Dono | Estado |
@@ -92,6 +112,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | PREP-15: campos `uid`/`gid` no processo e pontos de auditoria nas syscalls sensíveis (sem efeito até à Fase 15) | CLAUDE | TODO |
 | SEGURANÇA: SMEP, SMAP, UMIP ativos | CLAUDE | FEITO |
 | Biblioteca de syscalls para userland | CODEX | TODO |
+| Benchmark de ciclos por syscall | CODEX | TODO |
 | Fuzzing das syscalls | CODEX | TODO |
 | Ronda 1 de red team vs blue team (`docs/REDTEAM.md`) | CLAUDE + CODEX | TODO |
 
@@ -100,6 +121,12 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 |---|---|---|
 | VFS | CODEX | TODO |
 | initrd (módulo do Limine) | CODEX | TODO |
+| Shell em userland | CODEX | Analisador (#47), editor (#49) e sessão para ler o fluxo da consola (`codex/shell-consola`) em revisão. Faltam as syscalls e o arranque de `/sbin/init` |
+
+| VFS | CODEX | Raiz só de leitura com índice limitado, pesquisa e listagem em revisão no #24. Montagem no arranque em preparação |
+| initrd (módulo do Limine) | CODEX | Parser USTAR em revisão no #23. Entrega do módulo disponível no #38 |
+
+| initrd (módulo do Limine) | CODEX | Parser USTAR em revisão (#23), com cobertura adicional da passagem entre ficheiros no ramo `codex/ustar-fuzz-multifile`; ligação ao Limine no #38 |
 | Shell em userland | CODEX | TODO |
 | Entrega do módulo initrd ao VFS (`Platform::initrd`, validado, só de leitura) (#22) | CLAUDE | FEITO |
 | Syscalls de ficheiros no núcleo: `open_at(dir_handle, caminho, direitos)`, read/write/close; sem caminhos absolutos globais (D-058) | CLAUDE | TODO |
@@ -116,15 +143,16 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Tarefa | Dono | Estado |
 |---|---|---|
 | SMP (vários núcleos), locks por CPU | CLAUDE | TODO |
+| Descoberta de dispositivos PCI | CODEX | Descodificação de cabeçalhos e capacidades (#61) e interpretação de BARs em revisão. Enumeração no hardware pendente |
 | Sistema de ficheiros em disco | CODEX | TODO |
 | Mais drivers (AHCI/NVMe, rede) | CODEX | TODO |
 
 ## Fase 10 — Gráficos base
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Biblioteca gráfica em user space: píxeis, retângulos, linhas, blit | CODEX | TODO |
+| Biblioteca gráfica em user space: píxeis, retângulos, linhas, blit | CODEX | Primitivas BGRA8888 em revisão no ramo `codex/graficos-base` |
 | Fontes bitmap, depois PSF e TrueType simples | CODEX | TODO |
-| Double buffering | CODEX | TODO |
+| Double buffering | CODEX | Dois buffers com apresentação total ou parcial em revisão no ramo `codex/double-buffer` |
 | Framebuffer mapeado com write-combining (usa a API de PAT da Fase 3) | CODEX | TODO |
 | Objeto `DISPLAY`: `display_map(h)` exige um handle com `MAP`, que o `init` dá só ao compositor; a consola do kernel larga o ecrã (D-058) | CLAUDE | TODO |
 | Identidade "kitty": ecrã de arranque com o logótipo do gato e uma animação simples | CODEX | TODO |
@@ -132,9 +160,18 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 ## Fase 11 — Input
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Driver de rato PS/2 | CODEX | TODO |
+| Driver de rato PS/2 | CODEX | Ligação por IRQ12 e testes QEMU em revisão no ramo `codex/ps2-input` |
+| Layout ISO PT-PT para a consola | CODEX | Tradução Set 2 para UTF-8 e controlos em revisão no ramo `codex/teclado-pt-pt`. Entrega à consola pendente |
 | Driver USB HID (teclado e rato) | CODEX | TODO |
 | Sistema de eventos de input unificado (`InputEvent`: teclado + rato) | CODEX | TODO |
+| Entrega dos eventos ao user space só a quem tem o handle do objeto `INPUT`, dado pelo `init` (sem `input_open` por nome; D-019, D-058) | CLAUDE | TODO |
+
+| Sistema de eventos de input unificado (`InputEvent`: teclado + rato) | CODEX | Fila PS/2 interna em revisão; timestamps e entrega por `INPUT` pendentes |
+| Entrega dos eventos ao user space só ao processo com a capacidade `INPUT` (D-019) | CLAUDE | TODO |
+
+| Driver de rato PS/2 | CODEX | Ligação por IRQ12 em revisão (#34). A matriz PS/2 inclui verificação do controlador no ramo `codex/ps2-test-controller` |
+| Driver USB HID (teclado e rato) | CODEX | TODO |
+| Sistema de eventos de input unificado (`InputEvent`: teclado + rato) | CODEX | Fila PS/2 interna em revisão; timestamps e entrega por `INPUT` pendentes |
 | Entrega dos eventos ao user space só a quem tem o handle do objeto `INPUT`, dado pelo `init` (sem `input_open` por nome; D-019, D-058) | CLAUDE | TODO |
 
 ## Fase 12 — Memória partilhada e IPC rápido
@@ -150,8 +187,8 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 |---|---|---|
 | Protocolo compositor ↔ aplicações (mensagens, buffers, eventos) em `docs/INTERFACES.md` | CLAUDE | TODO |
 | Foco, encaminhamento do input e "secure attention key" (combinação de teclas que só o compositor vê) | CLAUDE | TODO |
-| Composição das janelas, cursor, cliques | CODEX | TODO |
-| Redesenhar só as zonas alteradas (dirty rectangles) | CODEX | TODO |
+| Composição das janelas, cursor, cliques | CODEX | Composição com alfa, cursor por software e seleção por ordem das janelas em revisão. Encaminhamento de cliques pendente |
+| Redesenhar só as zonas alteradas (dirty rectangles) | CODEX | Registo e apresentação parcial em revisão no ramo `codex/zonas-alteradas` |
 | Revisão de segurança do compositor (isolamento entre janelas, ver SECURITY.md) | CLAUDE | TODO |
 
 ## Fase 14 — Toolkit e aplicações

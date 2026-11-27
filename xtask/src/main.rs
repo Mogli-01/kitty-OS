@@ -7,36 +7,47 @@
 //!   run   [--release] [--bios]   boot in QEMU (UEFI from build/esp, or BIOS from the ISO)
 //!   test  [--release] [--bios]   boot headless, check serial output and exit code
 //!   test-memory [--release] [--bios]   check the Phase 3 memory protections in QEMU
+//!   test-visual [--release] [--bios]   check the framebuffer banner against a reference
+//!   bench-boot [--release] [--bios]    sample time to the boot-complete serial line
+//!   test-keyboard [--release] [--bios] check PS/2 key events through IRQ1 in QEMU
+//!   test-mouse [--release] [--bios]    check PS/2 mouse reports through IRQ12 in QEMU
+//!   bench-scheduler [--release] [--bios]   sample cooperative yield+switch TSC cycles
 //!
 //! Extra options:
 //!   --features <a,b>   extra kernel cargo features (e.g. selftest-page-fault)
 //!   --expect-panic     (test) pass only if the kernel panics: QEMU exit code
 //!                      35 and "KERNEL PANIC" on the serial port
-//!   --expect <text>    (test) the serial output must also contain <text>
-//!                      (repeatable)
+//!   --expect <text>    require a serial marker (repeatable). Input tests
+//!                      require the marker before injecting events.
 //!
 //! Environment overrides: KITTY_QEMU (qemu binary), KITTY_OVMF (UEFI code
-//! firmware), KITTY_XORRISO (xorriso binary).
+//! firmware), KITTY_XORRISO (xorriso binary), KITTY_BENCH_AGAINST (baseline ELF).
 //!
 //! Only std is used on purpose (dependency policy, docs/DECISIONS.md).
 
 use std::env;
 use std::fs;
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, Stdio};
-use std::time::{Duration, Instant};
+use std::process::{Command, ExitCode};
+use std::time::Duration;
 
+mod boot_bench;
+mod boot_trace;
+mod input_tests;
 mod memory_tests;
+mod scheduler_bench;
+mod visual_test;
 
 /// Limine binary release we boot with. Pinned to an exact commit of the
 /// official `v11.x-binary` branch so a compromised or changed branch cannot
 /// silently change our bootloader (supply-chain safety). Bump deliberately.
 const LIMINE_REPO: &str = "https://github.com/limine-bootloader/limine.git";
 const LIMINE_COMMIT: &str = "5be26a73d7b7b4d4477d18be94e1d16e615adf56";
+const LIMINE_FETCH_ATTEMPTS: u64 = 3;
 
 const KERNEL_NAME: &str = "kitty-kernel";
 const BOOT_MESSAGE: &str = "Hello from kitty-OS";
+const BOOT_COMPLETE: &str = "[boot] boot complete,";
 /// isa-debug-exit: kernel writes 0x10 -> QEMU exits with (0x10 << 1) | 1.
 const QEMU_SUCCESS: i32 = 33;
 /// Kernel panicked under the `qemu-exit` feature: (0x11 << 1) | 1.
@@ -98,11 +109,22 @@ fn main() -> ExitCode {
         "run" => run(&opts),
         "test" => test(&opts),
         "test-memory" => memory_tests::run(&opts),
+        "test-visual" => visual_test::run(&opts),
+        "bench-boot" => boot_bench::run(&opts),
+        "test-keyboard" => input_tests::run(&opts, input_tests::KEYBOARD),
+        "test-mouse" => input_tests::run(&opts, input_tests::MOUSE),
+        "bench-scheduler" => scheduler_bench::run(&opts),
         _ => {
             eprintln!(
                 "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--expect-panic] [--expect text]"
             );
             eprintln!("       cargo xtask test-memory [--release] [--bios]");
+            eprintln!("       cargo xtask test-visual [--release] [--bios]");
+            eprintln!("       cargo xtask bench-boot [--release] [--bios]");
+            eprintln!(
+                "       cargo xtask <test-keyboard|test-mouse> [--release] [--bios] [--features a,b] [--expect text]"
+            );
+            eprintln!("       cargo xtask bench-scheduler [--release] [--bios]");
             return ExitCode::FAILURE;
         }
     };
@@ -187,10 +209,40 @@ fn limine_dir() -> Result<PathBuf> {
     println!("xtask: fetching Limine {LIMINE_COMMIT}");
     let git = |args: &[&str]| run_cmd(Command::new("git").current_dir(&dir).args(args));
     git(&["init", "-q"])?;
-    git(&["fetch", "-q", "--depth=1", LIMINE_REPO, LIMINE_COMMIT])?;
-    git(&["checkout", "-q", "FETCH_HEAD"])?;
+    fetch_limine(&dir, run_cmd, std::thread::sleep)?;
+    git(&["checkout", "-q", "--detach", LIMINE_COMMIT])?;
     fs::write(&stamp, LIMINE_COMMIT).map_err(|e| format!("writing stamp: {e}"))?;
     Ok(dir)
+}
+
+fn fetch_limine(
+    dir: &Path,
+    mut run: impl FnMut(&mut Command) -> Result<()>,
+    mut sleep: impl FnMut(Duration),
+) -> Result<()> {
+    let mut git = Command::new("git");
+    git.current_dir(dir).env("GIT_TERMINAL_PROMPT", "0").args([
+        "-c",
+        "http.lowSpeedLimit=1",
+        "-c",
+        "http.lowSpeedTime=20",
+        "fetch",
+        "-q",
+        "--depth=1",
+        LIMINE_REPO,
+        LIMINE_COMMIT,
+    ]);
+    for attempt in 1..LIMINE_FETCH_ATTEMPTS {
+        match run(&mut git) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                eprintln!("xtask: fetching Limine failed ({error}); retrying in {attempt}s");
+                sleep(Duration::from_secs(attempt));
+            }
+        }
+    }
+    run(&mut git)
+        .map_err(|error| format!("fetching Limine after {LIMINE_FETCH_ATTEMPTS} attempts: {error}"))
 }
 
 /// Path of the `limine` host tool (used for `bios-install`). The binary
@@ -352,7 +404,7 @@ fn find_ovmf(qemu: &Path) -> Result<(PathBuf, Option<PathBuf>)> {
 }
 
 /// Builds the QEMU command line for the requested boot mode.
-fn qemu_command(opts: &Opts, kernel: &Path, headless: bool) -> Result<Command> {
+fn qemu_command(opts: &Opts, kernel: &Path) -> Result<Command> {
     let qemu = qemu_binary();
     let mut cmd = Command::new(&qemu);
     cmd.current_dir(root());
@@ -382,67 +434,44 @@ fn qemu_command(opts: &Opts, kernel: &Path, headless: bool) -> Result<Command> {
         cmd.args(["-drive", "format=raw,file=fat:rw:build/esp"]);
     }
 
-    if headless {
-        cmd.args(["-display", "none", "-monitor", "none", "-serial", "stdio"]);
-        cmd.args(["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04"]);
-    } else {
-        cmd.args(["-serial", "stdio"]);
-    }
     Ok(cmd)
 }
 
 fn run(opts: &Opts) -> Result<()> {
     let kernel = build_kernel(opts, false)?;
-    run_cmd(&mut qemu_command(opts, &kernel, false)?)
+    run_cmd(qemu_command(opts, &kernel)?.args(["-serial", "stdio"]))
 }
 
 fn test(opts: &Opts) -> Result<()> {
     boot_test(opts, &build_dir().join("serial-test.log")).map(|_| ())
 }
 
+fn debug_exit_command(opts: &Opts, kernel: &Path) -> Result<Command> {
+    let mut command = qemu_command(opts, kernel)?;
+    command.args(["-display", "none", "-monitor", "none", "-serial", "stdio"]);
+    command.args(["-device", "isa-debug-exit,iobase=0xf4,iosize=0x04"]);
+    Ok(command)
+}
+
 fn boot_test(opts: &Opts, log: &Path) -> Result<String> {
     let kernel = build_kernel(opts, true)?;
-    let mut cmd = qemu_command(opts, &kernel, true)?;
+    boot_test_with_kernel(opts, &kernel, log)
+}
+
+fn boot_test_with_kernel(opts: &Opts, kernel: &Path, log: &Path) -> Result<String> {
+    let mut command = debug_exit_command(opts, kernel)?;
     let mode = if opts.bios { "BIOS/ISO" } else { "UEFI" };
     println!("xtask: boot test ({mode})");
 
-    let mut child = cmd
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(|e| format!("cannot start QEMU: {e}"))?;
-
-    // Read serial output on a thread so a chatty kernel cannot block QEMU on
-    // a full pipe while we wait for the timeout.
-    let mut stdout = child.stdout.take().ok_or("no QEMU stdout")?;
-    let reader = std::thread::spawn(move || {
-        let mut out = Vec::new();
-        let _ = stdout.read_to_end(&mut out);
-        out
-    });
-
-    let start = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break Some(status),
-            Ok(None) if start.elapsed() > TEST_TIMEOUT => {
-                let _ = child.kill();
-                let _ = child.wait();
-                break None;
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(50)),
-            Err(e) => return Err(format!("waiting for QEMU: {e}")),
-        }
-    };
-    let serial = String::from_utf8_lossy(&reader.join().unwrap_or_default()).into_owned();
+    let output = boot_trace::run(&mut command)?;
+    let serial = String::from_utf8_lossy(&output.serial).into_owned();
     println!(
         "----- serial output -----\n{}\n-------------------------",
         serial.trim_end()
     );
     fs::write(log, &serial).map_err(|e| format!("writing {}: {e}", log.display()))?;
 
-    let Some(status) = status else {
+    let Some(status) = output.status else {
         return Err(format!("timed out after {}s", TEST_TIMEOUT.as_secs()));
     };
     if !serial.contains(BOOT_MESSAGE) {
@@ -466,4 +495,53 @@ fn boot_test(opts: &Opts, log: &Path) -> Result<String> {
     }
     println!("xtask: boot test passed ({mode})");
     Ok(serial)
+}
+
+#[cfg(test)]
+mod limine_tests {
+    use super::*;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn retries_only_the_pinned_fetch_with_bounded_backoff() {
+        for (failures, expected_calls, expected_delays) in [
+            (0, 1, &[][..]),
+            (1, 2, &[1]),
+            (2, 3, &[1, 2]),
+            (3, 3, &[1, 2]),
+        ] {
+            let mut calls = 0;
+            let mut delays = Vec::new();
+            let result = fetch_limine(
+                Path::new("limine"),
+                |git| {
+                    assert_eq!(git.get_program(), "git");
+                    assert_eq!(git.get_current_dir(), Some(Path::new("limine")));
+                    let args: Vec<_> = git.get_args().collect();
+                    assert!(args.ends_with(&[OsStr::new(LIMINE_REPO), OsStr::new(LIMINE_COMMIT)]));
+                    assert!(args.contains(&OsStr::new("fetch")));
+                    assert!(git.get_envs().any(|(key, value)| {
+                        key == "GIT_TERMINAL_PROMPT" && value.is_some_and(|value| value == "0")
+                    }));
+                    calls += 1;
+                    if calls <= failures {
+                        Err("simulated fetch failure".into())
+                    } else {
+                        Ok(())
+                    }
+                },
+                |delay| delays.push(delay.as_secs()),
+            );
+            assert_eq!(calls, expected_calls);
+            assert_eq!(delays, expected_delays);
+            if failures == 3 {
+                assert_eq!(
+                    result,
+                    Err("fetching Limine after 3 attempts: simulated fetch failure".into())
+                );
+            } else {
+                assert_eq!(result, Ok(()));
+            }
+        }
+    }
 }

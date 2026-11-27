@@ -33,6 +33,7 @@ build/
 qemu*.log
 serial*.log
 *.ppm
+!/tests/visual/boot-banner.ppm
 OVMF_VARS*.fd
 
 # Claude Code: agents in .claude/agents/ are shared; local settings are not

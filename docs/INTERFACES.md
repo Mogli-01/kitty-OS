@@ -113,6 +113,11 @@ das falhas, confirma `frame allocator self-test passed`, a auditoria W^X,
 heap e o do MMIO. Guarda a série em `build/memory-tests/<firmware>-<perfil>/`.
 `test` e `test-memory` dão erro se o log não puder ser gravado.
 
+`cargo xtask test-keyboard [--bios] [--release]` verifica a pressão e
+libertação de `A` e da seta para cima através de IRQ1. Usa a feature
+`selftest-ps2-keyboard` para a emissão dos marcadores de teste e guarda a
+série em `build/serial-keyboard.log`.
+
 ### Heap do kernel (`alloc`) — ESTÁVEL
 Fornece: CLAUDE (`kernel/src/mm/heap.rs`). Usa: todos.
 `Box`, `Vec`, `String`, … funcionam depois de `mm::heap::init()`.
@@ -430,6 +435,51 @@ pub fn UserPtr::<T>::write(self, v: T) -> Result<(), UserError>;
 - Marcador: `[mm] user-copy self-test passed`; features `selftest-smap`
   (`protection violation on read in kernel mode`) e `selftest-smep`
   (`protection violation on instruction fetch in kernel mode`).
+
+### Eventos internos do PS/2 — INSTÁVEL
+
+Fornece: CODEX (`kitty_ps2::Ps2Input`). A fila tem 64 entradas e entrega
+`InputEvent::Key(KeyEvent)` e `InputEvent::Mouse(MouseReport)` por ordem
+de descodificação. IRQ1 e IRQ12 partilham o bloco de portas. O bit AUX
+do estado identifica o dispositivo que enviou o byte. Cada handler lê no
+máximo um byte.
+
+`next_input` devolve `InputEvent::Lost` antes de retomar a entrega após
+perda. O consumidor limpa o estado de teclas e botões retidos. Um byte AUX
+corrompido, quando a posição é conhecida, descarta o restante pacote. Um
+erro que torne a posição desconhecida exige nova configuração do rato.
+A entrega a processos e os timestamps dependem das futuras interfaces de
+`INPUT` e de tempo monotónico.
+
+### Raiz só de leitura do initrd (`kitty-vfs`) — INSTÁVEL
+
+Fornece: CODEX (`fs/vfs`). O módulo de arranque vem do núcleo (#22).
+
+A montagem aceita até 65 536 entradas USTAR, contando o cabeçalho da raiz
+quando presente. Acima desse limite, devolve `Error::TooManyEntries` antes
+de reservar memória para o índice.
+
+```rust
+impl<'a> InitrdFs<'a> {
+    pub fn mount(bytes: &'a [u8]) -> Result<Self, Error>;
+    pub fn lookup(&self, path: &str) -> Result<Inode<'a>, Error>;
+    pub fn read_dir(&self, path: &str) -> Result<ReadDir<'_, 'a>, Error>;
+}
+impl File<'_> {
+    pub fn read_at(self, offset: u64, destination: &mut [u8]) -> usize;
+}
+```
+
+`lookup` e `read_dir` recebem caminhos absolutos canónicos UTF-8. A raiz
+é `/`. Os restantes caminhos têm até 256 bytes depois da barra inicial.
+`lookup` devolve `Inode::Directory` ou `Inode::File(File)`. `read_dir`
+enumera os filhos diretos por ordem das componentes, incluindo diretórios
+implícitos. `read_at` lê para um buffer Rust já validado, devolve zero no
+fim do ficheiro e preserva o resto do buffer. O inode de ficheiro e as
+entradas de diretório conservam o tempo de vida dos bytes do arquivo.
+
+O caminho por syscall depende de validação de ponteiros e direitos pelo
+núcleo. Esta interface é a primeira implementação da raiz do VFS.
 
 ## Planeadas (assinaturas propostas, podem mudar)
 

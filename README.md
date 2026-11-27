@@ -42,6 +42,7 @@ cargo xtask run            # compila e arranca no QEMU (UEFI)
 cargo xtask run --release  # o mesmo, com otimizações completas (LTO)
 cargo xtask run --bios     # arranque BIOS a partir da ISO (precisa de xorriso)
 cargo xtask test           # teste de arranque automático (sem ecrã)
+cargo xtask test-visual    # captura o framebuffer do arranque e compara a primeira linha
 cargo xtask iso            # gera build/kitty-os.iso (BIOS + UEFI)
 cargo xtask build          # só compila o ELF do kernel
 ```
@@ -49,6 +50,10 @@ cargo xtask build          # só compila o ELF do kernel
 A saída da porta série aparece no terminal; o ecrã do QEMU mostra a consola
 do framebuffer. Se o QEMU ou o OVMF não forem encontrados automaticamente,
 usa as variáveis `KITTY_QEMU`, `KITTY_OVMF` e `KITTY_XORRISO`.
+
+Na primeira preparação do suporte de arranque, o `xtask` descarrega o
+commit fixo do Limine para `build/limine`. Se o pedido falhar, tenta até
+três vezes. O `xtask` reutiliza o mesmo checkout nos arranques seguintes.
 
 Antes de abrir um PR:
 
