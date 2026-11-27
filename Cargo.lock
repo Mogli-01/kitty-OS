@@ -3,6 +3,17 @@
 version = 4
 
 [[package]]
+name = "kitty-acpi"
+version = "0.1.0"
+
+[[package]]
+name = "kitty-apic"
+version = "0.1.0"
+dependencies = [
+ "kitty-hal",
+]
+
+[[package]]
 name = "kitty-hal"
 version = "0.1.0"
 
@@ -10,8 +21,18 @@ version = "0.1.0"
 name = "kitty-kernel"
 version = "0.1.0"
 dependencies = [
+ "kitty-acpi",
+ "kitty-apic",
  "kitty-hal",
+ "kitty-pit",
  "limine",
+]
+
+[[package]]
+name = "kitty-pit"
+version = "0.1.0"
+dependencies = [
+ "kitty-hal",
 ]
 
 [[package]]

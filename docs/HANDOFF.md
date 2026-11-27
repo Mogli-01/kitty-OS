@@ -326,6 +326,148 @@ Formato:
   consola de arranque ou a concessão de uma segunda UART.
 - **Avisos** — os testes de registos usam portas simuladas.
 
+### [2026-11-25] — CODEX (descodificador MADT)
+
+- **Feito** — parser sem alocação para a MADT xAPIC/ISA e primeira
+  infraestrutura `cargo-fuzz` no host. Decisão D-106.
+- **PRs abertos** — ramo `codex/acpi-madt` para `main` e issue #18
+  para a descoberta da tabela e a capacidade de MMIO.
+- **Testes/fuzzing** — sete testes no host e em Miri. O mesmo parser
+  validou tabelas extraídas do QEMU q35 com dois vCPUs em BIOS e UEFI,
+  incluindo IRQ0 → GSI 2. A primeira sessão de fuzzing com ASan correu
+  mais de 1,2 milhões de casos sem falhas.
+- **Benchmarks** — sem medições comparáveis nesta sessão.
+- **Bloqueado por / à espera do Claude** — contrato de descoberta ACPI
+  e acesso seguro a APIC (#18).
+- **Próximo passo sugerido para o Claude** — definir o acesso à MADT e
+  o ponto de transição de PIC para APIC na #18.
+- **Avisos** — NMI e x2APIC ficam para a integração. O parser trabalha
+  sobre bytes e ainda não configura hardware. Sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (rotas NMI na MADT)
+
+- **Feito** — `kitty-acpi` passa a cruzar o ID xAPIC do CPU ativo com o
+  UID ACPI para resolver NMI por pino LINT. Decisão D-122.
+- **PRs abertos** — atualização do #20. Driver de registos do Local APIC
+  em revisão no #37.
+- **Testes/fuzzing** — 11 testes no host e em Miri. O ensaio ASan correu
+  1 047 603 casos em 16 segundos. Nas duas MADT de QEMU 8.2.2 com dois
+  vCPUs, o IRQ0 é encaminhado para GSI 2 e ambos os CPUs recebem NMI por
+  LINT1, tanto em BIOS como em UEFI.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — IDs repetidos, campos reservados
+  e definições contraditórias de NMI bloqueiam a seleção da rota.
+- **Bloqueado por / à espera do Claude** — revisão das capacidades de
+  MMIO do #35 e registo do vetor do timer na #36.
+- **Próximo passo sugerido para o Claude** — resolver a validação dos
+  endereços antes da transição de PIC para APIC.
+- **Avisos** — NMI descrita para I/O APIC ou x2APIC exige uma política
+  de encaminhamento própria antes da transição.
+
+### [2026-11-25] — CODEX (I/O APIC)
+
+- **Feito** — driver de programação das entradas do I/O APIC por acesso
+  exclusivo ao par IOREGSEL/IOWIN. Valida os limites GSI, a máscara e
+  os campos de uma rota de entrega fixa. Decisão D-107.
+- **PRs abertos** — ramo `codex/ioapic` sobre o #15.
+- **Testes/fuzzing** — oito testes no host e em Miri. Uma ligação qtest
+  ao I/O APIC de QEMU 8.2.2/q35 confirmou 24 entradas e a programação,
+  desmascaramento e máscara de uma rota em GSI 2.
+- **Benchmarks** — sem medições de latência de IRQ nesta sessão.
+- **Bloqueado por / à espera do Claude** — concessão de MMIO e ordem
+  de transição para APIC (#18).
+- **Próximo passo sugerido para o Claude** — definir o contrato para o
+  Local APIC e manter o handler antigo disponível até drenar o IRQ.
+- **Avisos** — ensaio qtest valida os registos do dispositivo emulado.
+  A entrega ao núcleo pela rota APIC será testada na integração.
+
+### [2026-11-26] — CODEX (Local APIC e timer)
+
+- **Feito** — driver xAPIC com leitura do ID, ativação da entrega com
+  vetor espúrio reservado, EOI e timer em modo one-shot e periódico. A
+  configuração verifica o divisor, vetor e máscara por leitura. Decisão D-121.
+- **PRs abertos** — ramo `codex/local-apic`, baseado no #21.
+- **Testes/fuzzing** — 16 testes APIC no host e em Miri, oito novos.
+  Numa cópia de teste sobre o #35, QEMU 8.2.2 confirmou a expiração one-shot,
+  recarga periódica e paragem do timer em BIOS e UEFI, debug e release,
+  através da capacidade `LocalApicRegisters` e com o IRQ mascarado.
+- **Benchmarks** — sem medições de frequência do timer ou latência de IRQ.
+- **Proteções de segurança alteradas** — o driver usa exclusivamente
+  `RegisterBlock`. Vetores do timer são limitados ao intervalo dinâmico.
+  Uma configuração parcial impede o arranque e desmascaramento do timer.
+- **Bloqueado por / à espera do Claude** — validar a identidade das
+  janelas de MMIO e os limites da leitura de firmware no #35.
+- **Próximo passo sugerido para o Claude** — resolver os pontos da revisão
+  do #35 e definir o registo de um handler para o timer local no núcleo.
+- **Avisos** — a entrega efetiva ao handler e o EOI do APIC ficam para a
+  integração. O arranque usa o PIC 8259.
+
+### [2026-11-26] — CODEX (controlador APIC)
+
+- Feito — ligação da MADT aos controladores I/O APIC e LAPIC. D-138.
+- PRs abertos — ramo `codex/ioapic-integracao` sobre #37, incluindo #20.
+- Testes/fuzzing — 22 testes APIC no host. A feature selftest-xapic
+  exige controlador APIC e duas confirmações de EOI no QEMU.
+- Benchmarks — sem medições.
+- Proteções de segurança alteradas — rotas validadas antes da mudança,
+  sem unsafe novo, com verificação de interrupções pendentes.
+- Bloqueado por / à espera do Claude — revisão da transição e marcador
+  antigo do autoteste PIT, que ainda menciona o PIC.
+- Próximo passo sugerido para o Claude — rever o controlador e tornar
+  o marcador do autoteste independente do controlador ativo.
+- Avisos — integração opcional no arranque, limitada ao CPU de arranque.
+
+### [2026-11-27] — CODEX (fallback do xAPIC na CI)
+
+- **Feito** — a CI verifica o PIC com xAPIC ativo e MADT indisponível
+  simulada à entrada do driver.
+- **PRs abertos** — ramo `codex/xapic-pic-fallback-test` sobre o #62.
+- **Testes/fuzzing** — quatro arranques QEMU com simulação e quatro
+  com APIC ativo, em BIOS e UEFI, debug e release.
+- **Benchmarks** — sem novas medições.
+- **Proteções de segurança alteradas** — a injeção está limitada a
+  builds com a feature de teste e `qemu-exit`.
+- **Bloqueado por / à espera do Claude** — nada neste ensaio.
+- **Próximo passo sugerido para o Claude** — tornar o texto do
+  autoteste PIT independente do controlador ativo quando for revisto.
+- **Avisos** — a simulação cobre a decisão do driver após a
+  descoberta de firmware.
+
+### [2026-11-27] — CODEX (arranque BIOS sem RSDP)
+
+- **Feito** — a matriz BIOS acrescenta um arranque QEMU com
+  `pc,acpi=off` e `selftest-xapic`. Exige `NoRsdp`, o PIC
+  como controlador ativo e duas entregas de IRQ0.
+- **PRs abertos** — atualização do #65.
+- **Testes/fuzzing** — o passo da CI passou localmente em BIOS debug
+  e release com QEMU 10.0.13. Num checkout conjunto com o #71,
+  teclado e rato também passaram via PIC em BIOS sem RSDP e em UEFI
+  sem MADT, com ACPI desativado nas máquinas testadas.
+- **Benchmarks** — sem novas medições.
+- **Proteções de segurança alteradas** — cobertura adicional da
+  descoberta de firmware e da entrega de interrupções.
+- **Bloqueado por / à espera do Claude** — nenhuma dependência deste ensaio.
+- **Próximo passo sugerido para o Claude** — atualizar o texto do
+  autoteste PIT quando for revista a transição do controlador.
+- **Avisos** — a matriz mantém o ensaio de ausência simulada em BIOS e UEFI.
+
+### [2026-11-27] — CODEX (arranque UEFI sem MADT)
+
+- **Feito** — o ensaio de descoberta com ACPI desativado cobre também
+  UEFI com a máquina `q35`. Verifica a ausência do RSDP ou da MADT, o
+  PIC ativo e duas entregas de IRQ0.
+- **PRs abertos** — atualização do #65.
+- **Testes/fuzzing** — o passo da CI passou em BIOS e UEFI, debug e
+  release, com QEMU 10.0.13. A série confirmou `NoMadt` nos dois
+  arranques UEFI e `NoRsdp` nos dois BIOS. Passaram formatação,
+  Clippy, actionlint e a validação de sintaxe Bash.
+- **Benchmarks** — sem medições nesta ronda.
+- **Proteções de segurança alteradas** — cobertura da descoberta de
+  firmware e do encaminhamento pelo PIC em UEFI.
+- **Bloqueado por / à espera do Claude** — nenhuma dependência deste ensaio.
+- **Próximo passo sugerido para o Claude** — rever o texto do autoteste PIT.
+- **Avisos** — o resultado de ausência pode variar com o firmware UEFI.
+
 ### [2026-11-26] — CLAUDE (desenho da Fase 6)
 - **Feito:** `docs/FASE6.md` com o contrato da Fase 6 (processos, ring 3,
   ABI das syscalls, `copy_*_user`, handles, consola da shell, `/sbin/init`
@@ -338,6 +480,16 @@ Formato:
   `userland/` contra a ABI; `console::input_push` no driver de teclado.
 - **Próximo passo do Claude:** 6a (SMEP/SMAP/UMIP + `copy_*_user` com
   recuperação de #PF).
+### [2026-11-26] — CLAUDE (issue #36)
+- **Feito:** `arch::irq::register_local`/`unregister_local` para fontes do
+  local APIC sem rota ISA (timer, erro, térmica), com contrato de ciclo de
+  vida em INTERFACES.md. PR `claude/irq-local-vector` (base `main`).
+- **PRs abertos:** este; #39 e #40 (Fase 5) à espera de revisão.
+- **Proteções de segurança alteradas:** nenhuma (o EOI por origem, D-039,
+  já cobre interrupções em trânsito depois de `unregister_local`).
+- **Próximo passo sugerido para o Codex:** usar `register_local` no timer
+  do Local APIC (`codex/local-apic`) e verificar 2 entregas.
+- **Avisos:** só o CPU de arranque (cada CPU terá o seu timer na Fase 9).
 
 ### [2026-11-26] — CLAUDE (issue #36)
 - **Feito:** `arch::irq::register_local`/`unregister_local` para fontes do
@@ -350,6 +502,23 @@ Formato:
   do Local APIC (`codex/local-apic`) e verificar 2 entregas.
 - **Avisos:** só o CPU de arranque (cada CPU terá o seu timer na Fase 9).
 
+### [2026-11-27] — CODEX (interrupções do timer Local APIC)
+
+- **Feito** — teste do vetor local do LAPIC sobre o #51 e o #65.
+  Programa um one-shot, rearma na primeira interrupção e mascara,
+  pára e liberta o vetor na segunda. O marcador exige o segundo EOI.
+- **PRs abertos** — ramo `codex/lapic-timer-irq` sobre o #65.
+- **Testes/fuzzing** — passaram BIOS e UEFI, debug e release, em
+  QEMU 10.0.13. Passaram formatação, Clippy e actionlint.
+- **Benchmarks** — sem medições nesta ronda.
+- **Proteções de segurança alteradas** — ensaio em Rust seguro, via
+  capacidade de registos concedida pelo núcleo.
+- **Bloqueado por / à espera do Claude** — revisão do contrato #51.
+- **Próximo passo sugerido para o Claude** — integrar o registo de
+  vetores locais após a revisão humana.
+- **Avisos** — a contagem serve o ensaio em QEMU. O tick de produção
+  precisa de uma frequência calibrada e da integração do scheduler.
+
 ### [2026-11-26] — CLAUDE (7.ª sessão, continuação)
 - **Feito:**
   - Com aprovação do Rodrigo no chat: merge de #15, #35 e #38; #13
@@ -360,6 +529,8 @@ Formato:
     assembly, scheduler round-robin preemptivo, pilhas de thread com página
     de guarda, contador de preempção nos `SpinLock`, medição em ciclos.
     Decisões D-044 (`unsafe` em `sched/`) e D-045.
+- **PRs abertos:** `claude/fase5-scheduler` (este).
+
   - **`WaitQueue`** (PR seguinte, `claude/fase5-waitqueue`, base #39):
     estado `Blocked`, `wait_until`/`wake_one`/`wake_all` sem wake-ups
     perdidos (D-046), utilizável a partir de handlers de IRQ; autoteste
@@ -377,6 +548,105 @@ Formato:
   "Scheduler"). Pôr `selftest-preempt` e `selftest-thread-stack-overflow`
   na CI (o primeiro sem `--expect-panic`).
 - **Avisos:**
+  - Ainda não há `WaitQueue` (próximo passo do Claude): threads que
+    esperam fazem `yield_now()` em ciclo.
+  - Um só CPU (o lock do scheduler é largado antes da troca).
+  - Os ciclos do autoteste vêm do QEMU TCG: não são de hardware real.
+
+### [2026-11-25] — CODEX (PIT periódico)
+
+- **Feito** — driver `kitty-pit` com divisor validado e programação
+  periódica do canal 0 através de `PortBlock`. Documentação em
+  `DRIVERS.md` e decisão D-105.
+- **PRs abertos** — ramo `codex/pit-periodico` sobre o #15.
+- **Testes/fuzzing** — cinco testes no host e em Miri. Uma ligação
+  temporária em `devices::init` recebeu quatro IRQ0 sucessivos em QEMU
+  8.2.2, em BIOS e UEFI, debug e release.
+- **Benchmarks** — sem medição de frequência ou latência nesta sessão.
+- **Bloqueado por / à espera do Claude** — aprovação do #15 e contrato
+  de `sched::tick()` para ligar os ticks ao scheduler.
+- **Próximo passo sugerido para o Claude** — rever o ponto de ligação
+  do temporizador e a proposta de teste de EOI da revisão do #15.
+- **Avisos** — arranque normal ainda sem tick periódico. Uma linha
+  desmascarada pode entregar um IRQ pendente anterior à programação.
+  Sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (paragem do PIT e entrega repetida na CI)
+
+- **Feito** — operação `Pit::stop` e execução do autoteste de dois IRQ0
+  nos quatro perfis QEMU do #19. Decisão D-120.
+- **PRs abertos** — atualização do #19 sobre a revisão do #15.
+- **Testes/fuzzing** — sete testes do driver no host e em Miri. O
+  autoteste de interrupções passou localmente em QEMU 8.2.2 com BIOS
+  e UEFI em debug e release.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — cobertura de reconhecimento de
+  interrupções na CI. Driver em Rust seguro.
+- **Bloqueado por / à espera do Claude** — `sched::tick()` para o
+  arranque usar o PIT como origem de ticks.
+- **Próximo passo sugerido para o Claude** — documentar a transição
+  entre a contagem periódica do PIT e a fonte de tempo do scheduler.
+- **Avisos** — o autoteste do núcleo prova a entrega pelo PIC.
+  Os testes de portas verificam a programação de `kitty-pit`.
+
+### [2026-11-26] — CODEX (PIT no scheduler)
+
+- **Feito** — PIT legado ligado a `sched::tick()` com frequência
+  pedida de 100 Hz. Decisão D-128.
+- **PRs abertos** — ramo `codex/pit-scheduler` sobre o #39 com o
+  driver do #19.
+- **Testes/fuzzing** — 20 arranques da etapa de CI passaram no QEMU
+  8.2.2, em BIOS e UEFI, debug e release. Passaram também os dois
+  ensaios release com o autoteste de preempção existente.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — só regista a linha após
+  configurar o PIT e conserva a concessão exclusiva das portas.
+- **Bloqueado por / à espera do Claude** — revisão do #39 e
+  contrato de registo do temporizador local na #36.
+- **Próximo passo sugerido para o Claude** — manter o registo de
+  IRQ0 nos autotestes e o EOI antes da preempção.
+
+### [2026-11-26] — CODEX (PIT na revisão do #39)
+
+- **Feito** — atualizada a base do ramo do temporizador para `638df99`,
+  que reserva capacidade para a fila de threads prontas.
+- **PRs abertos** — #48 sobre o #39. O registo de vetores locais foi
+  revisto no #51.
+- **Testes/fuzzing** — passaram dois arranques release (BIOS e UEFI)
+  que exigem o marcador das duas preempções e o autoteste cooperativo.
+- **Benchmarks** — sem medições comparáveis.
+- **Proteções de segurança alteradas** — sem alterações próprias no
+  núcleo. O driver continua a aceder ao PIT pelas portas reclamadas.
+- **Bloqueado por / à espera do Claude** — revisão de falta de memória
+  no #39 e garantias para reutilização de um vetor local no #51.
+- **Próximo passo sugerido para o Claude** — fechar o ciclo de vida do
+  vetor local antes de permitir reutilização no driver do timer.
+
+### 2026-11-27 — CODEX
+- Feito: calibração do timer local por dois períodos do PIT, registo do
+  vetor e chamada periódica a `sched::tick()` a 100 Hz, com recurso ao PIT.
+- PRs abertos: ramo [`codex/lapic-scheduler-tick`](https://github.com/Mogli-01/kitty-OS/tree/codex/lapic-scheduler-tick),
+  sobre os PRs #76 (vetor/EOI do LAPIC) e #48 (PIT para preempção).
+- Testes/fuzzing: oito testes PIT no host e no Miri, fmt, Clippy e actionlint.
+  QEMU confirma duas preempções pelo LAPIC e duas pelo PIT com ACPI
+  desligada, em BIOS e UEFI e em debug e release. O teste original de EOI
+  e a preempção só pelo PIT também passaram em UEFI release. Numa
+  integração local com o #71, o teclado (IRQ1) e o rato (IRQ12) passaram
+  com o LAPIC ativo em BIOS e UEFI release, e com PIC/PIT em BIOS release
+  com ACPI desligada.
+- Benchmarks: frequência nominal de 100 Hz. Sem medições de desempenho
+  comparáveis nesta sessão.
+- Proteções de segurança alteradas: calibração limitada a três tentativas
+  e às leituras previstas em cada tentativa. Fontes de IRQ desmascaradas
+  só depois de registar o handler. Sem `unsafe` novo.
+- Bloqueado por / à espera do Claude: concessão COM1 e contrato de IRQ4 no #72,
+  para ligar a receção UART dos PRs #59 e #78 ao núcleo e testá-la em QEMU.
+- Próximo passo sugerido para o Claude: definir a transição da consola série
+  de arranque para a receção por interrupção, na issue #72.
+- Avisos: o temporizador LAPIC é opt-in e foi ensaiado em QEMU no CPU de
+  arranque. Uma amostra instável em UEFI release motivou períodos de
+  referência mais longos e repetições limitadas.
+
   - Para esperar sem gastar CPU: `sched::WaitQueue` (ex.: o teclado pode
     acordar leitores a partir do handler do IRQ1).
   - Um só CPU (o lock do scheduler é largado antes da troca).
@@ -553,3 +823,19 @@ Formato:
   benchmark para avaliar alterações significativas de arranque.
 - **Avisos** — a CI mede o perfil BIOS/release. O UEFI continua
   disponível a partir de `cargo xtask bench-boot --release`.
+
+### 2026-11-27 — CODEX (integração da Fase 4)
+- Feito: atualizadas as bases dos drivers de IRQ a partir do `main`
+  em `228bcc7`, incluindo as filas de espera e a parte 6A do núcleo.
+- PRs abertos: #14, #16, #17, #19, #20, #21, #34, #37, #48, #59, #62,
+  #65, #71, #76, #78 e #81.
+- Testes/fuzzing: host para Set 2, i8042, PIT, MADT, APIC e UART e Miri para
+  PIT e UART. QEMU UEFI release nos ramos atualizados confirma IRQ1,
+  IRQ12, EOI de IRQ0 pelo APIC, fallback PIC sem MADT e EOI do timer LAPIC.
+- Benchmarks: sem medições comparáveis.
+- Bloqueado por / à espera do Claude: contrato de acesso à UART e IRQ
+  na issue #72. A integração em `main` requer revisão humana.
+- Próximo passo sugerido para o Claude: especificar se a UART do driver
+  usa uma segunda porta ou recebe da consola a posse da COM1.
+- Avisos: o #81 usa o #76 como base e inclui o PIT do #48. Um check
+  de BIOS do #48 voltou a passar após um erro HTTP 403 no APT do runner.

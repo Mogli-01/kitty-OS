@@ -1,0 +1,22 @@
+[package]
+name = "kitty-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+kitty-acpi = { path = "../drivers/acpi" }
+libfuzzer-sys = "0.4"
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "madt"
+path = "fuzz_targets/madt.rs"
+test = false
+doc = false
+bench = false

@@ -74,6 +74,13 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Driver do teclado PS/2 | CODEX | TODO |
 | Driver UART completo (interrupções, input) | CODEX | Configuração e polling de TX/RX testados no ramo `codex/uart-16550`. Integração com portas e IRQ pendente |
 
+| Descodificador MADT para endereços APIC, overrides ISA e rotas NMI locais | CODEX | Em revisão no #20. Integração de hardware depende da #18 e do #35 |
+| Driver do Local APIC + IO APIC | CODEX | Drivers #21/#37, integração opcional #62 e testes do caminho PIC com MADT ausente simulada e firmware sem tabela em BIOS e UEFI no #65 |
+| Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | Duas entregas e EOI no #76. LAPIC calibrado pelo PIT e ligado a `sched::tick()` em `codex/lapic-scheduler-tick`. LAPIC e fallback pelo PIT verificados em QEMU (BIOS/UEFI, debug/release), integração pendente |
+| Driver legado PIT periódico (IRQ0) | CODEX | Programação e paragem no #19. Ligação a `sched::tick` a 100 Hz no #48, verificada na revisão do #39 |
+| Driver do teclado PS/2 | CODEX | Descodificador #14, transporte i8042 #16, teclado ligado ao IRQ1 no #17, testes com PIC e I/O APIC no #71. Em revisão |
+| Driver UART completo (interrupções, input) | CODEX | Driver 16550A no #59 e fontes de receção no #78. Ligação ao IRQ4 e teste de receção em QEMU dependem da concessão COM1 no #72 |
+
 ## Fase 5 — Scheduler
 | Tarefa | Dono | Estado |
 |---|---|---|
