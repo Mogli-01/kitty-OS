@@ -174,6 +174,20 @@ impl FrameBuffer {
         self.height
     }
 
+    /// Borrows the validated rows of a BGRA8888 framebuffer and its pitch.
+    #[cfg(feature = "pantufa")]
+    pub(crate) fn bgra_view(&mut self) -> Option<(&mut [u8], usize)> {
+        if [
+            (self.red.shift, self.red.size),
+            (self.green.shift, self.green.size),
+            (self.blue.shift, self.blue.size),
+        ] != [(16, 8), (8, 8), (0, 8)]
+        {
+            return None;
+        }
+        Some((&mut self.pixels[..self.height * self.pitch], self.pitch))
+    }
+
     /// Converts an 8-bit-per-channel RGB colour into the native pixel value.
     pub fn color(&self, r: u8, g: u8, b: u8) -> u32 {
         let chan = |v: u8, m: ChannelMask| {

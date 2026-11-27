@@ -30,6 +30,24 @@ cargo xtask test --bios --release # teste automático em BIOS
 `cargo xtask iso --release` escreve `build/kitty-os.iso`. O xtask obtém
 a versão de Limine fixada pelo projeto na primeira preparação da imagem.
 
+## Experimentar a animação do Pantufa
+
+```sh
+cargo xtask run --release --pantufa
+cargo xtask run --release --bios --pantufa
+cargo xtask iso --release --pantufa
+```
+
+A animação é opcional. O núcleo continua o arranque enquanto o Pantufa
+ocupa o ecrã. Com o núcleo pronto, o gato salta para o logótipo e dá
+lugar à consola de texto. A montagem do initrd acende a pegada de
+ficheiros. Os diagnósticos continuam disponíveis pela porta série.
+
+O ecrã requer um framebuffer BGRA8888 com pelo menos 320×180 píxeis.
+Usa o perfil release para ver a animação com fluidez. A implementação
+usa ponto flutuante por software e pode saltar frames em builds de
+depuração ou num emulador lento.
+
 ## Empacotar um initrd
 
 Crie uma pasta com ficheiros regulares e diretórios. Pode gerar o arquivo

@@ -18,6 +18,8 @@ const PERIOD: Period = match Period::from_hz(TICK_HZ) {
 static TIMER: IrqSpinLock<Option<Pit<LegacyPorts>>> = IrqSpinLock::new(None);
 
 fn on_irq0(_: Vector) {
+    #[cfg(feature = "pantufa")]
+    super::pantufa::tick();
     #[cfg(all(feature = "selftest-pit-driver", feature = "qemu-exit"))]
     super::timer_probe::count_irq();
     sched::tick();
@@ -43,6 +45,8 @@ pub(super) fn init() {
         kprintln!("[pit] IRQ0 registration failed: {:?}", error);
         return;
     }
+    #[cfg(feature = "pantufa")]
+    super::pantufa::clock_ready();
     kprintln!(
         "[pit] scheduler timer ready on IRQ0 ({} Hz requested)",
         TICK_HZ

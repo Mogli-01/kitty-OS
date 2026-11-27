@@ -16,6 +16,7 @@ test = false
 bench = false
 
 [features]
+pantufa = ["dep:kitty-pantufa"]
 # Only for automated tests: lets the kernel power off QEMU through the
 # isa-debug-exit device. Never enabled in normal builds.
 qemu-exit = []
@@ -58,6 +59,7 @@ selftest-ps2-keyboard = ["selftest-ps2-input"]
 selftest-initrd = []
 
 [dependencies]
+kitty-pantufa = { path = "../art/pantufa", optional = true }
 limine = "0.6.5"
 kitty-hal = { path = "../hal" }
 kitty-acpi = { path = "../drivers/acpi", optional = true }

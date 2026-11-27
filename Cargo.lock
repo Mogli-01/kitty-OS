@@ -39,6 +39,7 @@ dependencies = [
  "kitty-acpi",
  "kitty-apic",
  "kitty-hal",
+ "kitty-pantufa",
  "kitty-pit",
  "kitty-ps2",
  "kitty-vfs",

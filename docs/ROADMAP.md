@@ -159,7 +159,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Framebuffer mapeado com write-combining (usa a API de PAT da Fase 3) | CODEX | TODO |
 | Objeto `DISPLAY`: `display_map(h)` exige um handle com `MAP`, que o `init` dá só ao compositor; a consola do kernel larga o ecrã (D-058) | CLAUDE | TODO |
 | Identidade "kitty": arte e animação de arranque do Pantufa (crate `kitty-pantufa`, D-152) | CLAUDE | Em revisão no ramo `claude/pantufa-arte` |
-| Identidade "kitty": mostrar o ecrã de arranque no framebuffer com `kitty-pantufa` (fases reais, sem atrasar o arranque) | CODEX | TODO |
+| Identidade "kitty": mostrar o ecrã de arranque no framebuffer com `kitty-pantufa` (fases reais, sem espera no arranque) | CODEX | Em revisão em `codex/pantufa-boot` (#90). Entrega ao login pendente da interface gráfica |
 
 ## Fase 11 — Input
 | Tarefa | Dono | Estado |

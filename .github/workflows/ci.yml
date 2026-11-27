@@ -42,6 +42,7 @@ jobs:
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup toolchain install
       - run: cargo fmt --all --check
+      - run: cargo test --locked -p kitty-pantufa
       - run: cargo clippy --workspace --locked -- -D warnings
       - run: cargo clippy -p kitty-kernel --locked --all-features -- -D warnings
       - run: cargo clippy --workspace --locked --release -- -D warnings
@@ -257,6 +258,17 @@ jobs:
           run_case double-fault --features selftest-double-fault --expect-panic
           grep -F -- '=== Double Fault (#DF) (vector 8)' build/serial-logs/double-fault.log
           grep -F -- '(running on the IST double-fault stack)' build/serial-logs/double-fault.log
+
+          if [[ "$PROFILE" == release ]]; then
+            run_case pantufa --features pantufa \
+              --expect '[boot] boot complete' \
+              --expect '[pantufa] animation complete'
+            awk '
+              /\[boot\] boot complete/ { boot = NR }
+              /\[pantufa\] animation complete/ { animation = NR }
+              END { exit !(boot && animation > boot) }
+            ' build/serial-logs/pantufa.log
+          fi
 
           run_case preemption --features selftest-preempt \
             --expect '[sched] preemption self-test passed' \

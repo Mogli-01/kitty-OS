@@ -1199,3 +1199,17 @@ squash-and-stretch sem multiplicar dados. A matemática em `f32` é pequena
 A ligação ao framebuffer e à ordem real do arranque é do Codex (ROADMAP,
 Fase 10). O ecrã de arranque nunca espera pela animação: é o gato que
 espera pelo sistema.
+
+### D-156 — Apresentação opcional do Pantufa no arranque
+
+O núcleo empresta o framebuffer validado à apresentação até ao fim da
+animação. O PIT ou o LAPIC fornece os ticks do relógio do scheduler.
+O desenho é feito no contexto da thread de arranque, com um mínimo de
+quatro ticks entre apresentações (25 fps pretendidos a 100 Hz). Se
+um frame se atrasar, o seguinte usa o tempo atual e pode saltar poses.
+
+O estado e a cena ficam em armazenamento estático, fora da pilha do
+núcleo. A consola série continua a receber os diagnósticos e a consola
+gráfica recebe o framebuffer no fim. As pegadas de memória,
+interrupções, drivers e ficheiros refletem marcos reais. As restantes
+dependem dos respetivos subsistemas.
