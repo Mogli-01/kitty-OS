@@ -266,4 +266,5 @@ pub(crate) unsafe fn set_kernel_stack(top: u64) {
     // delivered, which cannot happen with IF=0). The field is only 4-byte
     // aligned in the packed struct, hence the unaligned write.
     unsafe { rsp0.write_unaligned(top) };
+    super::trap::set_syscall_stack(top);
 }

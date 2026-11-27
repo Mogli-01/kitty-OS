@@ -9,6 +9,9 @@
 
 mod font;
 mod framebuffer;
+mod input;
+pub use input::push as input_push;
+pub(crate) use input::read as input_read;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;

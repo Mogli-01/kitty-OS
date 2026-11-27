@@ -218,7 +218,7 @@ pub fn spawn_user(
     // base loaded (the frame's CS is the kernel's): refuse here, so the
     // contract of `enter_user` holds for every caller (security review).
     let user_half = USER_MIN..USER_END;
-    if !user_half.contains(&rip) || rsp <= USER_MIN || rsp > USER_END || !rsp.is_multiple_of(16) {
+    if !user_half.contains(&rip) || rsp <= USER_MIN || rsp >= USER_END || !rsp.is_multiple_of(16) {
         return Err(SpawnError::BadUserAddress);
     }
     let user = UserThread {

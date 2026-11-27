@@ -67,6 +67,22 @@ pub struct TrapFrame {
 
 const _: () = assert!(core::mem::size_of::<TrapFrame>() == 22 * 8);
 
+// The boot CPU owns these scratch slots. SYSCALL masks interrupts before
+// saving user RSP. IST handlers do not use either slot or schedule.
+static SYSCALL_STACK: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+static USER_STACK_SCRATCH: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+const SYSCALL_VECTOR: u64 = 256;
+
+pub(super) fn set_syscall_stack(top: u64) {
+    SYSCALL_STACK.store(top, core::sync::atomic::Ordering::Relaxed);
+}
+
+pub(super) fn init_syscalls() {
+    // SAFETY: the assembly entry uses only RIP-relative kernel scratch
+    // until loading the scheduler's kernel stack, then builds a TrapFrame.
+    unsafe { super::cpu::install_syscall_entry(kitty_syscall_entry as *const () as u64) };
+}
+
 // The vectors for which the CPU pushes an error code: #DF(8), #TS(10),
 // #NP(11), #SS(12), #GP(13), #PF(14), #AC(17), #CP(21), #VC(29), #SX(30).
 // For every other vector the stub pushes a dummy 0 so the frame layout is
@@ -116,6 +132,23 @@ kitty_trap_\n:
     TRAP_NOERR \n
 .endr
 
+// SYSCALL starts with user RSP and kernel CS. No pushes until switching
+// to the active thread's kernel stack. Match the normal interrupt frame.
+.global kitty_syscall_entry
+kitty_syscall_entry:
+    mov [rip + {user_rsp}], rsp
+    mov rsp, [rip + {kernel_rsp}]
+    swapgs
+    lfence
+    push {user_ds}
+    push qword ptr [rip + {user_rsp}]
+    push r11
+    push {user_cs}
+    push rcx
+    push 0
+    push {syscall_vector}
+    jmp kitty_trap_save
+
 kitty_trap_common:
     cld
     test qword ptr [rsp + 24], 3
@@ -123,6 +156,7 @@ kitty_trap_common:
     swapgs
 1:
     lfence
+kitty_trap_save:
     push rax
     push rbx
     push rcx
@@ -172,9 +206,15 @@ kitty_trap_stubs:
 .section .text
 "#,
     dispatch = sym trap_dispatch,
+    kernel_rsp = sym SYSCALL_STACK,
+    user_rsp = sym USER_STACK_SCRATCH,
+    user_cs = const super::gdt::USER_CS,
+    user_ds = const super::gdt::USER_DS,
+    syscall_vector = const SYSCALL_VECTOR,
 );
 
 unsafe extern "C" {
+    fn kitty_syscall_entry();
     /// Addresses of the entry stubs, indexed by vector (defined above).
     #[link_name = "kitty_trap_stubs"]
     static TRAP_STUBS: [u64; STUB_COUNT];
@@ -198,6 +238,9 @@ extern "C" fn trap_dispatch(frame: &mut TrapFrame) {
     // a user copy (AC=1), close the SMAP window for the handler; `iretq`
     // restores the interrupted code's AC from the frame.
     super::usercopy::clac();
+    if frame.vector == SYSCALL_VECTOR {
+        return dispatch_syscall(frame);
+    }
     match u8::try_from(frame.vector) {
         Ok(v) if v >= super::irq::FIRST_INTERRUPT_VECTOR => super::irq::dispatch(v),
         _ => super::exceptions::handle(frame),
@@ -211,4 +254,20 @@ extern "C" fn trap_dispatch(frame: &mut TrapFrame) {
     if frame.cs & 3 != 0 && !IST_VECTORS.contains(&frame.vector) {
         crate::proc::on_return_to_user();
     }
+}
+
+fn dispatch_syscall(frame: &mut TrapFrame) {
+    use crate::mm::paging::{USER_END, USER_MIN};
+
+    let user_range = USER_MIN..USER_END;
+    if !user_range.contains(&frame.rip) || !user_range.contains(&frame.rsp) {
+        crate::proc::exit_current_on_fault(13);
+    }
+    // Carry user arithmetic and direction flags through IRET. Kernel code
+    // runs with DF clear and we do not carry IOPL, NT, RF, TF or AC back.
+    frame.rflags = (frame.rflags & 0xcd5) | 0x202;
+    super::cpu::enable_interrupts();
+    frame.rax = crate::syscall::dispatch(frame.rax, frame.rdi, frame.rsi, frame.rdx) as u64;
+    super::cpu::disable_interrupts();
+    crate::proc::on_return_to_user();
 }

@@ -43,3 +43,15 @@ Verificação rápida: `git grep -n "unsafe" -- kernel/src`.
 
 Dependências externas com `unsafe`: crate `limine` (leitura volátil das
 respostas do bootloader). Usado só em `arch/x86_64/boot.rs`.
+
+
+### Entrada de syscalls x86-64
+
+- `arch/x86_64/cpu.rs::install_syscall_entry` configura STAR,
+  LSTAR e FMASK depois da GDT e da IDT. Ativa EFER.SCE por último.
+- `arch/x86_64/trap.rs` guarda o RSP de utilizador em memória
+  do CPU de arranque antes de usar a pilha corrente do núcleo, sincronizada
+  com RSP0. O stub usa o frame de interrupções existente. IF só é ativado
+  após a validação do estado de retorno. O retorno usa IRETQ e seletores
+  fixos. O scratch depende da execução num único CPU. Os handlers IST
+  atuais não usam o scratch nem acedem a dados por GS.

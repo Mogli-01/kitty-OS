@@ -418,6 +418,26 @@ o `init` recebe os handles de CONSOLE, raiz do initrd, INPUT e DISPLAY e
 passa-os com `process_spawn`; não há `input_open`. O Codex pode programar
 a shell, a biblioteca de syscalls e o compositor contra esse contrato.
 
+### Syscalls de consola (entrada x86-64) — INSTÁVEL
+
+Em builds desta série, `syscall` usa `rax` para o número e `rdi`,
+`rsi`, `rdx` para os primeiros argumentos. Preserva os outros registos
+de uso geral com a exceção de `rcx` e `r11`. O retorno é um inteiro
+assinado em `rax`.
+
+| Número | Chamada |
+|---:|---|
+| 0 | `exit(status)` |
+| 1 | `yield()` |
+| 2 | `console_read(handle, buffer, len)` |
+| 3 | `console_write(handle, buffer, len)` |
+
+A consola exige o handle 0 concedido ao processo. As transferências são
+limitadas a 4 KiB. A leitura bloqueia enquanto não houver input. O driver
+PS/2 envia UTF-8 e teclas de edição pela função `console::input_push`.
+A primeira imagem `/sbin/init` e os handles de ficheiros ficam para os
+PRs seguintes.
+
 ### Memória de user: `mm::user` (Fase 6a) — INSTÁVEL
 Fornece: CLAUDE (`kernel/src/mm/user.rs`). Usa: núcleo (syscalls).
 ```rust
