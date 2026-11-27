@@ -351,12 +351,35 @@ Usar para tudo o que um handler de interrupção possa tocar. Os guards
 guards aninhados libertam-se por ordem inversa (LIFO); um `drop` fora de
 ordem pode religar as interrupções com outro lock ainda preso.
 
+### Scheduler e threads do kernel (Fase 5) — INSTÁVEL
+Fornece: CLAUDE (`kernel/src/sched/`). Usa: CODEX (timer, drivers com
+threads), núcleo.
+```rust
+pub fn sched::spawn(name: &'static str, entry: fn()) -> Result<ThreadId, SpawnError>;
+pub fn sched::yield_now();
+pub fn sched::exit() -> !;          // também acontece quando `entry` volta
+pub fn sched::tick();               // chamar no handler do timer
+pub fn sched::current() -> ThreadId;
+pub fn sched::switches() -> u64;
+```
+- **Timer (Codex):** o handler do IRQ do timer só tem de chamar
+  `sched::tick()` (não aloca nem toma locks). Não troca de thread dentro do handler: o núcleo fá-lo no
+  fim do dispatch, depois do EOI. Frequência sugerida: 100–1000 Hz.
+- Cada thread tem 32 KiB de pilha com página de guarda; um overflow dá
+  double fault com relatório (não corrompe outra thread).
+- **Não preempta** enquanto houver um `SpinLock` simples preso; por isso,
+  num laço longo, não seguras um `SpinLock` (usa `IrqSpinLock` com secções
+  curtas, ou liberta o lock).
+- Ainda não há bloqueio/espera (`WaitQueue` vem a seguir): uma thread que
+  espera faz `yield_now()` em ciclo.
+- Marcadores: `[sched] cooperative self-test passed`, e com a feature
+  `selftest-preempt` `[sched] preemption self-test passed`;
+  `selftest-thread-stack-overflow` → double fault na IST.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |
 |---|---|---|---|
-| `sched::tick()` — chamada pelo driver do timer a cada interrupção | CLAUDE | CODEX | 4/5 |
-| `sched::spawn_kernel_thread(fn() -> !)` | CLAUDE | CODEX | 5 |
 | `UserPtr<T>`, `copy_from_user`, `copy_to_user` | CLAUDE | CODEX (VFS) | 6 |
 | ABI das syscalls (números, registos, códigos de erro) | CLAUDE | CODEX (userland) | 6 |
 | `trait FileSystem` / `trait Inode` do VFS | CODEX | CLAUDE (syscalls) | 7 |

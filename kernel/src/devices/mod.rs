@@ -14,6 +14,7 @@
 
 #[cfg(feature = "xapic")]
 mod apic;
+mod pit;
 
 /// Platform description handed to the drivers.
 pub struct Platform<'a> {
@@ -48,5 +49,12 @@ pub fn init(_platform: &Platform<'_>) {
             _platform.madt
         };
         apic::init(madt);
+    }
+    // These core self-tests each program the timer and own IRQ0 themselves.
+    if !cfg!(any(
+        feature = "selftest-irq-pit",
+        feature = "selftest-preempt"
+    )) {
+        pit::init();
     }
 }

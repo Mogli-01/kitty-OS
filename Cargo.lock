@@ -24,7 +24,15 @@ dependencies = [
  "kitty-acpi",
  "kitty-apic",
  "kitty-hal",
+ "kitty-pit",
  "limine",
+]
+
+[[package]]
+name = "kitty-pit"
+version = "0.1.0"
+dependencies = [
+ "kitty-hal",
 ]
 
 [[package]]

@@ -37,8 +37,19 @@ selftest-xapic = ["xapic", "selftest-irq-pit"]
 selftest-xapic-no-madt = ["xapic", "selftest-irq-pit"]
 selftest-lapic-timer = ["selftest-xapic"]
 
+# Two busy threads that never yield must both make progress (PIT ticks call
+# sched::tick). Does not panic: expect exit code 33.
+selftest-preempt = []
+# A kernel thread recurses into its stack guard page: expect a double fault.
+selftest-thread-stack-overflow = []
+
+# Exercises the actual boot PIT driver under QEMU's normal test exit path.
+selftest-pit-driver = []
+
 [dependencies]
 limine = "0.6.5"
 kitty-hal = { path = "../hal" }
 kitty-acpi = { path = "../drivers/acpi", optional = true }
 kitty-apic = { path = "../drivers/apic", optional = true }
+
+kitty-pit = { path = "../drivers/pit" }

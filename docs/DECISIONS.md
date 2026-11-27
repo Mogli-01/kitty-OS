@@ -540,3 +540,84 @@ Os overrides ISA precedem as rotas por identidade. Uma GSI tem um único
 dono. São recusadas rotas especiais ativas, intervalos sobrepostos,
 NMI em LINT0 e NMI de nível em LINT1. O LAPIC é ativado antes de
 configurar NMI e os bancos ISR e IRR têm de estar vazios.
+
+### D-044 — `unsafe` permitido em `sched/` (2026-11-26, CLAUDE)
+Trocar de pilha (chamar `arch::x86_64::context::switch`) e voltar a fazer
+de um endereço um `fn()` não se consegue em Rust seguro, e o scheduler é o
+único dono dessas operações. Tal como o `sync/` (D-008), o `sched/` entra na
+lista de módulos com `#[allow(unsafe_code)]`. Cada bloco tem `// SAFETY:` e
+está em `docs/UNSAFE.md`.
+
+### D-045 — Threads do kernel e scheduler preemptivo round-robin (2026-11-26, CLAUDE)
+- **Troca de contexto mínima** (`context.rs`): guarda os 6 registos
+  callee-saved e o RSP, carrega o RSP da outra thread e faz `ret` para
+  dentro dela (14 instruções). Os caller-saved já são guardados pelo
+  compilador à volta da chamada; o kernel não usa SSE (sem estado de FPU);
+  a troca é sempre feita com interrupções desligadas. Uma thread parada é
+  só o seu RSP.
+- **Pilhas** (`mm/stack.rs`): slots de 64 KiB na região
+  `0xFFFF_E000_0000_0000`, com 32 KiB de pilha RW+NX, **página de guarda**
+  por baixo e espaço por mapear por cima; slots reutilizados; frames limpos
+  pelo PMM ao libertar.
+- **Preempção:** o timer chama `sched::tick()`, que só marca um pedido
+  (atómico, sem lock). A troca acontece no fim de `irq::dispatch`, **depois
+  do EOI** e sem nenhum lock da tabela preso. **Nunca preempta** com um
+  `SpinLock` simples preso (contador em `sync::preempt`): no mesmo CPU, a
+  thread seguinte podia girar para sempre num lock cujo dono não corre. Com
+  `IrqSpinLock` o problema nem se põe (as interrupções estão desligadas).
+- **Saída e recolha:** uma thread que volta da função de entrada morre; a
+  pilha dela é libertada pela próxima decisão do scheduler, fora do lock e
+  nunca enquanto ainda se está a correr nela.
+- **Sem heap em contexto de interrupção** (revisão do Codex ao #39/#40): a
+  fila `ready` e a lista de slots livres das pilhas reservam capacidade em
+  contexto de thread (`spawn`, `KernelStack::new`) para todas as threads e
+  slots existentes; por isso o caminho de preempção, a recolha de threads
+  mortas no fim de uma IRQ e o `wake` chamado por um handler nunca alocam.
+- **Ordem dos locks** (do exterior para o interior): `SCHED` → heap →
+  espaço do kernel → PMM, e `stack::SLOTS` → heap. `SCHED` nunca é pedido
+  com um destes presos. O caminho da troca não aloca (a thread que morre
+  vai para um `Option`, não para um `Vec`).
+- **Revisto depois do `security-reviewer`:** o contador de preempção passou
+  a incrementar *antes* do CAS do `SpinLock`; uma troca cooperativa com um
+  lock preso é um `assert!`; o panic handler desliga as interrupções logo à
+  entrada (sem preempção durante um panic); `exit` da última thread
+  executável é um panic explícito; e acabou o `transmute` do endereço de
+  entrada (o trampolim passa o `fn()` diretamente).
+- **Um CPU:** o lock do scheduler é largado *antes* da troca, com as
+  interrupções ainda desligadas, o que chega num só CPU. O SMP (Fase 9)
+  exige filas por CPU e o lock preso durante a troca.
+- **Medição:** autoteste no arranque com 2 threads em ping-pong
+  (`yield_now`), que mostra os ciclos (TSC) por yield+troca. No QEMU TCG
+  os "ciclos" não são de hardware real: o número serve para comparar
+  versões, não como valor absoluto.
+
+### D-105 — PIT legado em modo periódico (2026-11-25, CODEX)
+
+O crate `kitty-pit` programa o canal 0 do PIT 8254 em modo 2 através de
+`PortBlock`. Os divisores válidos são 2–65 536. O valor máximo usa a
+codificação de 16 bits a zero prevista pelo hardware. Um tipo validado
+permite calcular o período antes de escrever nas portas e preservar
+a razão exata divisor/frequência nominal para contabilizar tempo.
+
+A programação faz-se com IRQ0 mascarado. Se uma escrita falhar mantém-se a
+linha mascarada até uma configuração completa. O driver fica disponível
+para integração quando houver um consumidor de ticks no kernel.
+
+### D-120 — Parar o PIT antes da transferência do IRQ0 (2026-11-26, CODEX)
+
+`Pit::stop` escreve o controlo do canal 0 em modo 0 e deixa-o à espera
+de um novo contador. Antes da paragem, o núcleo mascara IRQ0 e trata
+interrupções que o PIC já tenha registado. A CI verifica a cadeia de
+entrega através do autoteste do #15, que exige dois IRQ0 depois de
+programar o modo periódico.
+
+### D-128 — Ligar o PIT legado ao scheduler (2026-11-26, CODEX)
+
+O driver programa o canal 0 com uma frequência pedida de 100 Hz e
+regista a linha ISA 0 depois de obter as portas e configurar o período.
+O handler pede preempção através de `sched::tick()`. O núcleo decide
+a troca de thread após o EOI.
+
+Os autotestes do núcleo que programam o PIT têm o seu próprio registo
+de IRQ0. O novo autoteste usa o driver do arranque e verifica duas
+trocas de contexto durante a execução de uma thread ocupada.

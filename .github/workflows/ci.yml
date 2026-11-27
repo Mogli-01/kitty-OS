@@ -48,6 +48,22 @@ jobs:
       - run: cargo test -p kitty-apic --locked
       - run: cargo miri test -p kitty-apic --locked
 
+  pit:
+    name: PIT driver (host and Miri)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain and Miri
+        run: |
+          rustup toolchain install
+          rustup component add miri
+      - run: cargo clippy -p kitty-pit --locked --all-targets -- -D warnings
+      - run: cargo test -p kitty-pit --locked
+      - run: cargo miri test -p kitty-pit --locked
+
   boot:
     name: QEMU (${{ matrix.firmware }}, ${{ matrix.profile }})
     needs: lint
@@ -147,6 +163,11 @@ jobs:
           run_case double-fault --features selftest-double-fault --expect-panic
           grep -F -- '=== Double Fault (#DF) (vector 8)' build/serial-logs/double-fault.log
           grep -F -- '(running on the IST double-fault stack)' build/serial-logs/double-fault.log
+
+          run_case pit-irq --features selftest-irq-pit --expect 'hardware IRQ0 (PIT) delivered twice'
+          run_case pit-scheduler --features selftest-pit-driver \
+            --expect '[pit] driver preempted a busy thread twice' \
+            --expect '[sched] cooperative self-test passed'
       - name: Upload serial logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

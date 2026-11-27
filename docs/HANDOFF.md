@@ -488,3 +488,99 @@ Formato:
   vetores locais após a revisão humana.
 - **Avisos** — a contagem serve o ensaio em QEMU. O tick de produção
   precisa de uma frequência calibrada e da integração do scheduler.
+
+### [2026-11-26] — CLAUDE (7.ª sessão, continuação)
+- **Feito:**
+  - Com aprovação do Rodrigo no chat: merge de #15, #35 e #38; #13
+    fechada. Os PRs #14 e #25 do Codex foram aprovados mas têm conflitos
+    com o `main` (comentei a pedir rebase). Revi os outros 12 PRs do Codex
+    (comentários nos PRs).
+  - **Fase 5 (este PR):** threads do kernel, troca de contexto mínima em
+    assembly, scheduler round-robin preemptivo, pilhas de thread com página
+    de guarda, contador de preempção nos `SpinLock`, medição em ciclos.
+    Decisões D-044 (`unsafe` em `sched/`) e D-045.
+- **PRs abertos:** `claude/fase5-scheduler` (este).
+- **Proteções de segurança alteradas:** ATIVAS — pilhas de thread com
+  guarda e limpas ao libertar; sem preempção com spinlock preso; troca só
+  depois do EOI.
+- **Bloqueado por / à espera do Codex:** rebase dos #14 e #25; mudanças
+  pedidas em #23, #24, #27, #28, #31; adaptar o #34 a
+  `devices::init(&Platform)`.
+- **Próximo passo sugerido para o Codex:** no driver do timer (#19), o
+  handler do IRQ0 chama `sched::tick()` (contrato em INTERFACES.md,
+  "Scheduler"). Pôr `selftest-preempt` e `selftest-thread-stack-overflow`
+  na CI (o primeiro sem `--expect-panic`).
+- **Avisos:**
+  - Ainda não há `WaitQueue` (próximo passo do Claude): threads que
+    esperam fazem `yield_now()` em ciclo.
+  - Um só CPU (o lock do scheduler é largado antes da troca).
+  - Os ciclos do autoteste vêm do QEMU TCG: não são de hardware real.
+
+### [2026-11-25] — CODEX (PIT periódico)
+
+- **Feito** — driver `kitty-pit` com divisor validado e programação
+  periódica do canal 0 através de `PortBlock`. Documentação em
+  `DRIVERS.md` e decisão D-105.
+- **PRs abertos** — ramo `codex/pit-periodico` sobre o #15.
+- **Testes/fuzzing** — cinco testes no host e em Miri. Uma ligação
+  temporária em `devices::init` recebeu quatro IRQ0 sucessivos em QEMU
+  8.2.2, em BIOS e UEFI, debug e release.
+- **Benchmarks** — sem medição de frequência ou latência nesta sessão.
+- **Bloqueado por / à espera do Claude** — aprovação do #15 e contrato
+  de `sched::tick()` para ligar os ticks ao scheduler.
+- **Próximo passo sugerido para o Claude** — rever o ponto de ligação
+  do temporizador e a proposta de teste de EOI da revisão do #15.
+- **Avisos** — arranque normal ainda sem tick periódico. Uma linha
+  desmascarada pode entregar um IRQ pendente anterior à programação.
+  Sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (paragem do PIT e entrega repetida na CI)
+
+- **Feito** — operação `Pit::stop` e execução do autoteste de dois IRQ0
+  nos quatro perfis QEMU do #19. Decisão D-120.
+- **PRs abertos** — atualização do #19 sobre a revisão do #15.
+- **Testes/fuzzing** — sete testes do driver no host e em Miri. O
+  autoteste de interrupções passou localmente em QEMU 8.2.2 com BIOS
+  e UEFI em debug e release.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — cobertura de reconhecimento de
+  interrupções na CI. Driver em Rust seguro.
+- **Bloqueado por / à espera do Claude** — `sched::tick()` para o
+  arranque usar o PIT como origem de ticks.
+- **Próximo passo sugerido para o Claude** — documentar a transição
+  entre a contagem periódica do PIT e a fonte de tempo do scheduler.
+- **Avisos** — o autoteste do núcleo prova a entrega pelo PIC.
+  Os testes de portas verificam a programação de `kitty-pit`.
+
+### [2026-11-26] — CODEX (PIT no scheduler)
+
+- **Feito** — PIT legado ligado a `sched::tick()` com frequência
+  pedida de 100 Hz. Decisão D-128.
+- **PRs abertos** — ramo `codex/pit-scheduler` sobre o #39 com o
+  driver do #19.
+- **Testes/fuzzing** — 20 arranques da etapa de CI passaram no QEMU
+  8.2.2, em BIOS e UEFI, debug e release. Passaram também os dois
+  ensaios release com o autoteste de preempção existente.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — só regista a linha após
+  configurar o PIT e conserva a concessão exclusiva das portas.
+- **Bloqueado por / à espera do Claude** — revisão do #39 e
+  contrato de registo do temporizador local na #36.
+- **Próximo passo sugerido para o Claude** — manter o registo de
+  IRQ0 nos autotestes e o EOI antes da preempção.
+
+### [2026-11-26] — CODEX (PIT na revisão do #39)
+
+- **Feito** — atualizada a base do ramo do temporizador para `638df99`,
+  que reserva capacidade para a fila de threads prontas.
+- **PRs abertos** — #48 sobre o #39. O registo de vetores locais foi
+  revisto no #51.
+- **Testes/fuzzing** — passaram dois arranques release (BIOS e UEFI)
+  que exigem o marcador das duas preempções e o autoteste cooperativo.
+- **Benchmarks** — sem medições comparáveis.
+- **Proteções de segurança alteradas** — sem alterações próprias no
+  núcleo. O driver continua a aceder ao PIT pelas portas reclamadas.
+- **Bloqueado por / à espera do Claude** — revisão de falta de memória
+  no #39 e garantias para reutilização de um vetor local no #51.
+- **Próximo passo sugerido para o Claude** — fechar o ciclo de vida do
+  vetor local antes de permitir reutilização no driver do timer.

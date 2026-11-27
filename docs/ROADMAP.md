@@ -61,15 +61,18 @@ preparado para a interface gráfica (Fases 10–14).
 | Descodificador MADT para endereços APIC, overrides ISA e rotas NMI locais | CODEX | Em revisão no #20. Integração de hardware depende da #18 e do #35 |
 | Driver do Local APIC + IO APIC | CODEX | Drivers #21/#37, integração opcional #62 e testes do caminho PIC com MADT ausente simulada e firmware sem tabela em BIOS e UEFI no #65 |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | Duas entregas do timer local e EOI verificados em QEMU no ramo `codex/lapic-timer-irq`. PIT ligado ao scheduler no #48. Calibração e tick pelo LAPIC pendentes |
+| Driver legado PIT periódico (IRQ0) | CODEX | Programação e paragem no #19. Ligação a `sched::tick` a 100 Hz no #48, verificada na revisão do #39 |
 | Driver do teclado PS/2 | CODEX | TODO |
 | Driver UART completo (interrupções, input) | CODEX | TODO |
 
 ## Fase 5 — Scheduler
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Threads do kernel + troca de contexto mínima em assembly | CLAUDE | TODO |
-| Scheduler preemptivo round-robin, depois prioridades | CLAUDE | TODO |
-| DESEMPENHO: medir a troca de contexto em ciclos (rdtsc) | CLAUDE | TODO |
+| Threads do kernel + troca de contexto mínima em assembly | CLAUDE | FEITO |
+| Scheduler preemptivo round-robin | CLAUDE | FEITO |
+| Prioridades no scheduler | CLAUDE | TODO |
+| DESEMPENHO: medir a troca de contexto em ciclos (rdtsc) | CLAUDE | FEITO (autoteste no arranque) |
+| SEGURANÇA: pilhas de thread com página de guarda, limpas ao libertar; sem preempção com spinlock preso | CLAUDE | FEITO |
 | GUI-PREP: filas de espera (bloquear/acordar threads) — base do IPC e dos eventos de input | CLAUDE | TODO |
 | Benchmarks automáticos (troca de contexto, syscalls) | CODEX | TODO |
 
