@@ -69,6 +69,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | PIC 8259 como controlador de arranque (remapeado, tudo mascarado) | CLAUDE | FEITO |
 | `kitty-hal` + portas legadas reclamáveis (i8042, PIT, CMOS) + `devices::init` | CLAUDE | FEITO |
 | Descoberta ACPI (RSDP → MADT validada e copiada) + capacidades APIC filtradas (#18) | CLAUDE | FEITO |
+| Descodificador MADT para endereços APIC, overrides ISA e rotas NMI locais | CODEX | Em revisão no #20. Fuzzing de pares de rotas ISA em `codex/madt-fuzz-isa-routes`. Integração de hardware em revisão no #62 |
 | Driver do Local APIC + IO APIC | CODEX | TODO |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | TODO |
 | Driver do teclado PS/2 | CODEX | TODO |

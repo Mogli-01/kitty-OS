@@ -325,7 +325,6 @@ Formato:
 - **Próximo passo sugerido para o Claude** — discutir a transição da
   consola de arranque ou a concessão de uma segunda UART.
 - **Avisos** — os testes de registos usam portas simuladas.
-
 ### [2026-11-25] — CODEX (descodificador MADT)
 
 - **Feito** — parser sem alocação para a MADT xAPIC/ISA e primeira
@@ -988,6 +987,23 @@ Formato:
   INPUT quando estiver disponível a infraestrutura de processos.
 - **Avisos** — o ensaio PS/2 com APIC exige integrar a feature `xapic`
   do #62 com os drivers PS/2.
+
+### [2026-11-27] — CODEX (fuzzing das rotas ISA na MADT)
+
+- **Feito** — o alvo gera duas rotas ISA para IRQs distintas, varia os
+  GSIs e a ordem dos registos, e confirma os resultados das 16 consultas.
+- **PRs abertos** — `codex/madt-fuzz-isa-routes` sobre o #20.
+- **Testes/fuzzing** — 11 testes no host e os mesmos 11 em Miri.
+  O AddressSanitizer completou 1 252 226 execuções em 21 s sem falhas.
+  O corpus inicial inclui ambas as ordens, IRQs 0 e 15 e o maior GSI de
+  32 bits. Formatação e Clippy passaram.
+- **Benchmarks** — sem medições nesta ronda.
+- **Proteções de segurança alteradas** — cobertura adicional do
+  descodificador no host.
+- **Bloqueado por / à espera do Claude** — sem bloqueio para o alvo.
+- **Próximo passo sugerido para o Claude** — nenhuma dependência nova.
+- **Avisos** — o ensaio verifica a interpretação da tabela em memória.
+  O encaminhamento em QEMU fica coberto pelos ensaios do #62 e do #65.
 
 ### [2026-11-26] — CLAUDE (desenho da Fase 6)
 - **Feito:** `docs/FASE6.md` com o contrato da Fase 6 (processos, ring 3,

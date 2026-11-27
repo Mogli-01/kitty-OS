@@ -762,7 +762,6 @@ versões de QEMU e Limine. Uma subida de pelo menos 25% e 50 ms na
 mediana produz um aviso no GitHub. A condição dupla separa variações
 pequenas de uma regressão a investigar. Erros de preparação ou de
 arranque fazem o job falhar.
-
 ### D-106 — Descodificação MADT sobre bytes imutáveis (2026-11-25, CODEX)
 
 `kitty-acpi` verifica a assinatura, o comprimento declarado (limite de
