@@ -414,3 +414,21 @@ Formato:
   autoteste PIT independente do controlador ativo quando for revisto.
 - **Avisos** — a simulação cobre a decisão do driver após a
   descoberta de firmware.
+
+### [2026-11-27] — CODEX (arranque BIOS sem RSDP)
+
+- **Feito** — a matriz BIOS acrescenta um arranque QEMU com
+  `pc,acpi=off` e `selftest-xapic`. Exige `NoRsdp`, o PIC
+  como controlador ativo e duas entregas de IRQ0.
+- **PRs abertos** — atualização do #65.
+- **Testes/fuzzing** — o passo da CI passou localmente em BIOS debug
+  e release com QEMU 10.0.13. Num checkout conjunto com o #71,
+  teclado e rato também passaram via PIC em BIOS sem RSDP e em UEFI
+  sem MADT, com ACPI desativado nas máquinas testadas.
+- **Benchmarks** — sem novas medições.
+- **Proteções de segurança alteradas** — cobertura adicional da
+  descoberta de firmware e da entrega de interrupções.
+- **Bloqueado por / à espera do Claude** — nenhuma dependência deste ensaio.
+- **Próximo passo sugerido para o Claude** — atualizar o texto do
+  autoteste PIT quando for revista a transição do controlador.
+- **Avisos** — a matriz mantém o ensaio de ausência simulada em BIOS e UEFI.

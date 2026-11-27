@@ -105,6 +105,31 @@ jobs:
             --expect 'controller: 8259 PIC' \
             --expect 'hardware IRQ0 (PIT) delivered twice'
 
+          if [[ "$FIRMWARE" == bios ]]; then
+            # SeaBIOS on the pc machine boots without an RSDP when ACPI is off.
+            no_acpi_qemu="$RUNNER_TEMP/kitty-qemu-no-acpi"
+            cat > "$no_acpi_qemu" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          args=()
+          while (($#)); do
+            if [[ "$1" == -machine ]]; then
+              args+=(-machine pc,acpi=off)
+              shift 2
+            else
+              args+=("$1")
+              shift
+            fi
+          done
+          exec qemu-system-x86_64 "${args[@]}"
+          EOF
+            chmod +x "$no_acpi_qemu"
+            KITTY_QEMU="$no_acpi_qemu" run_case xapic-no-rsdp --features selftest-xapic \
+              --expect '[acpi] no usable MADT (NoRsdp)' \
+              --expect 'controller: 8259 PIC' \
+              --expect 'hardware IRQ0 (PIT) delivered twice'
+          fi
+
           run_case page-fault --features selftest-page-fault --expect-panic
           grep -F -- '=== Page Fault (#PF) (vector 14)' build/serial-logs/page-fault.log
           grep -F -- 'non-present page on read in kernel mode' build/serial-logs/page-fault.log
