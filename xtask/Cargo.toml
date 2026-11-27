@@ -5,4 +5,5 @@ edition.workspace = true
 publish = false
 
 [dependencies]
+kitty-shell = { path = "../userland/shell" }
 kitty-vfs = { path = "../fs/vfs" }

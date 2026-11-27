@@ -36,7 +36,21 @@ linha. As outras teclas de controlo são ignoradas. A codificação foi
 proposta na secção 6 do PR #52.
 
 Ao premir Enter, a sessão executa a linha, escreve o resultado ou
-diagnóstico e liberta a linha para o próximo comando. Quem chama
-`push` trata a apresentação da linha e do prompt, bem como erros ou
-escritas parciais da futura syscall. O kernel ainda precisa de carregar
-`/sbin/init` e disponibilizar `console_read` e `console_write`.
+diagnóstico e liberta a linha para o próximo comando. `run_console`
+mantém uma única sessão entre leituras, apresenta o prompt e repete as
+escritas parciais até enviar todos os bytes. Uma escrita sem progresso
+termina com erro. O transporte implementa o trait Rust `Console`.
+A apresentação visual da linha em edição e do cursor pertence ao
+consumidor de consola.
+
+## Experimentar no host
+
+```sh
+cargo run -p kitty-shell --example host_shell
+printf 'help\necho "olá mundo"\n' | cargo run -q -p kitty-shell --example host_shell
+```
+
+O exemplo usa a entrada e a saída padrão do host. Para correr dentro
+do kitty-OS, o adaptador deverá usar `console_read` e `console_write`
+através do handle CONSOLE. Falta o núcleo publicar a tabela de números
+das syscalls e carregar `/sbin/init`.

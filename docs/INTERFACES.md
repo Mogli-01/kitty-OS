@@ -485,6 +485,7 @@ de reservar memória para o índice.
 impl<'a> InitrdFs<'a> {
     pub fn mount(bytes: &'a [u8]) -> Result<Self, Error>;
     pub fn lookup(&self, path: &str) -> Result<Inode<'a>, Error>;
+    pub fn directory(&self, path: &str) -> Result<Directory<'_, 'a>, Error>;
     pub fn read_dir(&self, path: &str) -> Result<ReadDir<'_, 'a>, Error>;
 }
 impl File<'_> {
@@ -492,7 +493,7 @@ impl File<'_> {
 }
 ```
 
-`lookup` e `read_dir` recebem caminhos absolutos canónicos UTF-8. A raiz
+Os métodos de `InitrdFs` recebem caminhos absolutos canónicos UTF-8. A raiz
 é `/`. Os restantes caminhos têm até 256 bytes depois da barra inicial.
 `lookup` devolve `Inode::Directory` ou `Inode::File(File)`. `read_dir`
 enumera os filhos diretos por ordem das componentes, incluindo diretórios
@@ -500,8 +501,12 @@ implícitos. `read_at` lê para um buffer Rust já validado, devolve zero no
 fim do ficheiro e preserva o resto do buffer. O inode de ficheiro e as
 entradas de diretório conservam o tempo de vida dos bytes do arquivo.
 
-O caminho por syscall depende de validação de ponteiros e direitos pelo
-núcleo. Esta interface é a primeira implementação da raiz do VFS.
+`Directory::lookup` e `Directory::directory` recebem um caminho canónico
+relativo, não vazio, com até 256 bytes. Cada vista contém apenas as entradas
+abaixo desse diretório e `Directory::read_dir` enumera os seus filhos
+diretos. A vista dura enquanto o chamador puder emprestar o índice. O
+núcleo valida ponteiros e direitos do handle antes de usar esta pesquisa
+na futura syscall `open_at`. Esta interface é a primeira implementação da raiz do VFS.
 
 `devices::init` cria a raiz a partir de `Platform::initrd`. O marcador
 `[vfs] initrd mounted read-only` confirma que o índice foi publicado.

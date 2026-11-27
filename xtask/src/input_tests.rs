@@ -1,10 +1,13 @@
 //! Exercises both PS/2 devices in a headless QEMU guest.
 
+use std::convert::Infallible;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
+
+use kitty_shell::{Console, run_console};
 
 use super::{Opts, PANIC_MESSAGE, Result, TEST_TIMEOUT, build_dir, build_kernel, qemu_command};
 
@@ -15,6 +18,7 @@ pub(super) struct Scenario {
     device: &'static str,
     ready: &'static str,
     prefix: &'static str,
+    check_shell: bool,
     steps: &'static [(&'static str, &'static [&'static str])],
 }
 
@@ -22,6 +26,7 @@ pub(super) const KEYBOARD: Scenario = Scenario {
     device: "keyboard",
     ready: "[kbd] PS/2 keyboard ready on IRQ1",
     prefix: "[kbd-test] ",
+    check_shell: true,
     steps: &[
         ("sendkey a", &["A Pressed", "text [61]", "A Released"]),
         (
@@ -33,6 +38,65 @@ pub(super) const KEYBOARD: Scenario = Scenario {
             &["RightBracket Pressed", "RightBracket Released"],
         ),
         ("sendkey e", &["E Pressed", "text [c3, a9]", "E Released"]),
+        (
+            "sendkey ctrl-c",
+            &[
+                "LeftControl Pressed",
+                "C Pressed",
+                "text [03]",
+                "C Released",
+                "LeftControl Released",
+            ],
+        ),
+        ("sendkey h", &["H Pressed", "text [68]", "H Released"]),
+        ("sendkey e", &["E Pressed", "text [65]", "E Released"]),
+        ("sendkey l", &["L Pressed", "text [6c]", "L Released"]),
+        ("sendkey p", &["P Pressed", "text [70]", "P Released"]),
+        (
+            "sendkey ret",
+            &["Enter Pressed", "text [0a]", "Enter Released"],
+        ),
+        ("sendkey e", &["E Pressed", "text [65]", "E Released"]),
+        ("sendkey c", &["C Pressed", "text [63]", "C Released"]),
+        ("sendkey o", &["O Pressed", "text [6f]", "O Released"]),
+        (
+            "sendkey left",
+            &[
+                "ArrowLeft Pressed",
+                "text [1b, 5b, 44]",
+                "ArrowLeft Released",
+            ],
+        ),
+        ("sendkey h", &["H Pressed", "text [68]", "H Released"]),
+        (
+            "sendkey right",
+            &[
+                "ArrowRight Pressed",
+                "text [1b, 5b, 43]",
+                "ArrowRight Released",
+            ],
+        ),
+        (
+            "sendkey spc",
+            &["Space Pressed", "text [20]", "Space Released"],
+        ),
+        ("sendkey x", &["X Pressed", "text [78]", "X Released"]),
+        (
+            "sendkey backspace",
+            &["Backspace Pressed", "text [7f]", "Backspace Released"],
+        ),
+        ("sendkey c", &["C Pressed", "text [63]", "C Released"]),
+        ("sendkey a", &["A Pressed", "text [61]", "A Released"]),
+        ("sendkey f", &["F Pressed", "text [66]", "F Released"]),
+        (
+            "sendkey bracket_right",
+            &["RightBracket Pressed", "RightBracket Released"],
+        ),
+        ("sendkey e", &["E Pressed", "text [c3, a9]", "E Released"]),
+        (
+            "sendkey ret",
+            &["Enter Pressed", "text [0a]", "Enter Released"],
+        ),
     ],
 };
 
@@ -40,6 +104,7 @@ pub(super) const MOUSE: Scenario = Scenario {
     device: "mouse",
     ready: "[mouse] PS/2 mouse ready on IRQ12",
     prefix: "[mouse-test] ",
+    check_shell: false,
     steps: &[
         (
             "mouse_move 7 4",
@@ -118,11 +183,12 @@ fn exercise(
         }
     }
     let mut expected = Vec::new();
+    let mut serial = String::new();
     for &(command, reports) in scenario.steps {
         let monitor = child.stdin.as_mut().ok_or("missing QEMU monitor input")?;
         writeln!(monitor, "{command}").map_err(|e| format!("sending {command} to QEMU: {e}"))?;
         expected.extend_from_slice(reports);
-        wait_for(child, log, command, |serial| {
+        serial = wait_for(child, log, command, |serial| {
             serial.strip_prefix(boot.as_str()).is_some_and(|new| {
                 new.lines()
                     .filter_map(|line| line.strip_prefix(scenario.prefix))
@@ -130,7 +196,65 @@ fn exercise(
             })
         })?;
     }
+    if scenario.check_shell {
+        let input = serial
+            .strip_prefix(&boot)
+            .ok_or("lost serial boot boundary")?;
+        verify_shell_input(input)?;
+        println!("xtask: host shell accepted PS/2 help, edited echo and cancellation");
+    }
     Ok(())
+}
+
+fn verify_shell_input(serial: &str) -> Result<()> {
+    let mut bytes = Vec::new();
+    for line in serial.lines() {
+        let Some(text) = line.strip_prefix("[kbd-test] text [") else {
+            continue;
+        };
+        let text = text
+            .strip_suffix(']')
+            .ok_or("invalid keyboard byte report")?;
+        for byte in text.split(", ") {
+            bytes.push(u8::from_str_radix(byte, 16).map_err(|_| "invalid keyboard byte")?);
+        }
+    }
+    let mut console = RecordedConsole {
+        input: &bytes,
+        output: Vec::new(),
+    };
+    run_console(&mut console).map_err(|error| format!("host shell failed: {error:?}"))?;
+    let expected =
+        "kitty> ^C\nkitty> help       list commands\necho TEXT  print text\nkitty> café\nkitty> ";
+    if console.output != expected.as_bytes() {
+        let output = String::from_utf8_lossy(&console.output);
+        return Err(format!("unexpected shell session output {output:?}"));
+    }
+    Ok(())
+}
+
+struct RecordedConsole<'a> {
+    input: &'a [u8],
+    output: Vec<u8>,
+}
+
+impl Console for RecordedConsole<'_> {
+    type Error = Infallible;
+
+    fn read(&mut self, buffer: &mut [u8]) -> std::result::Result<usize, Self::Error> {
+        // This also tests keeping a session across transport reads and
+        // splitting UTF-8 and escape sequences between reads.
+        let len = self.input.len().min(buffer.len()).min(1);
+        let (bytes, remaining) = self.input.split_at(len);
+        buffer[..len].copy_from_slice(bytes);
+        self.input = remaining;
+        Ok(len)
+    }
+
+    fn write(&mut self, bytes: &[u8]) -> std::result::Result<usize, Self::Error> {
+        self.output.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
 }
 
 fn wait_for(

@@ -33,16 +33,19 @@ fn check_fixture(root: &InitrdFs<'_>) -> bool {
     use kitty_vfs::{Inode, Kind};
 
     const EXPECTED: &[u8] = b"kitty-OS initrd smoke test\n";
-    let Ok(Inode::File(file)) = root.lookup("/etc/kitty.txt") else {
+    let Ok(etc) = root.directory("/etc") else {
+        return false;
+    };
+    let Ok(Inode::File(file)) = etc.lookup("kitty.txt") else {
         return false;
     };
     let mut data = [0; EXPECTED.len()];
     file.len() == EXPECTED.len()
         && file.read_at(0, &mut data) == data.len()
         && data.as_slice() == EXPECTED
-        && root.read_dir("/etc").is_ok_and(|mut entries| {
-            entries.any(|entry| entry.name == "kitty.txt" && entry.kind == Kind::File)
-        })
+        && etc
+            .read_dir()
+            .any(|entry| entry.name == "kitty.txt" && entry.kind == Kind::File)
 }
 
 pub(crate) fn initrd_file(path: &str) -> Option<&'static [u8]> {

@@ -5,8 +5,10 @@
 
 use core::{fmt, str};
 
+mod console;
 mod editor;
 mod session;
+pub use console::{Console, ConsoleError, run_console};
 pub use editor::{EditError, LineBuffer};
 pub use session::{SessionEvent, ShellSession};
 
