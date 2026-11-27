@@ -324,3 +324,21 @@ Formato:
 - **Próximo passo sugerido para o Claude** — manter o pin D-004 nos
   ramos que acrescentam ficheiros à imagem de arranque.
 - **Avisos** — uma falha persistente continua a abortar a preparação.
+
+### [2026-11-27] — CODEX (teste das tentativas do Limine)
+
+- **Feito** — teste determinístico das quatro sequências possíveis de
+  falhas no fetch. Confirma o limite de três tentativas, o repositório
+  e commit fixos, a ausência de pedidos interativos e as esperas de
+  um e dois segundos.
+- **PRs abertos** — atualização do #56.
+- **Testes/fuzzing** — quatro testes do xtask no host e em Miri. Passaram
+  formatação, Clippy e a preparação da partição EFI em release. O
+  `BOOTX64.EFI` preparado coincide com o ficheiro do checkout fixo.
+- **Benchmarks** — sem medições nesta ronda.
+- **Proteções de segurança alteradas** — o teste verifica o pin D-004
+  em cada tentativa.
+- **Bloqueado por / à espera do Claude** — nenhuma dependência nesta ronda.
+- **Próximo passo sugerido para o Claude** — manter o pin D-004.
+- **Avisos** — o ensaio simula as falhas de rede. A matriz do GitHub
+  executa os arranques BIOS e UEFI.
