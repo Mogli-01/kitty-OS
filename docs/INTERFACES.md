@@ -481,6 +481,13 @@ entradas de diretório conservam o tempo de vida dos bytes do arquivo.
 O caminho por syscall depende de validação de ponteiros e direitos pelo
 núcleo. Esta interface é a primeira implementação da raiz do VFS.
 
+`devices::init` cria a raiz a partir de `Platform::initrd`. O marcador
+`[vfs] initrd mounted read-only` confirma que o índice foi publicado.
+`[vfs] initrd archive rejected` confirma que o VFS recusou o conteúdo e
+continua o arranque sem a raiz. `selftest-initrd` verifica a listagem e
+os bytes de `/etc/kitty.txt` no arquivo de teste e emite
+`[vfs] initrd read verified (/etc/kitty.txt)` quando ambos coincidem.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |

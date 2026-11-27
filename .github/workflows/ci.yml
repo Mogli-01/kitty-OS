@@ -164,7 +164,7 @@ jobs:
         run: bash .github/scripts/install-qemu.sh
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup toolchain install
-      - name: Check boot, faults, scheduling, framebuffer and PS/2 input
+      - name: Check boot, faults, scheduling, framebuffer, PS/2 input and initrd
         shell: bash
         env:
           FIRMWARE: ${{ matrix.firmware }}
@@ -275,6 +275,7 @@ jobs:
           controller='[irq] interrupts enabled (controller: 8259 PIC)'
           cargo xtask test-keyboard "${flags[@]}" --expect "$controller"
           cargo xtask test-mouse "${flags[@]}" --expect "$controller"
+          cargo xtask test-initrd "${flags[@]}"
       - name: Upload serial logs and framebuffer capture
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -285,4 +286,5 @@ jobs:
             build/visual/
             build/serial-keyboard.log
             build/serial-mouse.log
+            build/initrd-tests/*/*.log
           if-no-files-found: ignore

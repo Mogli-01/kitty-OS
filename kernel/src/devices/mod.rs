@@ -15,6 +15,7 @@
 #![forbid(unsafe_code)]
 #[cfg(feature = "xapic")]
 mod apic;
+mod initrd;
 mod pit;
 mod ps2;
 #[cfg(all(
@@ -43,6 +44,7 @@ pub struct Platform<'a> {
 /// para APIC"): the interrupt controller first, then the devices that
 /// register IRQ lines.
 pub fn init(_platform: &Platform<'_>) {
+    initrd::init(_platform.initrd);
     #[cfg(feature = "xapic")]
     {
         let madt = if cfg!(all(
