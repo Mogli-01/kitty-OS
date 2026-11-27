@@ -593,7 +593,10 @@ Formato:
 - Testes/fuzzing: oito testes PIT no host e no Miri, fmt, Clippy e actionlint.
   QEMU confirma duas preempções pelo LAPIC e duas pelo PIT com ACPI
   desligada, em BIOS e UEFI e em debug e release. O teste original de EOI
-  e a preempção só pelo PIT também passaram em UEFI release.
+  e a preempção só pelo PIT também passaram em UEFI release. Numa
+  integração local com o #71, o teclado (IRQ1) e o rato (IRQ12) passaram
+  com o LAPIC ativo em BIOS e UEFI release, e com PIC/PIT em BIOS release
+  com ACPI desligada.
 - Benchmarks: frequência nominal de 100 Hz. Sem medições de desempenho
   comparáveis nesta sessão.
 - Proteções de segurança alteradas: calibração limitada a três tentativas

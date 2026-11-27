@@ -55,6 +55,10 @@ pub fn init(_platform: &Platform<'_>) {
         };
         apic::init(madt);
     }
+    init_scheduler_timer();
+}
+
+fn init_scheduler_timer() {
     // These core self-tests each program the timer and own IRQ0 themselves.
     if !cfg!(any(
         feature = "selftest-irq-pit",
