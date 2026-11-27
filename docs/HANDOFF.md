@@ -1572,3 +1572,20 @@ Formato:
   consola e carregamento de `/sbin/init` (issue #50).
 - **Avisos** — a demonstração usa a consola do host. O redesenho da
   linha em edição pertence ao consumidor do transporte.
+
+### [2026-11-27] — CODEX (percurso teclado e shell)
+
+- **Feito** — o teste de teclado do QEMU envia uma sessão com Ctrl+C,
+  `help` e um `echo café` editado com setas e Backspace. O teste
+  entrega a saída traduzida pelo driver à shell no host, um byte
+  por leitura, e compara o prompt e a saída dos comandos.
+- **PRs abertos** — #95 sobre #96.
+- **Testes/fuzzing** — teclado QEMU em BIOS e UEFI, debug e release.
+  Testes da shell e VFS no host e em Miri, e fuzzing da shell.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — nenhuma. Sem `unsafe` novo.
+- **Bloqueado por / à espera do Claude** — #50. Falta o QEMU
+  demonstrar `/sbin/init` em Ring 3 a escrever o primeiro prompt
+  pela syscall de consola.
+- **Avisos** — este ensaio liga o driver do convidado à shell no host.
+  A transição de Ring 3 e as syscalls ficam para o ensaio integral.
