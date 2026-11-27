@@ -376,7 +376,7 @@ fn paw_prints(c: &mut Canvas<'_>, done: u8) {
 }
 
 /// A "z" of `n`×`n` pixels with its top-left at `(x, y)`.
-fn zz(c: &mut Canvas<'_>, x: f32, y: f32, n: i32, color: u8) {
+pub(crate) fn zz(c: &mut Canvas<'_>, x: f32, y: f32, n: i32, color: u8) {
     let (x, y) = (floor(x + 0.5), floor(y + 0.5));
     c.rect(x, y, n, 1, color);
     for i in 1..n - 1 {
@@ -386,7 +386,7 @@ fn zz(c: &mut Canvas<'_>, x: f32, y: f32, n: i32, color: u8) {
 }
 
 /// Panel with a 1-pixel border and cut corners.
-fn panel(c: &mut Canvas<'_>, x: i32, y: i32, w: i32, h: i32, fill: u8, border: u8) {
+pub(crate) fn panel(c: &mut Canvas<'_>, x: i32, y: i32, w: i32, h: i32, fill: u8, border: u8) {
     c.rect(x + 1, y, w - 2, 1, border);
     c.rect(x + 1, y + h - 1, w - 2, 1, border);
     c.rect(x, y + 1, 1, h - 2, border);
@@ -395,7 +395,7 @@ fn panel(c: &mut Canvas<'_>, x: i32, y: i32, w: i32, h: i32, fill: u8, border: u
 }
 
 /// Speech bubble with its tail on the bottom-left.
-fn bubble(c: &mut Canvas<'_>, x: i32, y: i32, s: &str) {
+pub(crate) fn bubble(c: &mut Canvas<'_>, x: i32, y: i32, s: &str) {
     let w = text_width(s, 1) + 9;
     panel(c, x, y, w, 13, CREAM, OUTLINE);
     let tx = x + 4;
@@ -408,7 +408,7 @@ fn bubble(c: &mut Canvas<'_>, x: i32, y: i32, s: &str) {
 }
 
 /// Puffs of dust on both sides of a landing, `u` from 0 to 1.
-fn dust(c: &mut Canvas<'_>, x: f32, y: f32, u: f32) {
+pub(crate) fn dust(c: &mut Canvas<'_>, x: f32, y: f32, u: f32) {
     for s in [-1.0, 1.0] {
         for k in 0..3 {
             let kf = k as f32;

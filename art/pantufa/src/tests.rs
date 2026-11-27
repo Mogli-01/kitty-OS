@@ -94,6 +94,7 @@ fn font_covers_the_boot_screen_text() {
         "MIAU!",
         "Até amanhã. Miau.",
         "0123456789:?,",
+        "PAGE_FAULT (0X0E) #0 [R] 50% A/B+C=D <> 'X\" *;",
     ] {
         assert!(s.chars().all(has_glyph), "{s}");
     }
@@ -319,4 +320,173 @@ fn hostile_coordinates_are_safe() {
         };
         draw_cat(&mut c, &mut cat, v, v, &style);
     }
+}
+
+#[test]
+fn new_poses_draw_and_stay_on_their_feet() {
+    let mut px = scene();
+    let mut c = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT, &mut px).unwrap();
+    let mut sprite = CatSprite::new();
+    for pose in [Pose::Back, Pose::Walk, Pose::Puff] {
+        for step in 0..4 {
+            c.clear(TRANSPARENT);
+            let style = CatStyle {
+                step,
+                puff: 1.0,
+                eyes: Eyes::Angry,
+                flip: step % 2 == 1,
+                ..CatStyle::new(pose)
+            };
+            draw_cat(&mut c, &mut sprite, 160.0, 120.0, &style);
+            assert!(c.pixels().contains(&FUR), "{pose:?}");
+            assert!(
+                (122..SCENE_HEIGHT as i32).all(|y| (0..320).all(|x| c.get(x, y) == TRANSPARENT)),
+                "{pose:?}"
+            );
+        }
+    }
+    // Ears flat while sitting: nothing above where the flat ears end.
+    c.clear(TRANSPARENT);
+    let flat = CatStyle {
+        ear_flat: true,
+        ..CatStyle::new(Pose::Sit)
+    };
+    draw_cat(&mut c, &mut sprite, 160.0, 120.0, &flat);
+    let top = (0..SCENE_HEIGHT as i32)
+        .find(|&y| (0..320).any(|x| c.get(x, y) != TRANSPARENT))
+        .unwrap();
+    assert!(top >= 120 - 28, "top {top}");
+}
+
+#[test]
+fn heads_draw_at_every_size_and_mood() {
+    use crate::{HeadEyes, HeadMouth, HeadSprite, HeadStyle, Paws, draw_head};
+    let mut px = scene();
+    let mut c = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT, &mut px).unwrap();
+    let mut sprite = HeadSprite::new();
+    let eyes = [
+        HeadEyes::Open,
+        HeadEyes::Closed,
+        HeadEyes::Half,
+        HeadEyes::Happy,
+        HeadEyes::Wide,
+        HeadEyes::Angry,
+    ];
+    let mouths = [
+        HeadMouth::Smile,
+        HeadMouth::Open,
+        HeadMouth::Hmpf,
+        HeadMouth::Hiss,
+    ];
+    for scale in [0.62, 1.0, 1.8, 99.0, f32::NAN] {
+        for (i, &e) in eyes.iter().enumerate() {
+            c.clear(TRANSPARENT);
+            let style = HeadStyle {
+                eyes: e,
+                mouth: mouths[i % 4],
+                look: (i8::MIN, i8::MAX),
+                ear_flat: i % 2 == 0,
+                bristle: i == 5,
+                paws: [Paws::None, Paws::Cover, Paws::Peek][i % 3],
+            };
+            draw_head(&mut c, &mut sprite, 160.0, 90.0, scale, &style);
+            assert!(c.pixels().contains(&FUR) || c.pixels().contains(&CREAM));
+        }
+    }
+}
+
+#[test]
+fn room_weather_follows_the_sky_and_the_lamp() {
+    use crate::{Room, Sky, palette::idx::LAMP};
+    let mut px = scene();
+    let mut c = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT, &mut px).unwrap();
+    let mut room = std::boxed::Box::new(Room::new());
+    room.draw(&mut c, 0);
+    assert_eq!(c.get(100, 22), NIGHT, "default room: night sky");
+    assert!(!c.pixels().contains(&TRANSPARENT));
+    let lit = |c: &Canvas<'_>| {
+        (230..300)
+            .flat_map(|x| (90..135).map(move |y| (x, y)))
+            .filter(|&(x, y)| c.get(x, y) == LAMP)
+            .count()
+    };
+    let with_lamp = lit(&c);
+    room.build(Sky::Night, false);
+    room.draw(&mut c, 0);
+    assert!(lit(&c) < with_lamp, "the cone of light goes away");
+    room.build(Sky::Day, true);
+    for t in [0, 5_000, 60_000, u32::MAX] {
+        room.draw(&mut c, t);
+    }
+    assert_ne!(c.get(100, 22), NIGHT);
+    room.build(Sky::Sunset, true);
+    room.draw(&mut c, 7_000);
+    let sleeping = Room::sleeping_cat(9_100);
+    assert_eq!(sleeping.pose, Pose::Curl);
+}
+
+#[test]
+fn shutdown_waits_for_the_system_then_goes_black() {
+    use crate::{SHUTDOWN_LENGTH_MS, Shutdown};
+    let mut px = scene();
+    let mut c = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT, &mut px).unwrap();
+    let finish = |done_at: Option<u32>, c: &mut Canvas<'_>| {
+        let mut s = std::boxed::Box::new(Shutdown::new());
+        let mut t = 0;
+        while t <= 20_000 {
+            let f = s.draw(c, t, done_at.is_some_and(|d| t >= d));
+            assert!(f.brightness <= 4);
+            if f.finished {
+                return Some(t);
+            }
+            t += 10;
+        }
+        None
+    };
+    assert_eq!(finish(None, &mut c), None);
+    assert_eq!(finish(Some(0), &mut c), Some(SHUTDOWN_LENGTH_MS));
+    assert_eq!(finish(Some(8_000), &mut c), Some(8_000 + 400));
+}
+
+#[test]
+fn panic_screen_draws_without_a_clock_or_memory() {
+    use crate::{PANIC_MAX_LINES, PanicKind, PanicScene};
+    let mut px = scene();
+    let mut c = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT, &mut px).unwrap();
+    let mut p = std::boxed::Box::new(PanicScene::new());
+    let long = "X".repeat(500);
+    let lines: std::vec::Vec<&str> = (0..PANIC_MAX_LINES + 5).map(|_| long.as_str()).collect();
+    for kind in [
+        PanicKind::PageFault,
+        PanicKind::OutOfMemory,
+        PanicKind::DoubleFault,
+        PanicKind::Other,
+    ] {
+        for t in [0, 600, 900, 1500, u32::MAX] {
+            p.draw(&mut c, kind, "0X0E", &lines, t);
+            p.draw(&mut c, kind, &long, &[], t);
+        }
+        assert!(c.pixels().contains(&FUR), "{kind:?}");
+    }
+    // Wrong canvas size: just cleared, no panic.
+    let mut small = [0u8; 10 * 10];
+    let mut s = Canvas::new(10, 10, &mut small).unwrap();
+    p.draw(&mut s, PanicKind::Other, "?", &["A"], 0);
+    assert!(s.pixels().iter().all(|&v| v == NIGHT));
+}
+
+#[test]
+fn panic_text_is_clipped_before_it_is_measured() {
+    use crate::{PANIC_MAX_CHARS, PanicKind, PanicScene};
+    let mut px = scene();
+    let mut c = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT, &mut px).unwrap();
+    let mut p = std::boxed::Box::new(PanicScene::new());
+    let huge = "\u{e7}".repeat(200_000);
+    // Odd half-second: the blinking cursor is measured from the last line.
+    p.draw(&mut c, PanicKind::Other, &huge, &[huge.as_str()], 500);
+    let right_edge = (0..SCENE_WIDTH as i32)
+        .rev()
+        .find(|&x| (108..115).any(|y| c.get(x, y) == crate::palette::idx::HIGHLIGHT))
+        .unwrap();
+    assert!(right_edge < 14 + (PANIC_MAX_CHARS as i32 + 1) * crate::GLYPH_ADVANCE + 4);
 }

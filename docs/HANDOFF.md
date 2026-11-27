@@ -1565,3 +1565,25 @@ Formato:
 - **Avisos** — a fonte 5×7 só tem maiúsculas e tira os acentos. Ainda
   faltam as poses de andar, de costas e eriçado (estão na referência).
   `BootSplash` ocupa ~12 KiB: não o pôr numa pilha pequena do kernel.
+
+### [2026-11-27] — CLAUDE (cenas do Pantufa)
+
+- **Feito** — em `kitty-pantufa`: poses de costas, a andar e eriçado
+  (com pelo em bico automático), cabeça com olhos grandes que seguem o
+  cursor, patas a tapar os olhos e orelhas para trás; a sala do wallpaper
+  (`Room`, com chuva, nuvens ou pássaros conforme o céu); a animação de
+  desligar (`Shutdown`, com o candeeiro a apagar e o luar); e o ecrã de
+  kernel panic (`PanicScene`, uma cena por tipo de erro). A fonte ganhou
+  `_ ( ) [ ] < > # / + = % * ; ' "` para o texto técnico. 17 testes no
+  host; o exemplo `scenes_png` grava poses e cenas em PNG.
+- **PRs abertos** — ramo `claude/pantufa-ecras`, sobre o #89.
+- **Proteções de segurança alteradas** — nenhuma nova; as cenas usam as
+  mesmas primitivas com limites e somas saturantes. `PanicScene` não
+  aloca nem precisa de relógio, para poder correr dentro do panic.
+- **Bloqueado por / à espera do Codex** — nada.
+- **Próximo passo sugerido para o Codex** — usar `Room` como fundo do
+  compositor e `draw_head` no login e nas notificações.
+- **Próximo passo para o Claude** — ligar `PanicScene` ao `panic.rs`
+  quando a consola gráfica (#94) estiver integrada.
+- **Avisos** — `Room` (~64 KiB) e `Shutdown` (~77 KiB) são grandes:
+  criar em `static` ou no heap, nunca por valor numa pilha do kernel.
