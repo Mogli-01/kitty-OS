@@ -1536,6 +1536,7 @@ Formato:
   ficheiros para os processos quando o user mode estiver disponível.
 - **Avisos** — o autoteste usa arquivos e meios de arranque próprios
   em `build/initrd-tests/`.
+
 ### [2026-11-25] — CODEX (fonte bitmap)
 
 - **Feito** — atlas de glifos de um bit, recorte e fonte original
@@ -1565,6 +1566,7 @@ Formato:
 - Próximo passo sugerido para o Claude: usar as bases atualizadas do
   terminal antes de avaliar a demonstração em duas janelas (#64).
 - Avisos: atualização de módulos e documentação, sem `unsafe` novo.
+
 ### [2026-11-26] — CODEX (fontes PSF2)
 
 - **Feito** — leitura do atlas e do mapa Unicode PSF2 e desenho com
@@ -1601,6 +1603,7 @@ Formato:
   compatível com a futura ligação ao terminal em user space.
 - **Avisos** — a grelha usa uma célula por carácter. A composição de
   caracteres e as sequências de controlo ANSI ficam para mais tarde.
+
 ### [2026-11-26] — CODEX (terminal numa janela)
 
 - **Feito** — integração de teste da grelha PSF2 (#57) na composição de

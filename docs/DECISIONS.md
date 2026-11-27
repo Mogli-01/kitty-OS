@@ -846,6 +846,55 @@ Os overrides ISA precedem as rotas por identidade. Uma GSI tem um único
 dono. São recusadas rotas especiais ativas, intervalos sobrepostos,
 NMI em LINT0 e NMI de nível em LINT1. O LAPIC é ativado antes de
 configurar NMI e os bancos ISR e IRR têm de estar vazios.
+### D-044 — `unsafe` permitido em `sched/` (2026-11-26, CLAUDE)
+Trocar de pilha (chamar `arch::x86_64::context::switch`) e voltar a fazer
+de um endereço um `fn()` não se consegue em Rust seguro, e o scheduler é o
+único dono dessas operações. Tal como o `sync/` (D-008), o `sched/` entra na
+lista de módulos com `#[allow(unsafe_code)]`. Cada bloco tem `// SAFETY:` e
+está em `docs/UNSAFE.md`.
+
+### D-045 — Threads do kernel e scheduler preemptivo round-robin (2026-11-26, CLAUDE)
+- **Troca de contexto mínima** (`context.rs`): guarda os 6 registos
+  callee-saved e o RSP, carrega o RSP da outra thread e faz `ret` para
+  dentro dela (14 instruções). Os caller-saved já são guardados pelo
+  compilador à volta da chamada; o kernel não usa SSE (sem estado de FPU);
+  a troca é sempre feita com interrupções desligadas. Uma thread parada é
+  só o seu RSP.
+- **Pilhas** (`mm/stack.rs`): slots de 64 KiB na região
+  `0xFFFF_E000_0000_0000`, com 32 KiB de pilha RW+NX, **página de guarda**
+  por baixo e espaço por mapear por cima; slots reutilizados; frames limpos
+  pelo PMM ao libertar.
+- **Preempção:** o timer chama `sched::tick()`, que só marca um pedido
+  (atómico, sem lock). A troca acontece no fim de `irq::dispatch`, **depois
+  do EOI** e sem nenhum lock da tabela preso. **Nunca preempta** com um
+  `SpinLock` simples preso (contador em `sync::preempt`): no mesmo CPU, a
+  thread seguinte podia girar para sempre num lock cujo dono não corre. Com
+  `IrqSpinLock` o problema nem se põe (as interrupções estão desligadas).
+- **Saída e recolha:** uma thread que volta da função de entrada morre; a
+  pilha dela é libertada pela próxima decisão do scheduler, fora do lock e
+  nunca enquanto ainda se está a correr nela.
+- **Sem heap em contexto de interrupção** (revisão do Codex ao #39/#40): a
+  fila `ready` e a lista de slots livres das pilhas reservam capacidade em
+  contexto de thread (`spawn`, `KernelStack::new`) para todas as threads e
+  slots existentes; por isso o caminho de preempção, a recolha de threads
+  mortas no fim de uma IRQ e o `wake` chamado por um handler nunca alocam.
+- **Ordem dos locks** (do exterior para o interior): `SCHED` → heap →
+  espaço do kernel → PMM, e `stack::SLOTS` → heap. `SCHED` nunca é pedido
+  com um destes presos. O caminho da troca não aloca (a thread que morre
+  vai para um `Option`, não para um `Vec`).
+- **Revisto depois do `security-reviewer`:** o contador de preempção passou
+  a incrementar *antes* do CAS do `SpinLock`; uma troca cooperativa com um
+  lock preso é um `assert!`; o panic handler desliga as interrupções logo à
+  entrada (sem preempção durante um panic); `exit` da última thread
+  executável é um panic explícito; e acabou o `transmute` do endereço de
+  entrada (o trampolim passa o `fn()` diretamente).
+- **Um CPU:** o lock do scheduler é largado *antes* da troca, com as
+  interrupções ainda desligadas, o que chega num só CPU. O SMP (Fase 9)
+  exige filas por CPU e o lock preso durante a troca.
+- **Medição:** autoteste no arranque com 2 threads em ping-pong
+  (`yield_now`), que mostra os ciclos (TSC) por yield+troca. No QEMU TCG
+  os "ciclos" não são de hardware real: o número serve para comparar
+  versões, não como valor absoluto.
 ### D-105 — PIT legado em modo periódico (2026-11-25, CODEX)
 
 O crate `kitty-pit` programa o canal 0 do PIT 8254 em modo 2 através de
@@ -1079,6 +1128,7 @@ A fonte inicial de 5 × 7 foi desenhada para o kitty-OS e tem os 95
 caracteres ASCII imprimíveis. O texto usa uma célula de 6 × 8, que deixa
 um píxel para espaçamento. Outros caracteres usam `?` até haver fontes
 e mapeamentos com mais caracteres.
+
 ### D-125 — Limitar as regiões alteradas de um frame (2026-11-26, CODEX)
 
 `Damage` recorta as regiões às dimensões da superfície e agrupa as
