@@ -839,7 +839,6 @@ Formato:
   usa uma segunda porta ou recebe da consola a posse da COM1.
 - Avisos: o #81 usa o #76 como base e inclui o PIT do #48. Um check
   de BIOS do #48 voltou a passar após um erro HTTP 403 no APT do runner.
-
 ### [2026-11-25] — CODEX (transporte i8042)
 
 - **Feito** — transporte i8042 com `PortBlock`, inicialização Set 2
@@ -970,6 +969,39 @@ Formato:
 - **Próximo passo sugerido para o Claude** — documentar o relógio e o
   contrato de entrega para o compositor.
 
+### [2026-11-27] — CODEX (controlador nos testes PS/2)
+
+- **Feito** — `test-keyboard` e `test-mouse` aceitam features adicionais
+  e verificam marcadores de arranque antes da injeção de eventos. A CI
+  exige o controlador PIC nos ensaios PS/2 da matriz BIOS/UEFI.
+- **PRs abertos** — `codex/ps2-test-controller` sobre o #34.
+- **Testes/fuzzing** — passaram formatação, Clippy, actionlint e os três
+  testes do xtask no host e em Miri. A execução local de QEMU ficou
+  impedida pela falta de espaço para iniciar o contentor. A matriz
+  do GitHub executa os testes de QEMU.
+- **Benchmarks** — sem medições nesta ronda.
+- **Proteções de segurança alteradas** — o ensaio confirma o controlador
+  selecionado e a entrega de eventos ao driver.
+- **Bloqueado por / à espera do Claude** — entrega de eventos a user
+  space depende de INPUT (#46).
+- **Próximo passo sugerido para o Claude** — implementar o contrato de
+  INPUT quando estiver disponível a infraestrutura de processos.
+- **Avisos** — o ensaio PS/2 com APIC exige integrar a feature `xapic`
+  do #62 com os drivers PS/2.
+
+### [2026-11-26] — CLAUDE (desenho da Fase 6)
+- **Feito:** `docs/FASE6.md` com o contrato da Fase 6 (processos, ring 3,
+  ABI das syscalls, `copy_*_user`, handles, consola da shell, `/sbin/init`
+  do initrd, INPUT para o compositor) e decisões D-047 a D-053. Responde às
+  issues #46 e #50. Só documentação.
+- **PRs abertos:** este (`claude/fase6-desenho`); #39, #40 (Fase 5) e #51
+  (#36) à espera de revisão.
+- **Próximo passo sugerido para o Codex:** rever o contrato; construir
+  `/sbin/init` (a shell) como ELF64 estático e a biblioteca de syscalls em
+  `userland/` contra a ABI; `console::input_push` no driver de teclado.
+- **Próximo passo do Claude:** 6a (SMEP/SMAP/UMIP + `copy_*_user` com
+  recuperação de #PF).
+
 ### [2026-11-26] — CODEX (teclado PT-PT)
 
 - **Feito** — layout ISO português, modificadores, acentos e sequências
@@ -988,3 +1020,83 @@ Formato:
   atómica da sequência completa de uma tecla na fila da consola.
 - **Avisos** — o teste QEMU usa instrumentação de teste, e não expõe
   a saída para uma shell interativa.
+
+### [2026-11-26] — CLAUDE (7.ª sessão, continuação)
+- **Feito:**
+  - Com aprovação do Rodrigo no chat: merge de #15, #35 e #38; #13
+    fechada. Os PRs #14 e #25 do Codex foram aprovados mas têm conflitos
+    com o `main` (comentei a pedir rebase). Revi os outros 12 PRs do Codex
+    (comentários nos PRs).
+  - **Fase 5 (este PR):** threads do kernel, troca de contexto mínima em
+    assembly, scheduler round-robin preemptivo, pilhas de thread com página
+    de guarda, contador de preempção nos `SpinLock`, medição em ciclos.
+    Decisões D-044 (`unsafe` em `sched/`) e D-045.
+  - **`WaitQueue`** (PR seguinte, `claude/fase5-waitqueue`, base #39):
+    estado `Blocked`, `wait_until`/`wake_one`/`wake_all` sem wake-ups
+    perdidos (D-046), utilizável a partir de handlers de IRQ; autoteste
+    produtor/consumidor no arranque.
+- **PRs abertos:** #39 (`claude/fase5-scheduler`); `claude/fase5-waitqueue`
+  (base #39).
+- **Proteções de segurança alteradas:** ATIVAS — pilhas de thread com
+  guarda e limpas ao libertar; sem preempção com spinlock preso; troca só
+  depois do EOI.
+- **Bloqueado por / à espera do Codex:** rebase dos #14 e #25; mudanças
+  pedidas em #23, #24, #27, #28, #31; adaptar o #34 a
+  `devices::init(&Platform)`.
+- **Próximo passo sugerido para o Codex:** no driver do timer (#19), o
+  handler do IRQ0 chama `sched::tick()` (contrato em INTERFACES.md,
+  "Scheduler"). Pôr `selftest-preempt` e `selftest-thread-stack-overflow`
+  na CI (o primeiro sem `--expect-panic`).
+- **Avisos:**
+  - Para esperar sem gastar CPU: `sched::WaitQueue` (ex.: o teclado pode
+    acordar leitores a partir do handler do IRQ1).
+  - Um só CPU (o lock do scheduler é largado antes da troca).
+  - Os ciclos do autoteste vêm do QEMU TCG: não são de hardware real.
+
+### [2026-11-27] — CLAUDE (expansão do roadmap)
+- **Feito:** só documentação e configuração, nenhum código do kernel.
+  - ROADMAP com as Fases 15 (utilizadores, capacidades, auditoria),
+    16 (crypto, binários assinados, disco encriptado), 17 (rede, firewall,
+    IDS), 18 (som, `kpkg`) e 19 (hardware real: ThinkPad T14 Gen 1 AMD),
+    e a identidade "kitty" nas Fases 10 e 14 (ecrã de arranque, tema,
+    mascote, `meow`, snake e tetris, tudo com gráficos originais).
+  - `docs/REDTEAM.md`: rondas de red team vs blue team no fim de cada fase,
+    a partir da 6; etiquetas `vulnerabilidade` e `red-team` criadas.
+  - SECURITY (modelo de ameaça com o atacante local, a app maliciosa, o
+    atacante na rede e o acesso físico ao disco; proteções novas),
+    DECISIONS D-055…D-059, INTERFACES (esboços de capacidades, auditoria,
+    crypto e hooks do firewall), CLAUDE.md e CONTRIBUTING.md.
+  - **Fases 6 e 12 "capability-first" (D-058):** sem `input_open`, handles
+    de DISPLAY/INPUT dados pelo `init`, `process_spawn` com lista de handles,
+    `open_at` relativo a um diretório, `handle_info`, bits de direitos por
+    tipo, `uid`/`gid` e auditoria preparados, `E_BADSIG` reservado.
+- **PRs abertos:** este (`claude/roadmap-expansao`); #75 (6a); #39, #40,
+  #51, #52 à espera de revisão. O #52 (`docs/FASE6.md`) tem de ser alinhado
+  com a D-058 antes do merge.
+- **Proteções de segurança alteradas:** nenhuma ativada; novas PLANEADAS
+  (Fases 15–18).
+- **Bloqueado por / à espera do Codex:** nada.
+- **Próximo passo sugerido para o Codex:** ler o roadmap expandido,
+  atualizar o AGENTS.md e preparar a CI para os testes de red team e de
+  criptografia (runner de `tests/security/redteam/` com o manifesto
+  `aberta`/`corrigida`, e um job no host para os vetores de teste da crypto).
+- **Avisos:** a crypto é educativa e não auditada (D-056). A verificação de
+  assinaturas não protege o kernel nem o Limine sem Secure Boot (ver
+  SECURITY.md, fora de âmbito).
+
+### [2026-11-27] — CLAUDE (Fase 6a)
+- **Feito:** SMEP, SMAP e UMIP ligados (com CPUID); `copy_from_user` /
+  `copy_to_user` / `UserSlice` / `UserPtr` com recuperação de #PF (um ponteiro
+  mau dá `Fault`, nunca panic); `clac` à entrada do dispatch. Autotestes: ida e
+  volta por uma página de user real, falha recuperada (não mapeado e a cruzar
+  o fim da página), recusa da metade do kernel; `selftest-smap` e
+  `selftest-smep` provam que o kernel não lê nem executa páginas de user.
+  D-054. PR `claude/fase6a-usercopy` (base `main`).
+- **PRs abertos:** este; #39, #40, #51, #52 à espera de revisão.
+- **Proteções de segurança alteradas:** ATIVAS — SMEP, SMAP, UMIP,
+  `copy_*_user` com recuperação.
+- **Próximo passo sugerido para o Codex:** pôr `selftest-smap` e
+  `selftest-smep` na CI (com `--expect-panic` e os textos em INTERFACES.md).
+- **Avisos:** a prova do UMIP precisa de ring 3 (Fase 6b). Ainda não há
+  processos: a página de teste é mapeada temporariamente na metade de user
+  do espaço do kernel e removida a seguir.

@@ -159,6 +159,11 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Sistema de eventos de input unificado (`InputEvent`: teclado + rato) | CODEX | Fila PS/2 interna em revisão; timestamps e entrega por `INPUT` pendentes |
 | Entrega dos eventos ao user space só ao processo com a capacidade `INPUT` (D-019) | CLAUDE | TODO |
 
+| Driver de rato PS/2 | CODEX | Ligação por IRQ12 em revisão (#34). A matriz PS/2 inclui verificação do controlador no ramo `codex/ps2-test-controller` |
+| Driver USB HID (teclado e rato) | CODEX | TODO |
+| Sistema de eventos de input unificado (`InputEvent`: teclado + rato) | CODEX | Fila PS/2 interna em revisão; timestamps e entrega por `INPUT` pendentes |
+| Entrega dos eventos ao user space só a quem tem o handle do objeto `INPUT`, dado pelo `init` (sem `input_open` por nome; D-019, D-058) | CLAUDE | TODO |
+
 ## Fase 12 — Memória partilhada e IPC rápido
 | Tarefa | Dono | Estado |
 |---|---|---|

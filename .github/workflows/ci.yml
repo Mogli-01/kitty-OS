@@ -228,8 +228,9 @@ jobs:
             --expect '[pit] driver preempted a busy thread twice' \
             --expect '[sched] cooperative self-test passed'
           cargo xtask test-visual "${flags[@]}"
-          cargo xtask test-keyboard "${flags[@]}"
-          cargo xtask test-mouse "${flags[@]}"
+          controller='[irq] interrupts enabled (controller: 8259 PIC)'
+          cargo xtask test-keyboard "${flags[@]}" --expect "$controller"
+          cargo xtask test-mouse "${flags[@]}" --expect "$controller"
       - name: Upload serial logs and framebuffer capture
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

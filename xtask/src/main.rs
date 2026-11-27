@@ -16,8 +16,8 @@
 //!   --features <a,b>   extra kernel cargo features (e.g. selftest-page-fault)
 //!   --expect-panic     (test) pass only if the kernel panics: QEMU exit code
 //!                      35 and "KERNEL PANIC" on the serial port
-//!   --expect <text>    (test) the serial output must also contain <text>
-//!                      (repeatable)
+//!   --expect <text>    require a serial marker (repeatable). Input tests
+//!                      require the marker before injecting events.
 //!
 //! Environment overrides: KITTY_QEMU (qemu binary), KITTY_OVMF (UEFI code
 //! firmware), KITTY_XORRISO (xorriso binary), KITTY_BENCH_AGAINST (baseline ELF).
@@ -118,8 +118,9 @@ fn main() -> ExitCode {
             eprintln!("       cargo xtask test-memory [--release] [--bios]");
             eprintln!("       cargo xtask test-visual [--release] [--bios]");
             eprintln!("       cargo xtask bench-boot [--release] [--bios]");
-            eprintln!("       cargo xtask test-keyboard [--release] [--bios]");
-            eprintln!("       cargo xtask test-mouse [--release] [--bios]");
+            eprintln!(
+                "       cargo xtask <test-keyboard|test-mouse> [--release] [--bios] [--features a,b] [--expect text]"
+            );
             return ExitCode::FAILURE;
         }
     };

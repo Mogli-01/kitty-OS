@@ -936,7 +936,6 @@ número de leituras e repete medições inconsistentes até três tentativas.
 Com uma medição válida, usa o temporizador LAPIC em modo periódico a 100 Hz
 no CPU de arranque. O PIT continua disponível para o scheduler quando o
 LAPIC está indisponível ou a calibração não é fiável.
-
 ### D-117 — Descodificar o modo base do rato PS/2 (2026-11-26, CODEX)
 
 O rato em modo base envia um cabeçalho e dois bytes de deslocamento.

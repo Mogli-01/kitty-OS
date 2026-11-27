@@ -57,20 +57,22 @@ pub(super) const MOUSE: Scenario = Scenario {
 };
 
 pub(super) fn run(opts: &Opts, scenario: Scenario) -> Result<()> {
-    if opts.expect_panic || !opts.expect.is_empty() || !opts.features.is_empty() {
+    if opts.expect_panic {
         return Err(format!(
-            "test-{} accepts only --bios and --release",
+            "test-{} requires a successful boot and cannot use --expect-panic",
             scenario.device
         ));
     }
-    let opts = Opts {
+    let mut features = opts.features.clone();
+    features.push("selftest-ps2-input".into());
+    let guest_opts = Opts {
         release: opts.release,
         bios: opts.bios,
-        features: vec!["selftest-ps2-input".into()],
+        features,
         ..Opts::default()
     };
-    let kernel = build_kernel(&opts, false)?;
-    let mut command = qemu_command(&opts, &kernel)?;
+    let kernel = build_kernel(&guest_opts, false)?;
+    let mut command = qemu_command(&guest_opts, &kernel)?;
     let name = format!("serial-{}.log", scenario.device);
     let log = build_dir().join(&name);
     File::create(&log).map_err(|e| format!("creating {}: {e}", log.display()))?;
@@ -88,7 +90,7 @@ pub(super) fn run(opts: &Opts, scenario: Scenario) -> Result<()> {
         .spawn()
         .map_err(|e| format!("cannot start QEMU: {e}"))?;
 
-    let result = exercise(&mut child, &log, &scenario);
+    let result = exercise(&mut child, &log, &scenario, &opts.expect);
     // Reap the guest on success and every error, since it idles indefinitely.
     let _ = child.kill();
     let reaped = child.wait().map_err(|e| format!("reaping QEMU: {e}"));
@@ -98,12 +100,22 @@ pub(super) fn run(opts: &Opts, scenario: Scenario) -> Result<()> {
     Ok(())
 }
 
-fn exercise(child: &mut Child, log: &Path, scenario: &Scenario) -> Result<()> {
+fn exercise(
+    child: &mut Child,
+    log: &Path,
+    scenario: &Scenario,
+    boot_expectations: &[String],
+) -> Result<()> {
     let boot = wait_for(child, log, "boot completion", |serial| {
         serial.lines().any(|line| line == BOOT_READY)
     })?;
     if !boot.lines().any(|line| line == scenario.ready) {
         return Err(format!("PS/2 {} did not initialize", scenario.device));
+    }
+    for text in boot_expectations {
+        if !boot.contains(text.as_str()) {
+            return Err(format!("boot serial output does not contain {text:?}"));
+        }
     }
     let mut expected = Vec::new();
     for &(command, reports) in scenario.steps {

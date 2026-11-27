@@ -227,3 +227,16 @@ Também percorrem os 256 valores de byte em cada estado do descodificador.
 Verifica as pressões, as libertações e os bytes de consola produzidos
 pelo layout através de IRQ1. `--bios` e `--release` mudam o firmware e
 o perfil.
+
+`test-keyboard` envia `A` e seta para cima ao QEMU e confirma a pressão e
+libertação de ambas. `--bios` e `--release` mudam o firmware e o perfil.
+
+`test-keyboard` e `test-mouse` aceitam `--expect` para exigir um
+marcador da série antes de injetarem os eventos. A CI exige o marcador
+do PIC nos dois testes. Num ramo com a feature `xapic`, o mesmo ensaio
+pode selecionar e verificar o controlador APIC:
+
+```sh
+cargo xtask test-mouse --release --features xapic \
+  --expect '[irq] interrupts enabled (controller: I/O APIC + xAPIC)'
+```
