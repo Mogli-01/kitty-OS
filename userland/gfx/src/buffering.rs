@@ -1,4 +1,4 @@
-use crate::{Canvas, Error, Point, Rect};
+use crate::{Canvas, Damage, Error, Point, Rect};
 
 /// An exclusive pair of canvases for drawing and presenting in separate
 /// buffers. The two views may have different pitches.
@@ -34,6 +34,19 @@ impl<'front, 'back> DoubleBuffer<'front, 'back> {
     /// coordinates, preserving the front buffer outside it.
     pub fn present_region(&mut self, rect: Rect) {
         self.front.blit(self.back.as_surface(), rect, rect.origin);
+    }
+
+    /// Presents the recorded regions and clears them after a successful copy.
+    /// Draw the entire contents of each region in the back buffer first.
+    pub fn present_damage(&mut self, damage: &mut Damage) -> Result<(), Error> {
+        if damage.dimensions() != (self.back.layout.width, self.back.layout.height) {
+            return Err(Error::MismatchedDimensions);
+        }
+        for &region in damage.regions() {
+            self.present_region(region);
+        }
+        damage.clear();
+        Ok(())
     }
 }
 

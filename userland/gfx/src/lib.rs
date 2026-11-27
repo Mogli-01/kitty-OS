@@ -5,9 +5,16 @@
 
 use core::ops::Range;
 
+mod alpha;
 mod buffering;
+mod cursor;
+mod damage;
 pub mod font;
+mod windows;
 pub use buffering::DoubleBuffer;
+pub use cursor::Cursor;
+pub use damage::Damage;
+pub use windows::{MAX_WINDOWS, Window, WindowHit, WindowStack};
 
 const PIXEL_BYTES: usize = 4;
 
@@ -41,6 +48,27 @@ pub struct Rect {
     pub height: u32,
 }
 
+impl Rect {
+    /// Returns the common pixels of both rectangles, excluding their right
+    /// and bottom edges.
+    pub fn intersection(self, other: Rect) -> Option<Self> {
+        let x = self.origin.x.max(other.origin.x);
+        let y = self.origin.y.max(other.origin.y);
+        let right = (i64::from(self.origin.x) + i64::from(self.width))
+            .min(i64::from(other.origin.x) + i64::from(other.width));
+        let bottom = (i64::from(self.origin.y) + i64::from(self.height))
+            .min(i64::from(other.origin.y) + i64::from(other.height));
+        if right <= i64::from(x) || bottom <= i64::from(y) {
+            return None;
+        }
+        Some(Self {
+            origin: Point { x, y },
+            width: (right - i64::from(x)) as u32,
+            height: (bottom - i64::from(y)) as u32,
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum Error {
@@ -48,7 +76,11 @@ pub enum Error {
     InvalidPitch,
     SizeOverflow,
     BufferTooShort,
+    InvalidHotspot,
     MismatchedDimensions,
+    DuplicateWindow,
+    UnknownWindow,
+    WindowStackFull,
 }
 
 #[derive(Clone, Copy)]
@@ -183,6 +215,18 @@ impl<'a> Canvas<'a> {
     /// Copies pixels from a source rectangle, clipping both surfaces while
     /// preserving the source-to-destination alignment. Copies alpha as stored.
     pub fn blit(&mut self, source: Surface<'_>, rect: Rect, at: Point) {
+        self.transfer_rows(source, rect, at, |target, source| {
+            target.copy_from_slice(source);
+        });
+    }
+
+    fn transfer_rows(
+        &mut self,
+        source: Surface<'_>,
+        rect: Rect,
+        at: Point,
+        mut transfer: impl FnMut(&mut [u8], &[u8]),
+    ) {
         let Some((sx, dx, width)) = span(
             rect.origin.x,
             source.layout.width,
@@ -204,7 +248,7 @@ impl<'a> Canvas<'a> {
         for row in 0..height {
             let source_range = source.layout.row(sx, sy + row, width);
             let target_range = self.layout.row(dx, dy + row, width);
-            self.bytes[target_range].copy_from_slice(&source.bytes[source_range]);
+            transfer(&mut self.bytes[target_range], &source.bytes[source_range]);
         }
     }
 
