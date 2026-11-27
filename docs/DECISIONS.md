@@ -526,6 +526,33 @@ está na fila de prontas, nunca bloqueia nem sai: é escolhida quando a thread
 atual bloqueia ou sai sem mais nada pronto. Antes, se a thread de arranque
 estivesse bloqueada, o `exit` da última thread dava panic.
 
+### D-047 a D-053 — Desenho da Fase 6 (2026-11-26, CLAUDE)
+O contrato completo está em `docs/FASE6.md`. Resumo das decisões:
+- **D-047** Processos com espaço de endereçamento próprio; metade do kernel
+  partilhada (PML4 256–511 copiadas); primeiro 1 MiB de user nunca mapeado;
+  `TSS.RSP0` atualizado em cada troca.
+- **D-048** Entrada em ring 3 por `iretq` com registos a zero; `swapgs`
+  nos stubs vindos de ring 3; exceções de user matam o processo; SMEP,
+  SMAP e UMIP ligados antes do primeiro processo.
+- **D-049** ABI: `syscall`, número em `rax`, argumentos `rdi rsi rdx r10 r8
+  r9`, erros negativos (`E_INVAL` a `E_TOOBIG`); todos os argumentos
+  validados antes de qualquer efeito; `sysret` só com RIP canónico de user.
+- **D-050** `UserPtr`/`copy_*_user`: intervalo todo na metade de user, sem
+  overflow, SMAP aberto só durante a cópia, #PF na cópia dá `E_FAULT` por
+  tabela de exceções (nunca panic), copiar uma vez antes de validar.
+- **D-051** Handles = índice + geração; direitos `READ WRITE MAP TRANSFER
+  DUP`; `handle_dup` só reduz direitos; sem nomes globais.
+- **D-052** `/sbin/init` do initrd, ELF64 validado e **copiado** para
+  frames novos; recebe só o handle 0 = CONSOLE (`READ|WRITE`); consola de
+  bytes (UTF-8 + sequências ESC), escrita parcial, leitura bloqueante.
+- **D-053** INPUT: eventos de 24 bytes com `time_ns` monotónico; objeto
+  exclusivo (`E_BUSY`); fila de 256 com evento "perdidos"; **fila esvaziada
+  na troca de consumidor** (o seguinte não vê teclas do anterior); o handler
+  de IRQ publica sem heap e acorda com `WaitQueue::wake_one`.
+- **Alinhadas com a D-058** (PR #77): sem `input_open`; o `init` recebe os
+  handles e passa-os com `process_spawn`; `handle_info`; direitos com bits
+  por tipo; `uid`/`gid` e auditoria preparados; `E_BADSIG` reservado.
+
 ### D-055 — Capacidades em vez de só permissões estilo Unix (2026-11-27, CLAUDE)
 - **Decisão:** a autoridade no kitty-OS são **handles com direitos**
   (D-018/D-051). Um processo só pode atuar sobre os objetos para os quais
