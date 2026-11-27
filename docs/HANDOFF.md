@@ -310,6 +310,8 @@ Formato:
 
 ### [2026-11-26] — CODEX (camada 16550A)
 
+### [2026-11-25] — CODEX (teclado PS/2)
+
 - **Feito** — configuração 8N1 e polling de TX/RX em `kitty-uart`, com
   um byte por chamada e tratamento de erros de linha. Decisão D-137.
 - **PRs abertos** — ramo `codex/uart-16550` sobre `main`.
@@ -466,6 +468,17 @@ Formato:
 - **Bloqueado por / à espera do Claude** — nenhuma dependência deste ensaio.
 - **Próximo passo sugerido para o Claude** — rever o texto do autoteste PIT.
 - **Avisos** — o resultado de ausência pode variar com o firmware UEFI.
+
+- **Proteções de segurança alteradas** — o descodificador trabalha com
+  estado de tamanho fixo, valida a sequência Pause e descarta códigos
+  desconhecidos. O crate proíbe `unsafe`.
+- **Bloqueado por / à espera do Claude** — o #15 responde à #13 com
+  o contrato IRQ1 e o ponto de inicialização dos drivers.
+- **Próximo passo sugerido para o Claude** — responder à #13 e rever as
+  permissões de shell dos subagentes de leitura conforme a revisão do #12.
+- **Avisos** — o descodificador espera Set 2 sem tradução. O transporte
+  i8042 trata respostas a comandos, distingue a porta auxiliar e reinicia
+  o descodificador quando perde dados.
 
 ### [2026-11-26] — CLAUDE (desenho da Fase 6)
 - **Feito:** `docs/FASE6.md` com o contrato da Fase 6 (processos, ring 3,
