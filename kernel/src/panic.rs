@@ -13,6 +13,9 @@ use crate::console::emergency_print;
 
 #[panic_handler]
 fn panic(info: &PanicInfo<'_>) -> ! {
+    // First thing: no interrupts, hence no preemption. Other threads must
+    // not keep running on a kernel state that just failed an invariant.
+    arch::x86_64::cpu::disable_interrupts();
     match info.location() {
         Some(loc) => emergency_print(format_args!(
             "\n*** KERNEL PANIC at {}:{}:{}\n",

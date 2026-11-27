@@ -95,7 +95,7 @@ metade de baixo para o user space e a de cima para o kernel.
 | `0xFFFF_8000_0000_0000` | … | até 64 TiB | **HHDM**: toda a RAM física mapeada linearmente (offset dado pelo Limine) | Limine (hoje) |
 | `0xFFFF_C000_0000_0000` | … | 1 TiB | heap do kernel (alocações grandes seguidas de página de guarda) | hoje |
 | `0xFFFF_D000_0000_0000` | … | 1 TiB | janela MMIO (`map_mmio`), uncached/WC, NX | hoje |
-| `0xFFFF_E000_0000_0000` | … | 1 TiB | pilhas das threads do kernel (cada uma com página de guarda) | Fase 5 |
+| `0xFFFF_E000_0000_0000` | … | 1 TiB | pilhas das threads do kernel: slots de 64 KiB = guarda 4 KiB + pilha 32 KiB + 28 KiB por mapear | hoje |
 | `0xFFFF_FFFF_8000_0000` | `0xFFFF_FFFF_FFFF_FFFF` | 2 GiB | **imagem do kernel** (inclui a pilha principal e as IST em `.bss`, com páginas de guarda por mapear) | hoje |
 
 Porque é que o kernel está nos últimos 2 GiB: com `-C code-model=kernel` o
