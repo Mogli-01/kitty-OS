@@ -23,7 +23,10 @@ use crate::mm::uspace::{UserPerm, UserSpace};
 use crate::sched::{self, SpawnError};
 use crate::sync::SpinLock;
 
+pub mod elf;
+pub mod fs;
 pub mod handles;
+pub mod spawn;
 
 use handles::{HandleTable, Object, Rights};
 
@@ -84,6 +87,17 @@ pub struct Process {
 
 static NEXT_PID: AtomicU32 = AtomicU32::new(1);
 
+/// Rights of the CONSOLE handle a process starts with.
+pub const CONSOLE_RIGHTS: Rights = Rights::READ
+    .union(Rights::WRITE)
+    .union(Rights::DUP)
+    .union(Rights::TRANSFER);
+/// Rights of the root DIR handle `/sbin/init` gets.
+pub const ROOT_RIGHTS: Rights = Rights::READ
+    .union(Rights::EXEC)
+    .union(Rights::DUP)
+    .union(Rights::TRANSFER);
+
 impl Process {
     /// Builds a process from a raw code image for the self-tests: code at
     /// [`CODE_BASE`] (read + execute), a zeroed data page at [`DATA_BASE`]
@@ -110,15 +124,14 @@ impl Process {
         // The `init` ABI (docs/FASE6.md §6): handle 0 = CONSOLE.
         let mut handles = HandleTable::new();
         handles
-            .insert(
-                Object::Console,
-                Rights::READ
-                    .union(Rights::WRITE)
-                    .union(Rights::DUP)
-                    .union(Rights::TRANSFER),
-            )
+            .insert(Object::Console, CONSOLE_RIGHTS)
             .map_err(|_| ProcError::Map(MapError::OutOfMemory))?;
-        Ok(Arc::new(Self {
+        Ok(Self::new(space, handles))
+    }
+
+    /// A process with `space` and `handles` (nothing runs yet).
+    pub fn new(space: UserSpace, handles: HandleTable) -> Arc<Self> {
+        Arc::new(Self {
             pid: NEXT_PID.fetch_add(1, Ordering::Relaxed),
             uid: 0,
             gid: 0,
@@ -127,7 +140,16 @@ impl Process {
             status: AtomicU32::new(STATUS_RUNNING),
             exit_code: AtomicI32::new(0),
             handles: SpinLock::new(handles),
-        }))
+        })
+    }
+
+    /// Closes every handle of a process that has ended: its objects are
+    /// released at once (not when the last reference to the process goes
+    /// away), and handles between processes cannot keep each other alive.
+    fn release_handles(&self) {
+        let table = core::mem::take(&mut *self.handles.lock());
+        // Dropped after the lock: objects may hold other processes.
+        drop(table);
     }
 
     /// Process identifier.
@@ -199,6 +221,7 @@ pub fn start(process: &Arc<Process>, name: &'static str) -> Result<sched::Thread
 pub fn exit_current_on_fault(vector: u8) -> ! {
     if let Some(process) = sched::current_process() {
         process.end(STATUS_FAULT | u32::from(vector));
+        process.release_handles();
         // Drop our reference *before* leaving: `exit` never returns.
         drop(process);
     }
@@ -210,6 +233,7 @@ pub fn exit_current(code: i32) -> ! {
     if let Some(process) = sched::current_process() {
         process.exit_code.store(code, Ordering::Release);
         process.end(STATUS_EXITED);
+        process.release_handles();
         drop(process);
     }
     sched::exit()
@@ -222,9 +246,46 @@ pub fn on_return_to_user() {
     };
     if process.kill.load(Ordering::Acquire) {
         process.end(STATUS_KILLED);
+        process.release_handles();
         drop(process);
         sched::exit();
     }
+}
+
+/// Starts `/sbin/init` from the root (docs/FASE6.md §6). Handles: 0 =
+/// CONSOLE, 1 = root DIR. Returns a log line (no addresses).
+pub fn start_init() -> Result<u32, &'static str> {
+    let root = fs::root_dir().ok_or("no initrd root")?;
+    let file = match fs::open_at(&root, "sbin/init") {
+        Ok(fs::Opened::File(f)) => f,
+        Ok(fs::Opened::Dir(_)) => return Err("/sbin/init is a directory"),
+        Err(_) => return Err("/sbin/init not found"),
+    };
+    let image = read_file(file).ok_or("/sbin/init too big or out of memory")?;
+    let objects = alloc::vec![
+        (Object::Console, CONSOLE_RIGHTS),
+        (Object::Dir(root), ROOT_RIGHTS)
+    ];
+    spawn::spawn_from_kernel(&image, objects)
+        .map(|p| p.pid())
+        .map_err(|e| match e {
+            spawn::SpawnFailure::Elf(_) => "invalid ELF image",
+            _ => "could not create the process",
+        })
+}
+
+/// Largest executable image read into memory.
+pub const MAX_EXEC_FILE: usize = 16 * 1024 * 1024;
+
+/// Reads a whole file of the root into a fresh buffer.
+pub fn read_file(file: kitty_vfs::File<'static>) -> Option<alloc::vec::Vec<u8>> {
+    if file.len() > MAX_EXEC_FILE {
+        return None;
+    }
+    let mut buf = alloc::vec::Vec::new();
+    buf.try_reserve_exact(file.len()).ok()?;
+    buf.resize(file.len(), 0);
+    (file.read_at(0, &mut buf) == file.len()).then_some(buf)
 }
 
 pub mod selftest;

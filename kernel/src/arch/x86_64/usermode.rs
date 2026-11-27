@@ -413,6 +413,30 @@ kitty_ut_syscalls_start:
 .global kitty_ut_syscalls_end
 kitty_ut_syscalls_end:
 
+// Phase 6d: a whole ELF image's code. Writes a line, checks that its stack
+// (64 KiB, mapped by the loader) and its .bss are usable, then exit(7).
+.global kitty_ut_elf_start
+kitty_ut_elf_start:
+    mov eax, 5
+    xor edi, edi
+    lea rsi, [rip + 92f]
+    mov edx, 24 // length of the message at 92:
+    syscall
+    // touch the bottom of the 64 KiB stack
+    mov qword ptr [rsp - 0x10000 + 8], 1
+    // .bss (second segment, zero-filled)
+    mov rdx, 0x402000
+    mov rcx, qword ptr [rdx]
+    mov edi, 7
+    add rdi, rcx
+    mov eax, 0
+    syscall
+    ud2
+92:
+    .ascii "[user] ELF image loaded\n"
+.global kitty_ut_elf_end
+kitty_ut_elf_end:
+
 // Blocks forever in console_read (to test killing a blocked process).
 .global kitty_ut_reader_start
 kitty_ut_reader_start:
@@ -450,6 +474,8 @@ unsafe extern "C" {
     static kitty_ut_syscalls_end: u8;
     static kitty_ut_reader_start: u8;
     static kitty_ut_reader_end: u8;
+    static kitty_ut_elf_start: u8;
+    static kitty_ut_elf_end: u8;
 }
 
 /// The user test programs.
@@ -475,6 +501,9 @@ pub enum TestProgram {
     Syscalls,
     /// Blocks in `console_read` forever.
     Reader,
+    /// Code of the ELF loader test image (6d): writes, uses its stack and
+    /// .bss, `exit(7)`.
+    ElfMain,
 }
 
 /// Machine code of `program`.
@@ -501,6 +530,7 @@ pub fn test_program(program: TestProgram) -> &'static [u8] {
             &raw const kitty_ut_reader_start,
             &raw const kitty_ut_reader_end,
         ),
+        TestProgram::ElfMain => (&raw const kitty_ut_elf_start, &raw const kitty_ut_elf_end),
         TestProgram::Secret => (
             &raw const kitty_ut_secret_start,
             &raw const kitty_ut_secret_end,

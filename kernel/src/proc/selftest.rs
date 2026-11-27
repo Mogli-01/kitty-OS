@@ -94,6 +94,11 @@ pub fn run() -> Result<Report, &'static str> {
 
     let syscall_cycles = syscalls()?;
     blocked_then_killed()?;
+    elf()?;
+    spawn_rules()?;
+    if !super::fs::selftest_paths() {
+        return Err("open_at accepted a path that leaves its directory");
+    }
 
     let preemption_tested = timer_running();
     if preemption_tested {
@@ -266,4 +271,189 @@ fn timer_running() -> bool {
         core::hint::spin_loop();
     }
     false
+}
+
+// ---------------------------------------------------------------- 6d ---
+
+use super::elf::{ElfError, Image, build_test_elf};
+use super::handles::{Object, Rights};
+use super::spawn::{Grant, SPAWN_COPY, SPAWN_MOVE, SpawnFailure};
+
+const RW: u32 = 4 | 2;
+const RX: u32 = 4 | 1;
+
+/// The ELF loader refuses every malformed image below with the right
+/// error, and runs a valid one (code + .bss + 64 KiB stack) to `exit(7)`.
+pub fn elf() -> Result<(), &'static str> {
+    let code = test_program(TestProgram::ElfMain);
+    let good = build_test_elf(
+        &[(0x40_0000, RX, code, 0x1000), (0x40_2000, RW, &[], 0x1000)],
+        0x40_0000,
+    );
+    Image::parse(&good).map_err(|_| "a valid ELF image was refused")?;
+
+    let mutate = |at: usize, bytes: &[u8]| {
+        let mut img = good.clone();
+        if let Some(d) = img.get_mut(at..at + bytes.len()) {
+            d.copy_from_slice(bytes);
+        }
+        img
+    };
+    let ph1 = 64 + 56; // second program header
+    let cases: [(alloc::vec::Vec<u8>, ElfError, &str); 12] = [
+        (
+            mutate(0, b"\x7fELG"),
+            ElfError::BadMagic,
+            "bad magic accepted",
+        ),
+        (
+            mutate(4, &[1]),
+            ElfError::Unsupported,
+            "32-bit ELF accepted",
+        ),
+        (
+            mutate(18, &3u16.to_le_bytes()),
+            ElfError::Unsupported,
+            "non-x86_64 ELF accepted",
+        ),
+        (
+            mutate(16, &3u16.to_le_bytes()),
+            ElfError::NotExecutable,
+            "ET_DYN accepted",
+        ),
+        (
+            mutate(56, &65u16.to_le_bytes()),
+            ElfError::BadProgramHeaders,
+            "too many program headers accepted",
+        ),
+        (
+            mutate(32, &u64::MAX.to_le_bytes()),
+            ElfError::BadProgramHeaders,
+            "headers outside the file accepted",
+        ),
+        (
+            mutate(ph1 + 4, &7u32.to_le_bytes()),
+            ElfError::WriteAndExecute,
+            "a W+X segment was accepted",
+        ),
+        (
+            mutate(ph1 + 32, &0x2000u64.to_le_bytes()),
+            ElfError::BadSegment,
+            "filesz > memsz accepted",
+        ),
+        (
+            mutate(ph1 + 16, &0xFFFF_8000_0000_0000u64.to_le_bytes()),
+            ElfError::OutOfRange,
+            "a kernel-half segment was accepted",
+        ),
+        (
+            mutate(ph1 + 16, &0x40_0000u64.to_le_bytes()),
+            ElfError::Overlap,
+            "overlapping segments accepted",
+        ),
+        (
+            mutate(24, &0x40_2000u64.to_le_bytes()),
+            ElfError::BadEntry,
+            "entry outside executable code accepted",
+        ),
+        (
+            mutate(ph1 + 16, &0x40_2008u64.to_le_bytes()),
+            ElfError::BadSegment,
+            "vaddr/offset misalignment accepted",
+        ),
+    ];
+    for (img, want, why) in cases {
+        if Image::parse(&img).err() != Some(want) {
+            return Err(why);
+        }
+    }
+    let low = build_test_elf(&[(0x1000, RX, code, 0x1000)], 0x1000);
+    if Image::parse(&low).err() != Some(ElfError::OutOfRange) {
+        return Err("a segment below 1 MiB was accepted");
+    }
+    let top = build_test_elf(&[(0x7FFF_FFFF_F000, RX, code, 0x1000)], 0x7FFF_FFFF_F000);
+    if Image::parse(&top).err() != Some(ElfError::OutOfRange) {
+        return Err("a segment in the last user page was accepted");
+    }
+    let process = super::spawn::spawn_from_kernel(
+        &good,
+        alloc::vec![(Object::Console, super::CONSOLE_RIGHTS)],
+    )
+    .map_err(|_| "the valid ELF image could not be started")?;
+    wait_until(|| process.status() != Status::Running, 1_000_000);
+    if process.status() != Status::Exited(7) {
+        return Err("the ELF image did not run to exit(7)");
+    }
+    Ok(())
+}
+
+/// `process_spawn` rules (#79) through the kernel API: copy needs DUP,
+/// move needs TRANSFER, a moved handle leaves the parent, rights never
+/// grow, a moved handle listed twice is refused, and a failed spawn leaves
+/// the parent exactly as it was.
+pub fn spawn_rules() -> Result<(), &'static str> {
+    let code = test_program(TestProgram::ElfMain);
+    let image = build_test_elf(
+        &[(0x40_0000, RX, code, 0x1000), (0x40_2000, RW, &[], 0x1000)],
+        0x40_0000,
+    );
+    let parent = Process::from_test_image(test_program(TestProgram::NullRead))
+        .map_err(|_| "could not create the parent")?;
+    // Parent handles: 0 = CONSOLE (READ|WRITE|DUP|TRANSFER, from the
+    // test image), 1 = CONSOLE READ only (no DUP, no TRANSFER).
+    let weak = parent
+        .handles()
+        .lock()
+        .insert(Object::Console, Rights::READ)
+        .map_err(|_| "could not add a handle")?;
+    let g = |handle, rights, flags| Grant {
+        handle,
+        rights,
+        flags,
+    };
+    let try_spawn = |grants: &[Grant]| super::spawn::spawn(&parent, &image, grants).map(|_| ());
+    if try_spawn(&[g(weak, 1, SPAWN_COPY)]) != Err(SpawnFailure::Perm) {
+        return Err("SPAWN_COPY without DUP was accepted");
+    }
+    if try_spawn(&[g(weak, 1, SPAWN_MOVE)]) != Err(SpawnFailure::Perm) {
+        return Err("SPAWN_MOVE without TRANSFER was accepted");
+    }
+    if try_spawn(&[g(0, 0x3F, SPAWN_COPY)]) != Err(SpawnFailure::Perm) {
+        return Err("a spawn grant added rights");
+    }
+    if try_spawn(&[g(0, 1, SPAWN_MOVE), g(0, 1, SPAWN_COPY)]) != Err(SpawnFailure::Invalid) {
+        return Err("a moved handle listed twice was accepted");
+    }
+    if try_spawn(&[g(0, 1, 7)]) != Err(SpawnFailure::Invalid) {
+        return Err("unknown grant flags were accepted");
+    }
+    // A failing image after valid grants: the parent keeps everything.
+    let before = parent.handles().lock().len();
+    let refused = super::spawn::spawn(&parent, b"not an elf", &[g(0, 1, SPAWN_MOVE)]);
+    if !matches!(refused, Err(SpawnFailure::Elf(_)))
+        || parent.handles().lock().len() != before
+        || parent.handles().lock().get(0).is_err()
+    {
+        return Err("a failed spawn changed the parent's handles");
+    }
+    // A real move: the child gets CONSOLE as handle 0, the parent loses it
+    // and gets a PROCESS handle instead.
+    let (h, child) = super::spawn::spawn(
+        &parent,
+        &image,
+        &[g(0, super::CONSOLE_RIGHTS.bits(), SPAWN_MOVE)],
+    )
+    .map_err(|_| "a valid spawn failed")?;
+    let parent_lost = parent.handles().lock().get(0).is_err();
+    let parent_has_child =
+        matches!(parent.handles().lock().get(h), Ok((Object::Process(_), r)) if r == Rights::READ);
+    wait_until(|| child.status() != Status::Running, 1_000_000);
+    if !parent_lost || !parent_has_child {
+        return Err("SPAWN_MOVE did not move the handle");
+    }
+    if child.status() != Status::Exited(7) {
+        return Err("the spawned child did not run with the moved CONSOLE");
+    }
+    drop((parent, child));
+    Ok(())
 }

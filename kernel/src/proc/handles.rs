@@ -13,7 +13,11 @@
 //! Rights can only shrink: `dup` gives a subset of the original's, and
 //! only if the original has `DUP`.
 
+use alloc::sync::Arc;
 use alloc::vec::Vec;
+
+use super::Process;
+use super::fs::Dir;
 
 /// Rights of a handle (D-058: bits 0-15 generic, 16-31 per object type).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,17 +62,27 @@ impl Rights {
 }
 
 /// Kernel objects a handle can refer to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone)]
 pub enum Object {
     /// The kernel console (D-052).
     Console,
+    /// A directory of the read-only root (initrd).
+    Dir(Arc<Dir>),
+    /// A file of the read-only root (never written).
+    File(kitty_vfs::File<'static>),
+    /// A process (the parent's handle to a child).
+    Process(Arc<Process>),
 }
 
 impl Object {
-    /// Type code reported by `handle_info` (stable ABI, D-058).
-    pub fn kind(self) -> u32 {
+    /// Type code reported by `handle_info` (stable ABI, D-058):
+    /// 1 CONSOLE, 2 FILE, 3 DIR, 4 PROCESS.
+    pub fn kind(&self) -> u32 {
         match self {
             Object::Console => 1,
+            Object::File(_) => 2,
+            Object::Dir(_) => 3,
+            Object::Process(_) => 4,
         }
     }
 }
@@ -84,13 +98,13 @@ pub enum HandleError {
     Full,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Entry {
     object: Object,
     rights: Rights,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Slot {
     generation: u16,
     entry: Option<Entry>,
@@ -148,8 +162,8 @@ impl HandleTable {
     /// The object and rights of `handle`, if it is valid.
     pub fn get(&self, handle: u32) -> Result<(Object, Rights), HandleError> {
         let (_, slot) = self.slot(handle).ok_or(HandleError::BadHandle)?;
-        let entry = slot.entry.ok_or(HandleError::BadHandle)?;
-        Ok((entry.object, entry.rights))
+        let entry = slot.entry.as_ref().ok_or(HandleError::BadHandle)?;
+        Ok((entry.object.clone(), entry.rights))
     }
 
     /// The object of `handle` if it has every right in `needed`.
@@ -164,11 +178,32 @@ impl HandleTable {
 
     /// Closes `handle`; its number is never valid again.
     pub fn close(&mut self, handle: u32) -> Result<(), HandleError> {
+        self.take(handle).map(drop)
+    }
+
+    /// Removes `handle` and returns what it held (used to *move* a handle
+    /// to another process). Its number is never valid again.
+    pub fn take(&mut self, handle: u32) -> Result<(Object, Rights), HandleError> {
         let (index, _) = self.slot(handle).ok_or(HandleError::BadHandle)?;
         let slot = &mut self.slots[index];
-        slot.entry = None;
+        let entry = slot.entry.take().ok_or(HandleError::BadHandle)?;
         slot.generation = slot.generation.wrapping_add(1) & GENERATION_MASK;
-        Ok(())
+        Ok((entry.object, entry.rights))
+    }
+
+    /// Number of live handles.
+    pub fn len(&self) -> usize {
+        self.slots.iter().filter(|s| s.entry.is_some()).count()
+    }
+
+    /// Whether the table has no live handle.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Whether one more handle fits.
+    pub fn has_room(&self) -> bool {
+        self.slots.iter().any(|s| s.entry.is_none()) || self.slots.len() < MAX_HANDLES
     }
 
     /// A new handle to the same object with `rights`, which must be a
