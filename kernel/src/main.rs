@@ -131,6 +131,13 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         arch::legacy::selftest(),
         "legacy port filter self-test failed"
     );
+    match arch::x86_64::pci::selftest() {
+        Some(vendor) => kprintln!(
+            "[pci] read-only configuration access ready (host bridge vendor {:#06x})",
+            vendor
+        ),
+        None => kprintln!("[pci] configuration mechanism unavailable or self-test failed"),
+    }
 
     // ACPI: find and validate the MADT. Without it, stay on the 8259 PIC.
     let acpi = firmware::acpi::discover(rsdp_phys());

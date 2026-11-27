@@ -9,6 +9,7 @@ pub mod gdt;
 pub mod idt;
 pub mod irq;
 pub mod legacy;
+pub mod pci;
 mod pic;
 pub mod port;
 #[cfg(feature = "qemu-exit")]

@@ -241,6 +241,7 @@ pub trait kitty_hal::RegisterBlock { /* read32/write32/read64/write64 por offset
 pub fn arch::legacy::claim(d: LegacyDevice) -> Option<LegacyPorts>; // impl PortBlock
 // LegacyDevice::I8042 → offsets 0 (0x60, dados) e 4 (0x64, estado/comando)
 // LegacyDevice::Pit   → offsets 0–3 (0x40–0x43) · LegacyDevice::Cmos → 0–1
+// LegacyDevice::Com2  → offsets 0–7 (0x2F8–0x2FF), IRQ ISA 3 (#72, D-061)
 ```
 Cada dispositivo só pode ser reclamado uma vez (o `Drop` liberta-o). Offsets
 fora da lista devolvem `None`. **Escritas filtradas:** na porta de comando do
@@ -345,6 +346,30 @@ pub fn init() {
     let _ = irq::register_isa(1, on_irq1);
 }
 ```
+
+### Configuração PCI, só leitura (`arch::x86_64::pci`) — INSTÁVEL
+Fornece: CLAUDE (issue #70, D-061). Usa: CODEX (`kernel/src/devices`, que entrega a cópia ao parser `kitty-pci`).
+```rust
+pub fn PciAddress::new(bus: u8, device: u8, function: u8) -> Result<PciAddress, ConfigError>; // device < 32, function < 8
+pub fn read_config(addr: PciAddress, dst: &mut [u8]) -> Result<(), ConfigError>; // dst.len() = 64 ou 256
+pub const HEADER_LEN: usize = 64;          // cabeçalho
+pub const CONVENTIONAL_LEN: usize = 256;   // cabeçalho + listas de capacidades
+// ConfigError::OutOfRange  → número de dispositivo/função ou comprimento inválido
+// ConfigError::Absent      → não há função nesse endereço (vendor = 0xFFFF)
+// ConfigError::Unavailable → a máquina não tem o mecanismo #1 (0xCF8/0xCFC)
+```
+- **Âmbito:** segmento 0, barramentos 0–255, só o espaço convencional (256 B). O ECAM/MCFG (espaço estendido) vem num contrato posterior.
+- **Exclusão mútua:** o núcleo é o único dono das portas 0xCF8/0xCFC. Cada `read_config` faz a seleção e as leituras sob um único `IrqSpinLock`, por isso a cópia é consistente e nunca se mistura com outro leitor.
+- **Só leitura:** não há escrita de configuração. Escrever pode mover BARs para cima da RAM ou ligar o bus mastering (DMA); isso fica para o contrato de atribuição de recursos.
+- **Enumeração:** percorrer barramento/dispositivo/função. A função 0 com bit 7 do header type indica um dispositivo multifunção. `Absent` não é um erro, é "não há nada aqui".
+- Marcador de arranque: `[pci] read-only configuration access ready (host bridge vendor 0x....)`.
+
+### UART para drivers: COM2 (`LegacyDevice::Com2`) — INSTÁVEL
+Fornece: CLAUDE (issue #72, D-061). Usa: CODEX (`kitty-uart`).
+- O driver reclama `legacy::claim(LegacyDevice::Com2)`, que dá um `PortBlock` com os offsets 0–7 a partir de 0x2F8 (sem filtro de valores, porque uma UART não faz DMA nem afeta mais nada), e regista a IRQ com `arch::irq::register_isa(3, handler)`.
+- **A ordem é obrigatória:** primeiro configurar a UART com as interrupções da UART desligadas (IER = 0, OUT2 = 0), depois publicar o estado do driver, depois `register_isa(3, …)`, e só no fim ligar IER/OUT2. O núcleo envia o EOI. Para parar: desligar IER/OUT2 primeiro e só depois `unregister`.
+- **A COM1 (0x3F8) não pode ser reclamada:** continua a ser o canal de diagnóstico e de pânico do núcleo. Os caminhos de emergência nunca reconfiguram uma UART que pertença a outro dono. A saída de diagnóstico nunca se mistura com dados de user space.
+- **No QEMU:** o primeiro `-serial` é a COM1 e o segundo é a COM2. O `xtask` precisa de um segundo `-serial` (por exemplo `file:` ou `pty`) para o teste de receção.
 
 ### `sync::IrqSpinLock<T>` — ESTÁVEL
 Fornece: CLAUDE (`kernel/src/sync/irq_spinlock.rs`). Usa: todos.

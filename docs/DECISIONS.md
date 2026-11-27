@@ -1178,3 +1178,12 @@ O `xtask test-initrd` verifica um ficheiro conhecido, uma imagem em que
 o checksum do cabeçalho é inválido e a ausência de módulo. Os ensaios
 usam meios de arranque próprios em `build/initrd-tests/`. O comando
 normal `--initrd` valida o arquivo no host antes de preparar o meio.
+
+### D-061 — Configuração PCI só de leitura; COM2 para drivers, COM1 do núcleo (2026-11-28, CLAUDE)
+- **PCI (#70):** o núcleo é o único dono do mecanismo #1 (0xCF8/0xCFC). Expõe `pci::read_config(endereço, &mut [u8; 64 | 256])`, que faz a seleção e as leituras de cada pedido sob um `IrqSpinLock`.
+  - **Erros:** `OutOfRange`, `Absent` (vendor 0xFFFF) e `Unavailable`.
+  - **Porquê só leitura:** a escrita de configuração é a forma clássica de um driver comprometido fazer DMA (bus mastering) ou de pôr uma BAR por cima da RAM do kernel. Fica para o contrato de atribuição de recursos, com verificação dos intervalos contra o mapa de memória e, mais tarde, IOMMU.
+  - **Porquê não dar as portas ao driver:** a seleção e a leitura são dois passos. Com as portas no driver, a exclusão mútua dependeria de todos os utilizadores cooperarem.
+- **UART (#72):** os drivers recebem a **COM2** (0x2F8–0x2FF, IRQ 3) como `LegacyDevice::Com2`. A COM1 fica para sempre do núcleo.
+  - **Porquê:** o caminho de pânico e de diagnóstico tem de funcionar mesmo com um driver avariado ou comprometido, e sem reconfigurar registos que estejam na posse de outro dono.
+  - **Alternativa rejeitada:** passar a COM1 para o driver. Obrigaria a um protocolo de devolução no pânico, e um driver mau poderia calar o diagnóstico.
