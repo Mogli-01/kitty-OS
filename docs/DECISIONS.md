@@ -1178,3 +1178,26 @@ O `xtask test-initrd` verifica um ficheiro conhecido, uma imagem em que
 o checksum do cabeçalho é inválido e a ausência de módulo. Os ensaios
 usam meios de arranque próprios em `build/initrd-tests/`. O comando
 normal `--initrd` valida o arquivo no host antes de preparar o meio.
+
+### D-062 — Ecrã de arranque por lease do framebuffer; contrato do DISPLAY (2026-11-28, CLAUDE)
+- **Lease em vez de acesso partilhado (#87):** `console::lend_framebuffer()` **tira** o `FrameBuffer` à consola e entrega-o, dentro de uma `FramebufferLease`, a quem o pediu. O `Drop` devolve-o.
+  - **Porquê não desenhar sob o lock da consola:** é um `IrqSpinLock`, e desenhar um quadro com as interrupções desligadas atrasava o timer e o teclado.
+  - **Porquê não dar um ponteiro:** a lease entrega um `&mut [u8]` com geometria validada, por isso o código de splash é Rust seguro e não consegue escrever fora do framebuffer.
+- **Mensagens durante a lease:** vão para a série e para um buffer de 16 KiB, **reservado no momento do empréstimo**. Escrever nele nunca aloca, porque o `kprintln` pode correr num handler de IRQ.
+- **Thread própria:** o splash corre numa thread criada logo depois de ligar as interrupções, porque é o primeiro ponto com ecrã e relógio ao mesmo tempo. Isto cumpre "nunca atrasar o arranque".
+- **Relógio:** `time::monotonic_ms` = ticks × 1000 / Hz. O driver do timer regista a frequência (`set_tick_rate`). Sem timer, a resposta é `None` e nunca um valor inventado.
+- **Limite conhecido:** um pânico durante a lease só aparece na série.
+- **Revisto depois do `security-reviewer`:**
+  - a devolução do ecrã redesenha fora do lock da consola e só o último ecrã de texto (antes, centenas de scrolls corriam com IF = 0);
+  - o `sleep_ms` recusa ser chamado com as interrupções desligadas ou com um spinlock preso;
+  - o tempo 0 é o momento do `set_tick_rate`;
+  - o autoteste distingue "sem ecrã" de "ecrã emprestado";
+  - o contrato do DISPLAY passa a ter: `E_BUSY` para mover um DISPLAY mapeado e com uma lease ativa; o intervalo inteiro dentro da entrada FRAMEBUFFER; PTEs imutáveis e registadas; e o ecrã limpo antes de cada mapeamento.
+- **DISPLAY (#74):**
+  - um objeto único, cujo handle não tem `DUP` e só pode passar de dono por `SPAWN_MOVE`;
+  - mapeado WC + NX, sem `OWNED`;
+  - a geometria vem do núcleo;
+  - desmapeado quando o handle fecha;
+  - a consola recupera o ecrã limpo.
+
+  A implementação vem depois da 6c.

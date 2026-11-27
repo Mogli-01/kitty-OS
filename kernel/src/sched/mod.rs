@@ -89,6 +89,7 @@ struct Scheduler {
 static SCHED: IrqSpinLock<Option<Scheduler>> = IrqSpinLock::new(None);
 static NEED_RESCHED: AtomicBool = AtomicBool::new(false);
 static SWITCHES: AtomicU64 = AtomicU64::new(0);
+static TICKS: AtomicU64 = AtomicU64::new(0);
 
 /// Errors from [`spawn`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -199,7 +200,13 @@ pub fn yield_now() {
 /// Called by the timer interrupt handler (Codex's timer driver): requests a
 /// reschedule at the end of the current interrupt. Cheap and lock-free.
 pub fn tick() {
+    TICKS.fetch_add(1, Ordering::Relaxed);
     NEED_RESCHED.store(true, Ordering::Release);
+}
+
+/// Number of timer ticks so far (0 if no timer drives the scheduler).
+pub fn ticks() -> u64 {
+    TICKS.load(Ordering::Relaxed)
 }
 
 /// Called by the interrupt core after the handler and the EOI, with

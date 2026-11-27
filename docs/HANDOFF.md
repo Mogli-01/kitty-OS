@@ -1536,3 +1536,19 @@ Formato:
   ficheiros para os processos quando o user mode estiver disponível.
 - **Avisos** — o autoteste usa arquivos e meios de arranque próprios
   em `build/initrd-tests/`.
+
+### [2026-11-28] — CLAUDE (ecrã de arranque e DISPLAY)
+- **Feito:**
+  - `console::lend_framebuffer` (lease exclusiva, `&mut [u8]` validado, mensagens repostas);
+  - `time::{set_tick_rate, monotonic_ms, sleep_ms}`;
+  - `bootstage` (etapas do arranque e `register_splash`, com thread própria depois de ligar as interrupções);
+  - feature `selftest-fb-lease`;
+  - contrato do DISPLAY (#74) em INTERFACES.md;
+  - D-062. Branch `claude/ecra-arranque`.
+- **PRs abertos:** este; #91 (6b) e #92 (PCI/UART) à espera de revisão.
+- **Proteções de segurança alteradas:** ATIVA: ecrã de arranque só por lease.
+- **Próximo passo sugerido para o Codex:**
+  - chamar `time::set_tick_rate(TICK_HZ)` nos drivers do timer do scheduler;
+  - registar o Pantufa com `bootstage::register_splash` (atrás de uma feature, por exemplo `boot-splash`);
+  - na CI, um caso com `selftest-fb-lease`.
+- **Avisos:** um pânico durante a lease só aparece na série. O DISPLAY espera pela 6c (handles).

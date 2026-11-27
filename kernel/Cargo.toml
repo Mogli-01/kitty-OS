@@ -51,6 +51,9 @@ selftest-pit-driver = []
 selftest-smap = []
 # The kernel executes a user page: with SMEP, expect a #PF report.
 selftest-smep = []
+# Lends the framebuffer and gives it back (clears the screen): expect
+# "[boot] framebuffer lease self-test passed".
+selftest-fb-lease = []
 # Prints decoded events to the serial console for the automated QEMU test.
 selftest-ps2-input = []
 selftest-ps2-keyboard = ["selftest-ps2-input"]

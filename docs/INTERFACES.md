@@ -488,6 +488,78 @@ continua o arranque sem a raiz. `selftest-initrd` verifica a listagem e
 os bytes de `/etc/kitty.txt` no arquivo de teste e emite
 `[vfs] initrd read verified (/etc/kitty.txt)` quando ambos coincidem.
 
+### Ecrã de arranque: empréstimo do framebuffer, relógio e progresso (#87) — INSTÁVEL
+Fornece: CLAUDE (D-062). Usa: CODEX (`kernel/src/devices`, crate `kitty-pantufa`).
+```rust
+// kernel/src/bootstage.rs
+pub fn bootstage::register_splash(splash: fn());   // chamar em devices::init; o 1.º registo conta
+pub fn bootstage::progress() -> (u8, bool);        // (etapas feitas 0–8, arranque completo)
+pub enum Stage { Memory = 1, Interrupts, Drivers, Files, Network, Firewall, Interface, Login }
+// kernel/src/console
+pub fn console::lend_framebuffer() -> Option<FramebufferLease>;
+impl FramebufferLease {
+    pub fn width(&self) -> usize; pub fn height(&self) -> usize; pub fn pitch(&self) -> usize;
+    pub fn format(&self) -> PixelFormat;           // Bgra8888 | Other (ver channels())
+    pub fn pixels_mut(&mut self) -> &mut [u8];     // exatamente pitch * height bytes
+}                                                  // Drop = devolve o ecrã à consola
+// kernel/src/time.rs
+pub fn time::set_tick_rate(hz: u32);               // chamar pelo driver do timer do scheduler
+pub fn time::monotonic_ms() -> Option<u64>;        // None sem timer
+pub fn time::sleep_ms(ms: u64) -> bool;            // false de imediato sem timer
+```
+- **Quando corre:** o `register_splash` guarda a função. O `kmain` cria a thread `boot-splash` **logo depois de ligar as interrupções**, que é o primeiro ponto onde há ao mesmo tempo ecrã e relógio. A animação corre **em paralelo** com o resto do arranque e nunca o atrasa.
+- **Em `Target`:** passar `width()`, `height()` e `pitch()` de um `FramebufferLease`, e o slice de `pixels_mut()`, que já foi validado contra o mapeamento real.
+- **Formato:** se `format()` não for `Bgra8888`, converter com `channels()` ou não animar.
+- **Regras da lease:**
+  - pedi-la só em contexto de thread (aloca), nunca dentro do `write_str` de uma consola registada (o lock não é reentrante);
+  - largá-la sempre, ou seja, a função de splash **retorna**. Não chamar `sched::exit()` nem `mem::forget` com a lease viva: o ecrã ficaria preso;
+  - a lease não é revogável. Enquanto existir, o `display_map` (abaixo) devolve `E_BUSY`.
+- **Durante o empréstimo:** a consola não desenha. As mensagens do kernel vão para a série e ficam guardadas (até 16 KiB). Quando a lease é largada, a consola limpa o ecrã e volta a escrever **o último ecrã** dessas mensagens. Esse redesenho é feito fora do lock da consola, para não desligar as interrupções durante muito tempo.
+  - Um pânico durante o empréstimo só aparece na série.
+  - Para mostrar o ecrã de pânico do Pantufa é preciso outro contrato (o caminho de pânico não pode tirar o ecrã ao dono da lease).
+- **Relógio:** `set_tick_rate` só é chamado pelo driver que chama `sched::tick`. O tempo 0 é o momento do registo. O `sleep_ms` recusa (devolve `false`) se for chamado com as interrupções desligadas ou com um spinlock preso.
+- **Relógio (pormenores):**
+  - **Falta do lado do Codex:** o driver do timer do scheduler tem de chamar `time::set_tick_rate(TICK_HZ)` (`devices/pit.rs` e `devices/apic/scheduler_timer.rs`). Até lá, `monotonic_ms()` devolve `None`.
+  - A resolução é de 1 tick (10 ms a 100 Hz). Chega para 20–30 fps.
+- **Caminhos explícitos:**
+  - sem framebuffer, `lend_framebuffer()` dá `None`;
+  - sem timer, `monotonic_ms()` dá `None` e `sleep_ms` devolve `false`.
+
+  Nos dois casos a função de splash **retorna de imediato**: nunca fica em ciclo sem relógio.
+- **Arranque por omissão sem atrasos:** o splash só é registado com uma feature (por exemplo `boot-splash`). O autoteste de omissão não dorme e não toca no ecrã; o teste do empréstimo fica na feature `selftest-fb-lease` (marcador `[boot] framebuffer lease self-test passed`).
+- **Etapas (`progress()`):**
+  - hoje o núcleo marca `Memory`, `Drivers`, `Files` (initrd validado) e `Interrupts`, e `ready` no fim do arranque;
+  - `Network`, `Firewall`, `Interface` e `Login` chegam nas fases respetivas.
+
+### Fase 10: objeto DISPLAY para o compositor (#74) — DESENHO
+Fornece: CLAUDE (implementação depois da 6c, que traz os handles). Usa: CODEX (compositor).
+- **Quem recebe:** existe **um** objeto `DISPLAY`, criado no arranque se houver framebuffer. O seu único handle tem os direitos `MAP | TRANSFER` e **não** tem `DUP` (D-058). O kernel dá-o ao `init` (índice 3), que o passa ao compositor com `process_spawn(..., SPAWN_MOVE)`. Nenhum outro processo pode ter o ecrã.
+  - **Regras do spawn** (#79; entram na D-058 e no FASE6 com a 6c): `SPAWN_COPY` exige `DUP` e `SPAWN_MOVE` exige `TRANSFER`; tudo ou nada; o pai mantém a autoridade se o spawn falhar.
+  - **Mover um DISPLAY mapeado:** o `SPAWN_MOVE` devolve `E_BUSY`. Quem mapeou tem de fechar o mapeamento primeiro. Assim nunca há dois processos com o ecrã mapeado.
+- **Entrega:** `display_map(h) -> Result<(), E>` mapeia o framebuffer no espaço do processo, a partir de um endereço de user escolhido pelo núcleo. É memória de user, escrevível, **NX** e **write-combining**. Não é `OWNED` (D-060, no #91): o núcleo nunca a liberta como RAM.
+  - **Intervalo de páginas:** tem de caber **inteiro** na entrada `FRAMEBUFFER` do mapa de memória do Limine (ou num BAR conhecido); se não couber, o mapeamento é recusado. O `DisplayInfo.base` inclui o offset dentro da primeira página.
+  - **Mapeamento imutável:** as PTEs ficam registadas no objeto DISPLAY. Não se pode mudar a proteção (W^X), partilhar, copiar nem remapear. O desmapeamento usa essas PTEs, nunca um endereço virtual às cegas.
+  - **Ecrã limpo:** o framebuffer é limpo **antes de cada** mapeamento, incluindo o primeiro. O compositor nunca lê o texto da consola do kernel nem os píxeis de um compositor anterior.
+  - A geometria é escrita numa estrutura do processo (via `copy_to_user`):
+    ```rust
+    #[repr(C)] pub struct DisplayInfo {
+        pub base: u64,    // endereço de user do 1.º píxel
+        pub len: u64,     // bytes mapeados = pitch * height (arredondado à página)
+        pub width: u32, pub height: u32, pub pitch: u32,
+        pub format: u32,  // 1 = BGRA8888; 0 = outro (ver as máscaras)
+        pub red: u16, pub green: u16, pub blue: u16, // (shift << 8) | size
+        pub _reserved: u16,
+    }
+    ```
+  - Os erros seguem a D-049: `E_PERM` sem `MAP`, `E_BUSY` se já estiver mapeado, `E_NOENT` sem framebuffer.
+- **A consola larga o ecrã:** no `display_map` bem-sucedido, a consola gráfica do kernel deixa de desenhar (usa o mesmo mecanismo da lease) e o diagnóstico continua na série.
+- **Fim da concessão:** quando o handle é fechado ou o compositor morre, o kernel **desmapeia** o framebuffer desse processo, limpa a TLB e devolve o ecrã à consola, que o limpa e volta a escrever as mensagens. Um compositor novo só pode mapear depois disso, e recebe um ecrã limpo (sem píxeis do anterior).
+- **Garantias do intervalo:**
+  - só cobre `pitch * height` arredondado à página: nunca RAM do kernel nem MMIO vizinho (o `map_mmio` já recusa RAM, D-033);
+  - sem execução;
+  - o tamanho vem do núcleo, nunca do compositor.
+- **Primeiro ensaio do Codex** (depois da 6c): desenhar dois quadros num processo com o handle e verificar no QEMU; um processo sem handle recebe `E_BADHANDLE`.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |
