@@ -62,7 +62,8 @@ O mapa pode conter sequências de vários caracteres. São validadas
 durante a leitura e reservadas para uma futura composição de texto.
 O glifo devolvido usa o mesmo `Canvas::draw_glyph` da fonte original.
 
-O alvo de fuzzing testa ficheiros completos e mapas Unicode gerados.
+O alvo de fuzzing testa ficheiros completos, mapas Unicode gerados e
+atlas com várias larguras, alturas e contagens de glifos.
 A CI usa AddressSanitizer e verifica também se desenhar um glifo
 recortado preserva o padding do destino.
 
