@@ -1576,3 +1576,34 @@ Formato:
   - uma thread por processo;
   - na 6c, o `syscall` tem de limpar AC/IF/DF/TF no FMASK e os handlers IST têm de verificar o GS base pelo MSR;
   - para o trabalho da interface gráfica: as issues #70, #72, #74 e #87 continuam por responder (contratos PCI, UART, DISPLAY e ecrã de arranque).
+
+### [2026-11-28] — CLAUDE (Fase 6c)
+- **Feito:**
+  - entrada `syscall`, com FMASK e saída por `iretq`;
+  - dispatcher com todos os argumentos validados;
+  - tabela de handles com geração e direitos;
+  - objeto CONSOLE com `console_write` filtrado e `console_read` bloqueante;
+  - `console::input_push` para o driver de teclado;
+  - `exit`, `yield`, `handle_close/dup/info`;
+  - D-063 e a tabela de números no FASE6 §3;
+  - branch `claude/fase6c-syscalls`, base `claude/fase6b-processos` (#91).
+- **Testes:** um programa em ring 3 escreve `[user] hello from ring 3 via syscall` e exercita todos os caminhos de erro:
+  - `E_FAULT` com um ponteiro do kernel;
+  - `E_TOOBIG`;
+  - `E_BADHANDLE`, incluindo um handle já fechado;
+  - `E_PERM` sem `WRITE`, e um `dup` que tentava aumentar direitos;
+  - `E_INVAL` para um bit de direito indefinido;
+  - `E_NOSYS`.
+
+  Também lê da consola os bytes injetados, mede uma syscall vazia (~1400 ciclos em release) e faz `exit(42)`. Um processo bloqueado em `console_read` é morto.
+- **Proteções de segurança alteradas:** ATIVAS:
+  - validação das syscalls;
+  - FMASK com AC;
+  - saída sem `sysret`;
+  - handles com geração;
+  - filtro de controlo na consola;
+  - `kill` de um processo bloqueado.
+- **Próximo passo sugerido para o Codex:**
+  - a biblioteca de syscalls em `userland/`, contra a tabela do FASE6 §3;
+  - o driver de teclado a chamar `console::input_push` com os bytes traduzidos.
+- **Avisos:** depende do #91 (6b). A seguir vem a 6d: ELF loader, `process_spawn` e `/sbin/init`.

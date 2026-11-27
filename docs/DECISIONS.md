@@ -1213,3 +1213,30 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
   - `map_page` recusa conteúdo maior do que uma página.
 
   Os testes do autoteste confirmam a limpeza dos seletores e da FPU: tirar uma das duas linhas do scheduler faz o autoteste falhar.
+
+### D-063 — Implementação da 6c: `syscall`, handles e CONSOLE (2026-11-28, CLAUDE)
+- **Entrada `syscall`:** o FMASK limpa IF, DF, TF, AC, NT e IOPL.
+  - Sem IF, nenhuma interrupção chega antes da troca de pilha.
+  - Sem AC, o SMAP fica fechado mesmo depois de um `popf` de user. Esta era a nota da 6a.
+  - Sem TF, não há passo a passo no kernel. Sem NT, não há `iretq` de tarefa.
+  - Depois do `swapgs`, o RSP de user fica num slot por CPU e a pilha passa a ser a da thread (o mesmo valor de `TSS.RSP0`, escrito pelo scheduler). O frame construído é igual ao de uma trap de ring 3.
+- **Saída sempre por `iretq`**, pelo caminho comum das interrupções.
+  - **Porquê não `sysret`:** com um RCX não canónico, o `sysretq` faz #GP **em ring 0 com o GS de user** nos Intel (CVE-2012-0217); e o `sysret` não repõe RFLAGS e segmentos como o `iretq`.
+  - **Porquê o caminho comum:** um único caminho de saída já testado, que honra o `kill` e a preempção.
+  - **Custo:** medido no autoteste, cerca de 1400 ciclos por syscall vazia em release no QEMU TCG. Um caminho `sysret` só entra se for medido e valer a pena.
+- **Handles:** um `u32` com índice (16 bits) e geração (15 bits). Fechar um handle incrementa a geração, por isso um número fechado nunca chega ao objeto que reutiliza o slot (a geração só dá a volta ao fim de 32768 fechos no mesmo slot). Os direitos são de 32 bits: os bits genéricos 0–5 estão definidos, os 6–15 reservados (`E_INVAL`) e os 16–31 são por tipo (D-058). O `dup` exige `DUP` e só pode reduzir direitos.
+- **Spawn (#79), refina a D-058:**
+  - cada entrada leva `SPAWN_COPY` (exige `DUP`) ou `SPAWN_MOVE` (exige `TRANSFER` e tira o handle ao pai);
+  - é tudo ou nada: os handles só saem do pai no último passo, sob o lock;
+  - se o spawn falhar, o pai mantém tudo;
+  - um handle repetido numa lista que o move dá `E_INVAL`;
+  - os objetos exclusivos não têm `DUP`.
+
+  A implementação vem com o `process_spawn` (6d).
+- **CONSOLE:**
+  - **`console_write`:** copia de uma vez para o kernel (sem TOCTOU) e filtra os caracteres de controlo, exceto `\n` e `\t`. Um programa não consegue mandar sequências de escape para o terminal de quem lê a série, nem reescrever uma linha com `\r` para falsificar uma mensagem do kernel.
+  - **`console_read`:** bloqueia numa `WaitQueue`, alimentada por `input_push`, que é seguro em IRQ, não usa heap e tem 4 KiB que descartam os bytes novos quando estão cheios. Um `kill` acorda o leitor, que desiste.
+- **Limites:**
+  - ainda não há `process_spawn` (6d);
+  - `clock_now` e `random_fill` estão reservados (`E_NOSYS`);
+  - um NMI ou #MC nas primeiras instruções da entrada `syscall` (antes do `swapgs`) corre com o GS de user. É inofensivo porque nenhum handler usa o GS; se um dia algum usar, tem de verificar o MSR.

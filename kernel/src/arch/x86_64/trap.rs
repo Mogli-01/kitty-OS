@@ -140,6 +140,8 @@ kitty_trap_common:
     push r15
     mov rdi, rsp
     call {dispatch}
+.global kitty_trap_restore
+kitty_trap_restore:
     pop r15
     pop r14
     pop r13

@@ -98,13 +98,17 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | SMEP (CR4.20, se suportado) | o kernel executar código de user ("ret2user") | ATIVA (provado por `selftest-smep`) | 6 |
 | SMAP (CR4.21, se suportado); janela `stac`/`clac` de uma instrução; `clac` à entrada do dispatch | o kernel ler/escrever memória de user sem querer | ATIVA (provado por `selftest-smap`) | 6 |
 | UMIP (CR4.11, se suportado) | user space ler GDT/IDT (`sgdt`/`sidt`) e descobrir endereços | ATIVA (provado em ring 3 pelo autoteste da 6b: `sgdt` dá #GP) | 6 |
-| Validação de todos os argumentos das syscalls | ataques via syscall | PLANEADA | 6 |
+| Validação de todos os argumentos das syscalls: números fora da tabela dão `E_NOSYS`, handles de 32 bits com geração, direitos verificados, ponteiros só por `copy_*_user`, tamanhos limitados (D-063) | ataques via syscall | ATIVA (autoteste com todos os caminhos de erro) | 6 |
 | `UserSlice`/`UserPtr` + `copy_from_user`/`copy_to_user`; #PF na cópia → `Fault` (nunca panic), só se o CR2 for de user e sem `RSVD` | TOCTOU, ponteiros para o kernel, crash por ponteiro mau, corrupção mascarada | ATIVA | 6 |
 | Invariante: a metade de baixo só tem páginas U (D-054) | `copy_*_user` alcançar páginas de supervisor mapeadas em baixo | ATIVA (`map_user_frame` só cria páginas U; `audit_user_half` verifica antes de o processo correr) | 6 |
 | Espaços de endereçamento separados por processo (metade do kernel partilhada, metade de user própria; CR3 trocado em cada troca de thread) | um processo ler outro | ATIVA (D-060) | 6 |
 | Exceção de user mata o processo, nunca o kernel; relatório só na série | DoS do kernel por um programa; fuga de endereços | ATIVA (6 programas de teste em ring 3) | 6 |
 | Registos de uso geral a zero na primeira entrada em ring 3; GS base de user = 0 | fuga de dados/endereços do kernel em registos | ATIVA | 6 |
 | Estado FPU/SSE guardado e reposto por thread de user (`fxsave64`/`fxrstor64`); thread nova começa no estado inicial; AVX desligado | um processo ler XMM de outro (chaves, passwords) | ATIVA (autoteste "secret/clean") | 6 |
+| Entrada `syscall` com FMASK = IF\|DF\|TF\|AC\|NT\|IOPL; saída sempre por `iretq` (sem `sysret`) | SMAP aberto por um `popf` de user; #GP em ring 0 com o GS de user (sysret não canónico); passo a passo no kernel | ATIVA (D-063) | 6 |
+| Handles com geração (um número fechado nunca volta a valer); direitos só diminuem (`dup`) | use-after-close; escalada de direitos | ATIVA | 6 |
+| `console_write` filtra os caracteres de controlo (só `\n`/`\t`) | sequências de escape no terminal de quem lê a série; falsificar linhas do kernel | ATIVA | 6 |
+| Um processo bloqueado numa syscall pode ser morto | processo imortal preso numa leitura | ATIVA | 6 |
 | `swapgs` só com CS de ring 3 + `lfence` (CVE-2019-1125); `TSS.RSP0` = pilha de kernel da thread atual | o kernel correr com o GS de user; trap de ring 3 numa pilha errada | ATIVA (verificação do GS base nas falhas de user) | 6 |
 | Primeiro 1 MiB de user nunca mapeado (`USER_MIN`) | null deref explorável | ATIVA (`map_user_frame` recusa; teste de leitura de 0) | 6 |
 | RNG do kernel (RDRAND/RDSEED + entropia) | aleatoriedade previsível | PLANEADA | 8 |

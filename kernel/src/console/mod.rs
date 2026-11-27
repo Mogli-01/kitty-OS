@@ -133,3 +133,102 @@ macro_rules! kprintln {
     () => ($crate::kprint!("\n"));
     ($($arg:tt)*) => ($crate::console::_print(format_args!("{}\n", format_args!($($arg)*))));
 }
+
+// ------------------------------------------------- user-space console (6c) ---
+
+/// Text written by user programs (`console_write`, D-052, D-063).
+///
+/// User bytes are untrusted: invalid UTF-8 becomes `?`, and so does every
+/// control character except `\n` and `\t` (C0, DEL and C1, including ESC
+/// and the 8-bit CSI U+009B). A program can therefore neither drive the
+/// terminal of whoever reads the serial port with escape sequences, nor
+/// rewrite the current line with `\r` to fake a kernel message.
+pub fn write_user_text(bytes: &[u8]) {
+    let mut consoles = CONSOLES.lock();
+    for chunk in bytes.utf8_chunks() {
+        let mut buf = [0u8; 4];
+        for c in chunk.valid().chars() {
+            let c = if c.is_control() && c != '\n' && c != '\t' {
+                '?'
+            } else {
+                c
+            };
+            let _ = consoles.write_str(c.encode_utf8(&mut buf));
+        }
+        if !chunk.invalid().is_empty() {
+            let _ = consoles.write_str("?");
+        }
+    }
+}
+
+/// Bytes of keyboard input kept for `console_read`.
+const INPUT_CAPACITY: usize = 4096;
+
+struct InputRing {
+    bytes: [u8; INPUT_CAPACITY],
+    head: usize,
+    len: usize,
+    /// Bytes dropped because the ring was full (diagnostics).
+    dropped: u64,
+}
+
+static INPUT: IrqSpinLock<InputRing> = IrqSpinLock::new(InputRing {
+    bytes: [0; INPUT_CAPACITY],
+    head: 0,
+    len: 0,
+    dropped: 0,
+});
+static INPUT_WAIT: crate::sched::WaitQueue = crate::sched::WaitQueue::new();
+
+/// Called by the keyboard driver (Codex) with already-translated bytes
+/// (docs/FASE6.md §6). Safe in interrupt handlers: no heap, one short
+/// lock. When the ring is full the **new** bytes are dropped and counted.
+pub fn input_push(bytes: &[u8]) {
+    {
+        let mut ring = INPUT.lock();
+        for &b in bytes {
+            if ring.len == INPUT_CAPACITY {
+                ring.dropped += 1;
+                continue;
+            }
+            let tail = (ring.head + ring.len) % INPUT_CAPACITY;
+            ring.bytes[tail] = b;
+            ring.len += 1;
+        }
+    }
+    // Publish first, then wake (no lost wake-up, D-046).
+    INPUT_WAIT.wake_all();
+}
+
+/// Bytes dropped so far because nobody read the console fast enough.
+pub fn input_dropped() -> u64 {
+    INPUT.lock().dropped
+}
+
+/// Blocks until at least one input byte is available (or `cancel()`), then
+/// moves up to `dst.len()` bytes into `dst`. Returns how many. Thread
+/// context only, interrupts enabled.
+pub fn input_read(dst: &mut [u8], mut cancel: impl FnMut() -> bool) -> usize {
+    if dst.is_empty() {
+        return 0;
+    }
+    INPUT_WAIT.wait_until(|| {
+        // Release the ring lock before `cancel` (it may take other locks).
+        let ready = INPUT.lock().len > 0;
+        ready || cancel()
+    });
+    let mut ring = INPUT.lock();
+    let n = ring.len.min(dst.len());
+    for slot in dst.iter_mut().take(n) {
+        *slot = ring.bytes[ring.head];
+        ring.head = (ring.head + 1) % INPUT_CAPACITY;
+        ring.len -= 1;
+    }
+    n
+}
+
+/// Wakes every blocked `input_read` so it can re-check its `cancel`
+/// (a process being killed while it waits for a key).
+pub fn wake_input_readers() {
+    INPUT_WAIT.wake_all();
+}

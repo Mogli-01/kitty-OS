@@ -224,6 +224,31 @@ pub fn enable_user_protections() -> UserProtections {
 }
 
 const MSR_GS_BASE: u32 = 0xC000_0101;
+const MSR_STAR: u32 = 0xC000_0081;
+const MSR_LSTAR: u32 = 0xC000_0082;
+const MSR_FMASK: u32 = 0xC000_0084;
+const EFER_SCE: u64 = 1 << 0;
+
+/// Turns on the `syscall` instruction (Phase 6c, D-063): EFER.SCE, the
+/// segments (STAR), the entry point (LSTAR) and the RFLAGS bits cleared on
+/// entry (FMASK).
+///
+/// # Safety
+/// `entry` must be the address of the kernel's `syscall` entry routine,
+/// and the GDT must have the layout STAR assumes (`gdt.rs`).
+pub(crate) unsafe fn enable_syscall(entry: u64, star: u64, fmask: u64) {
+    // SAFETY: STAR only names the selectors `syscall`/`sysret` load; the
+    // caller guarantees they match the GDT.
+    unsafe { wrmsr(MSR_STAR, star) };
+    // SAFETY: LSTAR is where `syscall` jumps; the caller passes our entry.
+    unsafe { wrmsr(MSR_LSTAR, entry) };
+    // SAFETY: FMASK only selects RFLAGS bits to clear on entry.
+    unsafe { wrmsr(MSR_FMASK, fmask) };
+    let efer = rdmsr(MSR_EFER);
+    // SAFETY: with STAR/LSTAR/FMASK set, enabling SCE makes `syscall` enter
+    // our entry routine instead of raising #UD.
+    unsafe { wrmsr(MSR_EFER, efer | EFER_SCE) };
+}
 const MSR_KERNEL_GS_BASE: u32 = 0xC000_0102;
 const CR0_MP: u64 = 1 << 1;
 const CR0_EM: u64 = 1 << 2;
