@@ -312,6 +312,13 @@ pub fn invlpg(addr: u64) {
     unsafe { asm!("invlpg [{}]", in(reg) addr, options(nostack, preserves_flags)) };
 }
 
+/// Reads the time-stamp counter (CPU cycles since reset, roughly).
+pub fn rdtsc() -> u64 {
+    // SAFETY: `rdtsc` only reads the time-stamp counter; it touches no
+    // memory and is allowed in ring 0.
+    unsafe { core::arch::x86_64::_rdtsc() }
+}
+
 /// Parks the current CPU forever.
 ///
 /// Interrupts are disabled first, so only an NMI can wake the core; the loop

@@ -10,7 +10,7 @@
 //! 3. [`kmain`] brings up the consoles and prints the greeting.
 //!
 //! Unsafe code policy: `unsafe` is denied for the whole crate and only allowed
-//! in the modules listed in `docs/UNSAFE.md` (`arch`, `mm`, `sync`). Every
+//! in the modules listed in `docs/UNSAFE.md` (`arch`, `mm`, `sync`, `sched`). Every
 //! other module must be written in safe Rust on top of their APIs.
 
 #![no_std]
@@ -33,6 +33,7 @@ pub mod firmware;
 #[allow(unsafe_code)]
 pub mod mm;
 mod panic;
+#[allow(unsafe_code)]
 pub mod sched;
 pub mod security;
 #[allow(unsafe_code)]
@@ -100,6 +101,7 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     kprintln!("[mm] running on the kernel stack (guard page below it)");
     mm::heap::init();
     mm::heap::selftest();
+    sched::init();
     kprintln!(
         "[mm] kernel heap ready ({} pages mapped); heap self-test passed",
         mm::heap::stats().pages
@@ -197,6 +199,32 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         arch::irq::controller_name()
     );
 
+    match sched::selftest() {
+        Some(cycles) => kprintln!(
+            "[sched] cooperative self-test passed: {} switches so far, ~{} cycles per yield+switch",
+            sched::switches(),
+            cycles
+        ),
+        None => panic!("scheduler self-test failed"),
+    }
+
+    assert!(sched::wait::selftest(), "wait queue self-test failed");
+    kprintln!("[sched] wait queue self-test passed: waiter blocked, woken, value seen");
+
+    #[cfg(feature = "selftest-preempt")]
+    {
+        assert!(
+            arch::x86_64::selftest::preempt(),
+            "preemption self-test failed"
+        );
+        kprintln!(
+            "[sched] preemption self-test passed: busy threads were preempted, idle + wake from IRQ work"
+        );
+    }
+
+    #[cfg(feature = "selftest-thread-stack-overflow")]
+    arch::x86_64::selftest::thread_stack_overflow();
+
     #[cfg(feature = "selftest-irq-pit")]
     {
         assert!(arch::x86_64::selftest::irq_pit(), "PIT IRQ0 never arrived");
@@ -223,7 +251,11 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     #[cfg(feature = "qemu-exit")]
     arch::qemu::exit(arch::qemu::ExitCode::Success);
 
-    // Idle with interrupts enabled so drivers keep receiving IRQs.
+    // The boot thread becomes the idle thread: run whatever is ready, and
+    // sleep (interrupts on) when nothing is.
     #[cfg(not(feature = "qemu-exit"))]
-    arch::idle_forever()
+    loop {
+        sched::yield_now();
+        arch::x86_64::cpu::enable_interrupts_and_halt();
+    }
 }
