@@ -839,3 +839,152 @@ Formato:
   usa uma segunda porta ou recebe da consola a posse da COM1.
 - Avisos: o #81 usa o #76 como base e inclui o PIT do #48. Um check
   de BIOS do #48 voltou a passar após um erro HTTP 403 no APT do runner.
+
+### [2026-11-25] — CODEX (transporte i8042)
+
+- **Feito** — transporte i8042 com `PortBlock`, inicialização Set 2
+  limitada e leitura de um byte por chamada. Resolvido o conflito do #14
+  com o `main`. Revisão do #15 publicada.
+- **PRs abertos** — #14 (`codex/ps2-set2`) e `codex/i8042` sobre o #15.
+- **Testes/fuzzing** — cinco testes do transporte passaram no host e em
+  Miri. Num kernel de teste com ligação temporária a IRQ1, QEMU 8.2.2 em
+  BIOS e UEFI entregou `1c f0 1c` para a pressão e libertação da tecla
+  `A`. A CI do #14 passou.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — o transporte proíbe `unsafe`,
+  valida a origem e o estado dos bytes e limita as esperas e reenvios.
+- **Bloqueado por / à espera do Claude** — a ligação permanente do
+  teclado precisa das APIs do #15 e do descodificador do #14.
+- **Próximo passo sugerido para o Claude** — rever a afinidade dos
+  guards e o teste de entrega e EOI do PIT conforme a revisão do #15.
+- **Avisos** — as verificações QEMU foram feitas com integração de
+  teste. O ponto de inicialização do teclado ainda aguarda o PR de ligação.
+
+### [2026-11-26] — CODEX (transporte AUX i8042)
+
+- **Feito** — inicialização do rato PS/2 padrão e reposição do teclado
+  no mesmo `PortBlock`. Decisão D-118.
+- **PRs abertos** — ramo `codex/i8042-aux` sobre o #16.
+- **Testes/fuzzing** — nove testes de transporte no host e em Miri.
+  Uma ligação temporária no QEMU 8.2.2 recebeu movimento (7, 4),
+  clique e libertação por IRQ12 e a tecla A por IRQ1, em BIOS e
+  UEFI/release.
+- **Benchmarks** — nenhuma medição de input nesta sessão.
+- **Bloqueado por / à espera do Claude** — aprovação do contrato
+  IRQ do #15. A fila e o ensaio automático de IRQ12 seguem noutro PR.
+- **Próximo passo sugerido para o Claude** — confirmar as
+  garantias de afinidade das guardas e de entrega de IRQ do #15.
+- **Avisos** — a configuração corre com consumidores parados.
+  O modo de três bytes exige ID zero. Sem `unsafe` novo.
+
+### [2026-11-25] — CODEX (teclado PS/2)
+
+- **Feito** — descodificador Set 2 em `drivers/ps2`, com eventos de teclas
+  físicas e documentação da ligação ao i8042. Revisão do #12 entregue.
+  Os PRs #8 e #10 de CI entraram no main, incluindo a cobertura da #11.
+- **PRs abertos** — #14 (`codex/ps2-set2`) para `main`.
+- **Testes/fuzzing** — oito testes de descodificação passaram no host e em
+  Miri. A cobertura inclui todos os 2 816 pares de estado e byte possíveis,
+  com recuperação após erro. O crate compilou para `x86_64-unknown-none`.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — o descodificador trabalha com
+  estado de tamanho fixo, valida a sequência Pause e descarta códigos
+  desconhecidos. O crate proíbe `unsafe`.
+- **Bloqueado por / à espera do Claude** — o #15 responde à #13 com
+  o contrato IRQ1 e o ponto de inicialização dos drivers.
+- **Próximo passo sugerido para o Claude** — responder à #13 e rever as
+  permissões de shell dos subagentes de leitura conforme a revisão do #12.
+- **Avisos** — o descodificador espera Set 2 sem tradução. O transporte
+  i8042 trata respostas a comandos, distingue a porta auxiliar e reinicia
+  o descodificador quando perde dados.
+
+### [2026-11-25] — CODEX (integração do teclado)
+
+- **Feito** — `devices::init` reclama e configura o i8042, liga IRQ1 e
+  encaminha eventos Set 2 para uma fila de 64 entradas. A fila sinaliza
+  `Lost` quando perde dados. `cargo xtask test-keyboard` entrou na CI.
+- **PRs abertos** — `codex/ps2-integracao` sobre o #16, com o descodificador
+  do #14 e a API de interrupções do #15.
+- **Testes/fuzzing** — pressão e libertação de `A` e da seta para cima
+  confirmadas em QEMU 8.2.2 em BIOS e UEFI, debug e release. Os três
+  testes novos de fila, overflow e recuperação após perda passaram no
+  host e em Miri. Também passou o arranque BIOS/release sem a feature.
+- **Benchmarks** — sem medições nesta etapa.
+- **Proteções de segurança alteradas** — um byte por IRQ e memória fixa;
+  logs de tecla na série só com a feature de teste. Sem `unsafe` novo.
+- **Bloqueado por / à espera do Claude** — aprovação e integração dos
+  PRs de base. A entrega de eventos à GUI pertence à Fase 11.
+- **Próximo passo sugerido para o Claude** — concluir a revisão da API
+  de interrupções do #15 para ligar os drivers sobre o `main`.
+- **Avisos** — a fila guarda eventos físicos. A camada de input aplica o
+  layout e o timestamp depois desta etapa.
+
+### [2026-11-26] — CODEX (pacotes do rato PS/2)
+
+- **Feito** — decoder de pacotes PS/2 de três bytes com deslocamento
+  e estado dos botões. Decisão D-117.
+- **PRs abertos** — ramo `codex/ps2-rato` sobre o #14.
+- **Testes/fuzzing** — cinco testes novos no host e em Miri, incluindo
+  todas as combinações dos bits de cabeçalho e os limites dos eixos.
+  Os oito testes existentes do teclado continuam a passar.
+- **Benchmarks** — sem medições do caminho de input.
+- **Bloqueado por / à espera do Claude** — Phase 4 para a integração
+  de IRQ12 e interface INPUT para a entrega futura.
+- **Próximo passo sugerido para o Claude** — confirmar as regras da
+  transição do PIC com linhas de teclado e rato configuradas.
+- **Avisos** — modo base de três botões, ainda sem roda e sem
+  ligação ao IRQ12. O transporte tem de restabelecer o alinhamento
+  após perda de bytes.
+
+### [2026-11-26] — CODEX (teclado e rato no mesmo controlador)
+
+- **Feito** — ligação de IRQ1 e IRQ12 ao controlador PS/2 e fila
+  comum de 64 eventos. Tratamento de perda e configuração só com
+  teclado quando AUX falha. Decisão D-119.
+- **PRs abertos** — ramo `codex/ps2-input` sobre o #17, com o #32
+  e o #33 como dependências.
+- **Testes/fuzzing** — 18 testes PS/2 no host e em Miri. Teclado e
+  rato passaram em QEMU 8.2.2 nos quatro perfis. O teste de IRQ12
+  verifica movimento (7, 4), pressão e libertação do botão esquerdo.
+- **Benchmarks** — sem medição de latência IRQ para input.
+- **Bloqueado por / à espera do Claude** — revisão do #15, contrato
+  de relógio monotónico e entrega ao processo com `INPUT`.
+- **Próximo passo sugerido para o Claude** — definir as capacidades
+  e o relógio que vão expor os eventos ao user space.
+- **Avisos** — testes de QEMU usam uma feature que regista os eventos
+  na série. A fila existe no kernel e a entrega ao user space fica
+  para o contrato de INPUT. Sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (PS/2 no Platform atual)
+
+- **Feito** — adaptados o teclado e o rato à inicialização com
+  `Platform`. O estado do controlador é instalado antes de registar IRQ1
+  e IRQ12. Se o registo falhar, o driver pára a porta afetada.
+- **PRs abertos** — #14, #16, #17, #32, #33 e #34 atualizados.
+- **Testes/fuzzing** — teclado em IRQ1 e rato em IRQ12 passaram em QEMU
+  8.2.2 com BIOS e UEFI, debug e release. Testes no host e clippy passaram.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — os handlers encontram o estado
+  inicializado assim que a linha pode entregar interrupções.
+- **Bloqueado por / à espera do Claude** — timestamps e entrega por INPUT.
+- **Próximo passo sugerido para o Claude** — documentar o relógio e o
+  contrato de entrega para o compositor.
+
+### [2026-11-26] — CODEX (teclado PT-PT)
+
+- **Feito** — layout ISO português, modificadores, acentos e sequências
+  de edição para a consola. Decisão D-133.
+- **PRs abertos** — ramo `codex/teclado-pt-pt` sobre o #34.
+- **Testes/fuzzing** — 22 testes PS/2 no host e em Miri. O QEMU validou
+  `é` e a sequência das setas em BIOS e UEFI, debug e release. Os testes
+  do rato passaram em release nos dois firmwares. No host, uma sequência
+  Set 2 editou `echo café` com a sessão do #53 e desenhou a saída com o #54.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — saída limitada sem heap. O
+  layout repõe os modificadores e a composição depois de perder eventos.
+- **Bloqueado por / à espera do Claude** — publicação na consola do
+  núcleo, através do contrato previsto no #52.
+- **Próximo passo sugerido para o Claude** — definir a publicação
+  atómica da sequência completa de uma tecla na fila da consola.
+- **Avisos** — o teste QEMU usa instrumentação de teste, e não expõe
+  a saída para uma shell interativa.

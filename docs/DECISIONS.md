@@ -157,6 +157,17 @@ encaminha para a janela com foco. As aplicações nunca leem input global.
 **Porquê:** impede keyloggers e que uma aplicação veja cliques/teclas
 destinados a outra.
 
+### D-102 — Descodificar o teclado PS/2 em Set 2 (2026-11-25, CODEX)
+O crate interno `kitty-ps2` processa um byte de cada vez e produz eventos
+de teclas físicas. Compila em `no_std`, sem alocação, `unsafe` ou crates
+externos. O transporte do i8042 fornece o fluxo Set 2 sem tradução e o
+layout e o timestamp são aplicados pela camada de input.
+
+A separação permite exercitar todas as transições com bytes arbitrários
+no host e em Miri. A tabela de teclas preserva posições que têm o mesmo
+código base, como a seta para cima e o 8 do teclado numérico, bem como
+a tecla adicional ISO. [Referência de códigos](https://github.com/qemu/keycodemapdb/blob/master/data/keymaps.csv)
+
 ### D-020 — Tipos de cache (PAT) geridos pelo VMM (2026-11-25, CLAUDE)
 O roadmap pede o framebuffer com write-combining. Programar o MSR `IA32_PAT`
 e escolher os bits PAT/PCD/PWT das entradas de página é paginação, logo
@@ -925,3 +936,70 @@ número de leituras e repete medições inconsistentes até três tentativas.
 Com uma medição válida, usa o temporizador LAPIC em modo periódico a 100 Hz
 no CPU de arranque. O PIT continua disponível para o scheduler quando o
 LAPIC está indisponível ou a calibração não é fiável.
+
+### D-117 — Descodificar o modo base do rato PS/2 (2026-11-26, CODEX)
+
+O rato em modo base envia um cabeçalho e dois bytes de deslocamento.
+O bit 3 do cabeçalho indica a posição esperada do início. Os bits de
+sinal completam valores de movimento com nove bits, e o eixo Y é
+invertido para coordenadas de ecrã. Um overflow deixa apenas esse
+eixo sem movimento válido e preserva os botões do relatório.
+
+O decoder espera exclusivamente bytes AUX do modo de três bytes,
+depois do tratamento das respostas de comandos. Um erro de
+transporte descarta o pacote parcial. Para retomar, o transporte
+estabelece a fronteira do pacote seguinte.
+
+### D-103 — Transporte i8042 através de `PortBlock` (2026-11-25, CODEX)
+O crate interno `kitty-i8042` usa `kitty-hal` para configurar o teclado
+em Set 2 sem tradução. Mantém as IRQs do controlador desligadas até
+confirmar o modo do teclado e limita a espera e os reenvios. A leitura
+em interrupção recolhe um byte por chamada, com a origem e o resultado
+da validação de paridade e timeout.
+
+O transporte é partilhável com a futura porta auxiliar. O descodificador
+do teclado recebe só bytes validados da sua porta e pode limpar o estado
+quando o controlador sinaliza uma perda.
+
+### D-104 — Fila limitada para o teclado PS/2 em IRQ1 (2026-11-25, CODEX)
+O handler recolhe um byte por IRQ e guarda as teclas descodificadas numa
+fila de 64 eventos. Um erro do teclado ou uma fila cheia gera `Lost` antes
+dos eventos seguintes, para que o consumidor limpe teclas que julgava
+premidas. A porta auxiliar segue um percurso distinto.
+
+A fila mantém o trabalho em interrupção limitado e usa memória fixa. O
+teste QEMU envia uma tecla normal e uma estendida e valida as pressões e
+libertações pela saída série de um build de teste.
+
+### D-118 — Respostas AUX e recuperação do teclado no i8042 (2026-11-26, CODEX)
+
+O mesmo bloco de portas serve o teclado e o rato. Durante a preparação,
+o driver fecha as portas e drena a saída. Reencaminha cada comando do
+rato com `0xD4` e aceita apenas respostas com o bit AUX. Confirma o
+ID padrão zero antes de habilitar a produção de relatórios e o IRQ12.
+
+O modo de teclado preparado antes da configuração AUX serve de
+fallback. O driver desativa a porta AUX, drena dados e repõe a
+configuração anterior. Uma falha na reposição é comunicada a quem
+regista as linhas ISA, para que as mantenha mascaradas.
+
+### D-119 — Fila PS/2 partilhada e validação em IRQ12 (2026-11-26, CODEX)
+
+IRQ1 e IRQ12 partilham o controlador. O estado do i8042 decide se cada
+byte vai para o Set 2 ou para o descodificador do rato. A fila de
+64 entradas conserva a ordem de conclusão dos eventos. Uma perda
+descarta entradas anteriores e publica `Lost` para o consumidor
+limpar o estado de teclas e botões.
+
+Se a origem AUX e a posição do byte corrompido forem conhecidas,
+o descodificador conta e descarta os restantes bytes desse pacote.
+Quando a posição deixa de ser conhecida, a leitura de relatórios
+fica suspensa até nova configuração. O teste QEMU verifica que
+o deslocamento e ambos os estados do botão chegam pelo handler de IRQ12.
+### D-133 — Traduzir teclas ISO PT-PT para a consola (2026-11-26, CODEX)
+
+`PortugueseKeyboard` aplica modificadores e teclas mortas às posições
+físicas PS/2. Produz sequências completas de até oito bytes, sem heap.
+O código de edição usa o formato da secção 6 do PR #52. Um evento de
+perda repõe todo o estado do layout para evitar manter modificadores
+ou combinações de acentos depois de uma sequência incompleta.

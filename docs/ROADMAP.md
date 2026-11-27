@@ -81,6 +81,11 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Driver do teclado PS/2 | CODEX | Descodificador #14, transporte i8042 #16, teclado ligado ao IRQ1 no #17, testes com PIC e I/O APIC no #71. Em revisão |
 | Driver UART completo (interrupções, input) | CODEX | Driver 16550A no #59 e fontes de receção no #78. Ligação ao IRQ4 e teste de receção em QEMU dependem da concessão COM1 no #72 |
 
+| Descodificador Set 2 do teclado PS/2, testes no host e Miri | CODEX | FEITO |
+| Transporte i8042 (configuração Set 2 e leitura de bytes) | CODEX | FEITO |
+| Integração do teclado PS/2 no kernel e testes de IRQ1 em QEMU | CODEX | FEITO |
+| Driver UART completo (interrupções, input) | CODEX | TODO |
+
 ## Fase 5 — Scheduler
 | Tarefa | Dono | Estado |
 |---|---|---|
@@ -145,10 +150,14 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 ## Fase 11 — Input
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Driver de rato PS/2 | CODEX | TODO |
+| Driver de rato PS/2 | CODEX | Ligação por IRQ12 e testes QEMU em revisão no ramo `codex/ps2-input` |
+| Layout ISO PT-PT para a consola | CODEX | Tradução Set 2 para UTF-8 e controlos em revisão no ramo `codex/teclado-pt-pt`. Entrega à consola pendente |
 | Driver USB HID (teclado e rato) | CODEX | TODO |
 | Sistema de eventos de input unificado (`InputEvent`: teclado + rato) | CODEX | TODO |
 | Entrega dos eventos ao user space só a quem tem o handle do objeto `INPUT`, dado pelo `init` (sem `input_open` por nome; D-019, D-058) | CLAUDE | TODO |
+
+| Sistema de eventos de input unificado (`InputEvent`: teclado + rato) | CODEX | Fila PS/2 interna em revisão; timestamps e entrega por `INPUT` pendentes |
+| Entrega dos eventos ao user space só ao processo com a capacidade `INPUT` (D-019) | CLAUDE | TODO |
 
 ## Fase 12 — Memória partilhada e IPC rápido
 | Tarefa | Dono | Estado |

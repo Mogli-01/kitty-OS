@@ -15,6 +15,22 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  drivers:
+    name: Driver tests (host and Miri)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain and Miri
+        run: |
+          rustup toolchain install
+          rustup component add miri
+      - run: cargo test --locked -p kitty-ps2
+      - run: cargo miri test --locked -p kitty-ps2
+      - run: cargo build --locked --release -p kitty-ps2 --target x86_64-unknown-none
+
   lint:
     name: fmt + clippy
     runs-on: ubuntu-24.04
@@ -81,6 +97,22 @@ jobs:
       - run: cargo test -p kitty-pit --locked
       - run: cargo miri test -p kitty-pit --locked
 
+  i8042:
+    name: i8042 transport (host and Miri)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain and Miri
+        run: |
+          rustup toolchain install
+          rustup component add miri
+      - run: cargo test --locked -p kitty-i8042
+      - run: cargo miri test --locked -p kitty-i8042
+      - run: cargo build --locked --release -p kitty-i8042 --target x86_64-unknown-none
+
   boot:
     name: QEMU (${{ matrix.firmware }}, ${{ matrix.profile }})
     needs: lint
@@ -99,7 +131,7 @@ jobs:
         run: bash .github/scripts/install-qemu.sh
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup toolchain install
-      - name: Check boot, faults and framebuffer
+      - name: Check boot, faults, framebuffer and PS/2 input
         shell: bash
         env:
           FIRMWARE: ${{ matrix.firmware }}
@@ -196,6 +228,8 @@ jobs:
             --expect '[pit] driver preempted a busy thread twice' \
             --expect '[sched] cooperative self-test passed'
           cargo xtask test-visual "${flags[@]}"
+          cargo xtask test-keyboard "${flags[@]}"
+          cargo xtask test-mouse "${flags[@]}"
       - name: Upload serial logs and framebuffer capture
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -204,4 +238,6 @@ jobs:
           path: |
             build/serial-logs/*.log
             build/visual/
+            build/serial-keyboard.log
+            build/serial-mouse.log
           if-no-files-found: ignore

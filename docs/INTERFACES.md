@@ -113,6 +113,11 @@ das falhas, confirma `frame allocator self-test passed`, a auditoria W^X,
 heap e o do MMIO. Guarda a série em `build/memory-tests/<firmware>-<perfil>/`.
 `test` e `test-memory` dão erro se o log não puder ser gravado.
 
+`cargo xtask test-keyboard [--bios] [--release]` verifica a pressão e
+libertação de `A` e da seta para cima através de IRQ1. Usa a feature
+`selftest-ps2-keyboard` para a emissão dos marcadores de teste e guarda a
+série em `build/serial-keyboard.log`.
+
 ### Heap do kernel (`alloc`) — ESTÁVEL
 Fornece: CLAUDE (`kernel/src/mm/heap.rs`). Usa: todos.
 `Box`, `Vec`, `String`, … funcionam depois de `mm::heap::init()`.
@@ -430,6 +435,21 @@ pub fn UserPtr::<T>::write(self, v: T) -> Result<(), UserError>;
 - Marcador: `[mm] user-copy self-test passed`; features `selftest-smap`
   (`protection violation on read in kernel mode`) e `selftest-smep`
   (`protection violation on instruction fetch in kernel mode`).
+
+### Eventos internos do PS/2 — INSTÁVEL
+
+Fornece: CODEX (`kitty_ps2::Ps2Input`). A fila tem 64 entradas e entrega
+`InputEvent::Key(KeyEvent)` e `InputEvent::Mouse(MouseReport)` por ordem
+de descodificação. IRQ1 e IRQ12 partilham o bloco de portas. O bit AUX
+do estado identifica o dispositivo que enviou o byte. Cada handler lê no
+máximo um byte.
+
+`next_input` devolve `InputEvent::Lost` antes de retomar a entrega após
+perda. O consumidor limpa o estado de teclas e botões retidos. Um byte AUX
+corrompido, quando a posição é conhecida, descarta o restante pacote. Um
+erro que torne a posição desconhecida exige nova configuração do rato.
+A entrega a processos e os timestamps dependem das futuras interfaces de
+`INPUT` e de tempo monotónico.
 
 ## Planeadas (assinaturas propostas, podem mudar)
 

@@ -12,9 +12,11 @@
 //! device) and is written in safe Rust — `unsafe` is denied here by the
 //! crate-level lint. See docs/INTERFACES.md ("Interrupções (Fase 4)").
 
+#![forbid(unsafe_code)]
 #[cfg(feature = "xapic")]
 mod apic;
 mod pit;
+mod ps2;
 #[cfg(all(
     feature = "qemu-exit",
     any(feature = "selftest-pit-driver", feature = "selftest-lapic-scheduler")
@@ -56,6 +58,7 @@ pub fn init(_platform: &Platform<'_>) {
         apic::init(madt);
     }
     init_scheduler_timer();
+    ps2::init();
 }
 
 fn init_scheduler_timer() {

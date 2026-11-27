@@ -18,6 +18,13 @@ name = "kitty-hal"
 version = "0.1.0"
 
 [[package]]
+name = "kitty-i8042"
+version = "0.1.0"
+dependencies = [
+ "kitty-hal",
+]
+
+[[package]]
 name = "kitty-kernel"
 version = "0.1.0"
 dependencies = [
@@ -25,6 +32,7 @@ dependencies = [
  "kitty-apic",
  "kitty-hal",
  "kitty-pit",
+ "kitty-ps2",
  "limine",
 ]
 
@@ -33,6 +41,14 @@ name = "kitty-pit"
 version = "0.1.0"
 dependencies = [
  "kitty-hal",
+]
+
+[[package]]
+name = "kitty-ps2"
+version = "0.1.0"
+dependencies = [
+ "kitty-hal",
+ "kitty-i8042",
 ]
 
 [[package]]

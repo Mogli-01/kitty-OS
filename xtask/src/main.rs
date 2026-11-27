@@ -9,6 +9,8 @@
 //!   test-memory [--release] [--bios]   check the Phase 3 memory protections in QEMU
 //!   test-visual [--release] [--bios]   check the framebuffer banner against a reference
 //!   bench-boot [--release] [--bios]    sample time to the boot-complete serial line
+//!   test-keyboard [--release] [--bios] check PS/2 key events through IRQ1 in QEMU
+//!   test-mouse [--release] [--bios]    check PS/2 mouse reports through IRQ12 in QEMU
 //!
 //! Extra options:
 //!   --features <a,b>   extra kernel cargo features (e.g. selftest-page-fault)
@@ -30,6 +32,7 @@ use std::time::Duration;
 
 mod boot_bench;
 mod boot_trace;
+mod input_tests;
 mod memory_tests;
 mod visual_test;
 
@@ -106,6 +109,8 @@ fn main() -> ExitCode {
         "test-memory" => memory_tests::run(&opts),
         "test-visual" => visual_test::run(&opts),
         "bench-boot" => boot_bench::run(&opts),
+        "test-keyboard" => input_tests::run(&opts, input_tests::KEYBOARD),
+        "test-mouse" => input_tests::run(&opts, input_tests::MOUSE),
         _ => {
             eprintln!(
                 "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--expect-panic] [--expect text]"
@@ -113,6 +118,8 @@ fn main() -> ExitCode {
             eprintln!("       cargo xtask test-memory [--release] [--bios]");
             eprintln!("       cargo xtask test-visual [--release] [--bios]");
             eprintln!("       cargo xtask bench-boot [--release] [--bios]");
+            eprintln!("       cargo xtask test-keyboard [--release] [--bios]");
+            eprintln!("       cargo xtask test-mouse [--release] [--bios]");
             return ExitCode::FAILURE;
         }
     };

@@ -51,6 +51,9 @@ selftest-pit-driver = []
 selftest-smap = []
 # The kernel executes a user page: with SMEP, expect a #PF report.
 selftest-smep = []
+# Prints decoded events to the serial console for the automated QEMU test.
+selftest-ps2-input = []
+selftest-ps2-keyboard = ["selftest-ps2-input"]
 
 [dependencies]
 limine = "0.6.5"
@@ -59,3 +62,4 @@ kitty-acpi = { path = "../drivers/acpi", optional = true }
 kitty-apic = { path = "../drivers/apic", optional = true }
 
 kitty-pit = { path = "../drivers/pit" }
+kitty-ps2 = { path = "../drivers/ps2" }
