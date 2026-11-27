@@ -30,7 +30,8 @@ duplicados e ficheiros que sejam usados como diretórios.
 ## Volumes FAT32 só de leitura
 
 `fat32/` monta um volume que começa no seu setor de arranque. A camada
-de partições ou de blocos fornece um `ReadAt` limitado aos bytes do volume.
+de partições ou de blocos fornece um `ReadAt` de `kitty-storage` limitado
+aos bytes do volume.
 Uma imagem em memória pode ser usada diretamente com
 `Fat32::mount(image.as_slice())`. A fonte tem de permanecer estável
 durante a montagem e disponibilizar leituras sem alinhamento.
@@ -61,4 +62,41 @@ cargo test -p kitty-fat32 --locked
 cargo miri test -p kitty-fat32 --locked
 cargo build -p kitty-fat32 --target x86_64-unknown-none --release --locked
 cargo fuzz run fat32 -- -max_total_time=15 -timeout=5 -max_len=2049
+```
+
+## Partições GPT
+
+`storage/` lê a GPT de um disco ou imagem, com setores lógicos de 512,
+1024, 2048 ou 4096 bytes. Valida o MBR protetor, o CRC dos cabeçalhos e o
+CRC da tabela selecionada. Se a cópia primária falhar, verifica a cópia
+de reserva. `header_copy()` identifica a cópia utilizada. O leitor rejeita
+sobreposições, identificadores de partição duplicados e endereços fora da
+área utilizável.
+
+A tabela fica em memória, com um limite de 4096 entradas e 4 MiB de
+metadados a ler por cópia. `partition(n)` usa o número de partição do
+disco e devolve um `ReadAt` limitado aos seus setores, com offset zero
+no primeiro byte da partição. Uma leitura que ultrapasse o fim falha
+antes de chegar ao disco. A vista pode ser passada diretamente ao FAT32.
+
+```rust,ignore
+let disk = Gpt::read(image.as_slice(), 512)?;
+let partition = disk.partition(1);
+if let Some(partition) = partition {
+    let fs = Fat32::mount(partition)?;
+    let mut file = fs.open("/config/kitty.txt")?;
+    let mut contents = [0; 512];
+    let length = file.read_at(0, &mut contents)?;
+    // Process contents[..length].
+}
+```
+
+Os CRC detetam corrupção dos metadados. A seleção de uma partição
+autorizada a partir dos identificadores e a montagem no VFS pertencem
+às camadas que chamam o leitor.
+
+```sh
+cargo test -p kitty-storage -p kitty-fat32 --locked
+cargo miri test -p kitty-storage -p kitty-fat32 --locked
+cargo fuzz run gpt -- -max_total_time=15 -timeout=5 -max_len=1025
 ```

@@ -21,9 +21,9 @@ jobs:
         run: |
           rustup toolchain install
           rustup component add miri
-      - run: cargo clippy -p kitty-acpi -p kitty-fat32 -p kitty-initrd -p kitty-shell -p kitty-vfs --all-targets --locked -- -D warnings
-      - run: cargo test -p kitty-acpi -p kitty-fat32 -p kitty-initrd -p kitty-shell -p kitty-vfs --locked
-      - run: cargo miri test -p kitty-acpi -p kitty-fat32 -p kitty-initrd -p kitty-shell -p kitty-vfs --locked
+      - run: cargo clippy -p kitty-acpi -p kitty-fat32 -p kitty-initrd -p kitty-shell -p kitty-storage -p kitty-vfs --all-targets --locked -- -D warnings
+      - run: cargo test -p kitty-acpi -p kitty-fat32 -p kitty-initrd -p kitty-shell -p kitty-storage -p kitty-vfs --locked
+      - run: cargo miri test -p kitty-acpi -p kitty-fat32 -p kitty-initrd -p kitty-shell -p kitty-storage -p kitty-vfs --locked
       - run: cargo fmt --manifest-path fuzz/Cargo.toml --all --check
       - run: cargo install cargo-fuzz --version 0.13.2 --locked
       - run: cargo fetch --manifest-path fuzz/Cargo.toml --locked
@@ -43,4 +43,8 @@ jobs:
         env:
           CARGO_NET_OFFLINE: 'true'
         run: cargo fuzz run fat32 -- -max_total_time=15 -timeout=5 -max_len=2049
+      - name: Fuzz the GPT metadata reader under AddressSanitizer
+        env:
+          CARGO_NET_OFFLINE: 'true'
+        run: cargo fuzz run gpt -- -max_total_time=15 -timeout=5 -max_len=1025
       - run: git diff --exit-code -- fuzz/Cargo.lock

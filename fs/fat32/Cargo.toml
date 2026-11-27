@@ -3,3 +3,6 @@ name = "kitty-fat32"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
+
+[dependencies]
+kitty-storage = { path = "../storage" }

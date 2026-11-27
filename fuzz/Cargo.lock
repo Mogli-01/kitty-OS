@@ -60,6 +60,9 @@ version = "0.1.0"
 [[package]]
 name = "kitty-fat32"
 version = "0.1.0"
+dependencies = [
+ "kitty-storage",
+]
 
 [[package]]
 name = "kitty-fuzz"
@@ -69,6 +72,7 @@ dependencies = [
  "kitty-fat32",
  "kitty-initrd",
  "kitty-shell",
+ "kitty-storage",
  "kitty-vfs",
  "libfuzzer-sys",
 ]
@@ -79,6 +83,10 @@ version = "0.1.0"
 
 [[package]]
 name = "kitty-shell"
+version = "0.1.0"
+
+[[package]]
+name = "kitty-storage"
 version = "0.1.0"
 
 [[package]]

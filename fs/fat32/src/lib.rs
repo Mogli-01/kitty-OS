@@ -9,35 +9,7 @@ mod name;
 use layout::{CLUSTER_MASK, Layout, dword, word};
 use name::{LongName, Name, short_name, valid_component};
 
-/// The source could not fill the entire requested range.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ReadError;
-
-/// Byte access to a FAT32 volume, beginning at the volume boot sector.
-///
-/// The caller selects and bounds the volume before mounting. The source must
-/// remain unchanged for the mount's lifetime, including across multiple reads.
-/// Implementations for sector devices must support unaligned byte requests.
-pub trait ReadAt {
-    fn byte_len(&self) -> u64;
-    fn read_exact_at(&self, offset: u64, out: &mut [u8]) -> Result<(), ReadError>;
-}
-
-impl ReadAt for &[u8] {
-    fn byte_len(&self) -> u64 {
-        self.len() as u64
-    }
-
-    fn read_exact_at(&self, offset: u64, out: &mut [u8]) -> Result<(), ReadError> {
-        let offset = usize::try_from(offset).map_err(|_| ReadError)?;
-        let bytes = self
-            .get(offset..)
-            .and_then(|tail| tail.get(..out.len()))
-            .ok_or(ReadError)?;
-        out.copy_from_slice(bytes);
-        Ok(())
-    }
-}
+pub use kitty_storage::{ReadAt, ReadError};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
