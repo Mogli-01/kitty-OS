@@ -34,6 +34,7 @@ mod memory_tests;
 /// silently change our bootloader (supply-chain safety). Bump deliberately.
 const LIMINE_REPO: &str = "https://github.com/limine-bootloader/limine.git";
 const LIMINE_COMMIT: &str = "5be26a73d7b7b4d4477d18be94e1d16e615adf56";
+const LIMINE_FETCH_ATTEMPTS: u64 = 3;
 
 const KERNEL_NAME: &str = "kitty-kernel";
 const BOOT_MESSAGE: &str = "Hello from kitty-OS";
@@ -187,10 +188,40 @@ fn limine_dir() -> Result<PathBuf> {
     println!("xtask: fetching Limine {LIMINE_COMMIT}");
     let git = |args: &[&str]| run_cmd(Command::new("git").current_dir(&dir).args(args));
     git(&["init", "-q"])?;
-    git(&["fetch", "-q", "--depth=1", LIMINE_REPO, LIMINE_COMMIT])?;
-    git(&["checkout", "-q", "FETCH_HEAD"])?;
+    fetch_limine(&dir, run_cmd, std::thread::sleep)?;
+    git(&["checkout", "-q", "--detach", LIMINE_COMMIT])?;
     fs::write(&stamp, LIMINE_COMMIT).map_err(|e| format!("writing stamp: {e}"))?;
     Ok(dir)
+}
+
+fn fetch_limine(
+    dir: &Path,
+    mut run: impl FnMut(&mut Command) -> Result<()>,
+    mut sleep: impl FnMut(Duration),
+) -> Result<()> {
+    let mut git = Command::new("git");
+    git.current_dir(dir).env("GIT_TERMINAL_PROMPT", "0").args([
+        "-c",
+        "http.lowSpeedLimit=1",
+        "-c",
+        "http.lowSpeedTime=20",
+        "fetch",
+        "-q",
+        "--depth=1",
+        LIMINE_REPO,
+        LIMINE_COMMIT,
+    ]);
+    for attempt in 1..LIMINE_FETCH_ATTEMPTS {
+        match run(&mut git) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                eprintln!("xtask: fetching Limine failed ({error}); retrying in {attempt}s");
+                sleep(Duration::from_secs(attempt));
+            }
+        }
+    }
+    run(&mut git)
+        .map_err(|error| format!("fetching Limine after {LIMINE_FETCH_ATTEMPTS} attempts: {error}"))
 }
 
 /// Path of the `limine` host tool (used for `bios-install`). The binary
@@ -466,4 +497,53 @@ fn boot_test(opts: &Opts, log: &Path) -> Result<String> {
     }
     println!("xtask: boot test passed ({mode})");
     Ok(serial)
+}
+
+#[cfg(test)]
+mod limine_tests {
+    use super::*;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn retries_only_the_pinned_fetch_with_bounded_backoff() {
+        for (failures, expected_calls, expected_delays) in [
+            (0, 1, &[][..]),
+            (1, 2, &[1]),
+            (2, 3, &[1, 2]),
+            (3, 3, &[1, 2]),
+        ] {
+            let mut calls = 0;
+            let mut delays = Vec::new();
+            let result = fetch_limine(
+                Path::new("limine"),
+                |git| {
+                    assert_eq!(git.get_program(), "git");
+                    assert_eq!(git.get_current_dir(), Some(Path::new("limine")));
+                    let args: Vec<_> = git.get_args().collect();
+                    assert!(args.ends_with(&[OsStr::new(LIMINE_REPO), OsStr::new(LIMINE_COMMIT)]));
+                    assert!(args.contains(&OsStr::new("fetch")));
+                    assert!(git.get_envs().any(|(key, value)| {
+                        key == "GIT_TERMINAL_PROMPT" && value.is_some_and(|value| value == "0")
+                    }));
+                    calls += 1;
+                    if calls <= failures {
+                        Err("simulated fetch failure".into())
+                    } else {
+                        Ok(())
+                    }
+                },
+                |delay| delays.push(delay.as_secs()),
+            );
+            assert_eq!(calls, expected_calls);
+            assert_eq!(delays, expected_delays);
+            if failures == 3 {
+                assert_eq!(
+                    result,
+                    Err("fetching Limine after 3 attempts: simulated fetch failure".into())
+                );
+            } else {
+                assert_eq!(result, Ok(()));
+            }
+        }
+    }
 }

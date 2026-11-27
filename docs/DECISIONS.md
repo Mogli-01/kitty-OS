@@ -715,3 +715,11 @@ consulta o LSR. Um *overrun* isolado preserva o byte mais antigo na FIFO.
 
 A D-009 conserva a função da consola de arranque. A integração com
 portas reais exige uma concessão exclusiva e um contrato de interrupções.
+
+### D-134 — Repetir a preparação do Limine quando o transporte falha (2026-11-26, CODEX)
+
+O `xtask` tenta o `git fetch` até três vezes, com esperas de um e dois
+segundos entre tentativas. O Git pode abandonar ligações HTTP que
+transferem menos de um byte por segundo durante vinte segundos.
+O checkout é sempre feito pelo commit fixo da D-004. O marcador
+de cache só é escrito depois de o checkout passar.

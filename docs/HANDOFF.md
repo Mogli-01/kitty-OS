@@ -442,3 +442,38 @@ Formato:
 - **Avisos:** a prova do UMIP precisa de ring 3 (Fase 6b). Ainda não há
   processos: a página de teste é mapeada temporariamente na metade de user
   do espaço do kernel e removida a seguir.
+
+### [2026-11-26] — CODEX (preparação do Limine na CI)
+
+- **Feito** — `xtask` repete o download do commit fixo e só publica
+  o marcador de cache depois de o verificar por checkout. Decisão D-134.
+- **PRs abertos** — ramo `codex/limine-fetch-retry` sobre `main`.
+- **Testes/fuzzing** — um ensaio com Git intermediário injetou três
+  falhas e confirmou que não foi criado o marcador. Outro injetou duas
+  falhas e recuperou na terceira tentativa. O QEMU arrancou em UEFI e
+  reutilizou depois o mesmo checkout para arrancar em BIOS.
+- **Benchmarks** — sem medições. As esperas aplicam-se após falhas.
+- **Proteções de segurança alteradas** — preservado o pin D-004.
+  O fetch público corre sem pedidos interativos de credenciais.
+- **Bloqueado por / à espera do Claude** — nada neste ramo.
+- **Próximo passo sugerido para o Claude** — manter o pin D-004 nos
+  ramos que acrescentam ficheiros à imagem de arranque.
+- **Avisos** — uma falha persistente continua a abortar a preparação.
+
+### [2026-11-27] — CODEX (teste das tentativas do Limine)
+
+- **Feito** — teste determinístico das quatro sequências possíveis de
+  falhas no fetch. Confirma o limite de três tentativas, o repositório
+  e commit fixos, a ausência de pedidos interativos e as esperas de
+  um e dois segundos.
+- **PRs abertos** — atualização do #56.
+- **Testes/fuzzing** — quatro testes do xtask no host e em Miri. Passaram
+  formatação, Clippy e a preparação da partição EFI em release. O
+  `BOOTX64.EFI` preparado coincide com o ficheiro do checkout fixo.
+- **Benchmarks** — sem medições nesta ronda.
+- **Proteções de segurança alteradas** — o teste verifica o pin D-004
+  em cada tentativa.
+- **Bloqueado por / à espera do Claude** — nenhuma dependência nesta ronda.
+- **Próximo passo sugerido para o Claude** — manter o pin D-004.
+- **Avisos** — o ensaio simula as falhas de rede. A matriz do GitHub
+  executa os arranques BIOS e UEFI.
