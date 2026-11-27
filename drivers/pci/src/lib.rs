@@ -5,6 +5,9 @@
 
 use core::{array, iter::FusedIterator};
 
+mod bars;
+pub use bars::{Bar, BarError, BarResource, Bars};
+
 const HEADER_BYTES: usize = 64;
 const CONVENTIONAL_BYTES: usize = 256;
 const FIRST_CAPABILITY: u8 = 0x40;
@@ -116,6 +119,17 @@ impl<'a> ConfigSpace<'a> {
 
     pub const fn header(&self) -> &Header {
         &self.header
+    }
+
+    /// Decodes nonzero conventional BAR slots. A 64-bit memory BAR consumes
+    /// two slots. A decoded base gives no information about the size,
+    /// validity or ownership of a hardware resource.
+    pub fn bars(&self) -> Bars<'_> {
+        let words: &[u32] = match &self.header.layout {
+            Layout::Endpoint(endpoint) => &endpoint.bars,
+            Layout::Bridge(bridge) => &bridge.bars,
+        };
+        Bars::new(words)
     }
 
     /// Walks the conventional capability links only when enabled in status.

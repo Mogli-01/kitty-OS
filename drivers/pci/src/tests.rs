@@ -200,3 +200,93 @@ fn walks_all_48_aligned_positions_in_conventional_space() {
         .map(|offset| Ok(Capability { offset, id: 9 }));
     assert!(config.capabilities().eq(expected));
 }
+
+#[test]
+fn decodes_io_and_memory_bars_without_reusing_the_upper_word() {
+    let mut bytes = snapshot(0);
+    for (slot, raw) in [0, 0xc001, 0xabcd0008, 0x1234500c, 0xfeed, 0]
+        .into_iter()
+        .enumerate()
+    {
+        let offset = 0x10 + slot * 4;
+        bytes[offset..offset + 4].copy_from_slice(&u32::to_le_bytes(raw));
+    }
+    let cfg = ConfigSpace::parse(&bytes).unwrap();
+    let mut bars = cfg.bars();
+    assert_eq!(
+        bars.next(),
+        Some(Ok(Bar {
+            slot: 1,
+            resource: BarResource::Io { base: 0xc000 }
+        }))
+    );
+    assert_eq!(
+        bars.next(),
+        Some(Ok(Bar {
+            slot: 2,
+            resource: BarResource::Memory32 {
+                base: 0xabcd0000,
+                prefetchable: true
+            }
+        }))
+    );
+    assert_eq!(
+        bars.next(),
+        Some(Ok(Bar {
+            slot: 3,
+            resource: BarResource::Memory64 {
+                base: 0xfeed_12345000,
+                prefetchable: true
+            }
+        }))
+    );
+    assert_eq!(bars.next(), None);
+    assert_eq!(bars.next(), None);
+}
+
+#[test]
+fn bridge_bus_words_cannot_complete_a_64_bit_bar() {
+    let mut bytes = snapshot(1);
+    bytes[0x14..0x18].copy_from_slice(&0x1004u32.to_le_bytes());
+    bytes[0x18..0x1c].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+    let cfg = ConfigSpace::parse(&bytes).unwrap();
+    let mut bars = cfg.bars();
+    assert_eq!(
+        bars.next(),
+        Some(Err(BarError::MissingUpperWord { slot: 1 }))
+    );
+    assert_eq!(bars.next(), None);
+}
+
+#[test]
+fn reserved_encodings_report_their_slots_and_preserve_later_bars() {
+    let mut bytes = snapshot(0);
+    for (slot, raw) in [0x4003, 0x8002, 0x9006, 0xa001].into_iter().enumerate() {
+        let offset = 0x10 + slot * 4;
+        bytes[offset..offset + 4].copy_from_slice(&u32::to_le_bytes(raw));
+    }
+    let cfg = ConfigSpace::parse(&bytes).unwrap();
+    let mut bars = cfg.bars();
+    assert_eq!(bars.next(), Some(Err(BarError::ReservedIoBit { slot: 0 })));
+    assert_eq!(
+        bars.next(),
+        Some(Err(BarError::UnsupportedMemoryType {
+            slot: 1,
+            memory_type: 1
+        }))
+    );
+    assert_eq!(
+        bars.next(),
+        Some(Err(BarError::UnsupportedMemoryType {
+            slot: 2,
+            memory_type: 3
+        }))
+    );
+    assert_eq!(
+        bars.next(),
+        Some(Ok(Bar {
+            slot: 3,
+            resource: BarResource::Io { base: 0xa000 }
+        }))
+    );
+}

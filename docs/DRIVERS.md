@@ -32,3 +32,16 @@ cargo test -p kitty-pci --locked
 cargo miri test -p kitty-pci --locked
 cargo build -p kitty-pci --target x86_64-unknown-none --release --locked
 ```
+
+### Interpretar os BARs
+
+`ConfigSpace::bars()` percorre os seis registos de um dispositivo ou os
+dois de uma ponte. Distingue endereços de I/O, memória de 32 bits e
+memória de 64 bits. Neste último caso, consome o registo seguinte
+como metade alta. Uma palavra zero é omitida, pois o snapshot não
+distingue um BAR ausente de um BAR de memória sem endereço atribuído.
+
+Encodings reservados ou antigos e pares de 64 bits incompletos
+produzem um erro com a posição. O resultado descreve o endereço lido
+e o atributo de prefetch quando presente. O tamanho e o acesso ao
+recurso dependem de descoberta e validação próprias.
