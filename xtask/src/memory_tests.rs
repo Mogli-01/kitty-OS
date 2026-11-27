@@ -50,6 +50,7 @@ pub(super) fn run(opts: &Opts) -> Result<()> {
         let fault_opts = Opts {
             bios: opts.bios,
             release: opts.release,
+            initrd: opts.initrd.clone(),
             features: vec![feature.into()],
             expect_panic: true,
             expect: report.iter().map(|marker| (*marker).to_owned()).collect(),

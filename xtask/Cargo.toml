@@ -5,3 +5,4 @@ edition.workspace = true
 publish = false
 
 [dependencies]
+kitty-vfs = { path = "../fs/vfs" }

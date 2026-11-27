@@ -31,16 +31,38 @@ selftest-heap-overflow = []
 # Fires a real hardware interrupt (PIT IRQ0 through the 8259 PIC) and
 # checks it reaches its handler. Does not panic: expect exit code 33.
 selftest-irq-pit = []
+# Opt in to the boot-CPU xAPIC controller while validating the handover.
+xapic = ["dep:kitty-acpi", "dep:kitty-apic"]
+selftest-xapic = ["xapic", "selftest-irq-pit"]
+selftest-xapic-no-madt = ["xapic", "selftest-irq-pit"]
+selftest-lapic-timer = ["selftest-xapic"]
+lapic-scheduler-timer = ["xapic"]
+selftest-lapic-scheduler = ["lapic-scheduler-timer"]
+
 # Two busy threads that never yield must both make progress (PIT ticks call
 # sched::tick). Does not panic: expect exit code 33.
 selftest-preempt = []
 # A kernel thread recurses into its stack guard page: expect a double fault.
 selftest-thread-stack-overflow = []
+
+# Exercises the actual boot PIT driver under QEMU's normal test exit path.
+selftest-pit-driver = []
 # The kernel reads a user page directly: with SMAP, expect a #PF report.
 selftest-smap = []
 # The kernel executes a user page: with SMEP, expect a #PF report.
 selftest-smep = []
+# Prints decoded events to the serial console for the automated QEMU test.
+selftest-ps2-input = []
+selftest-ps2-keyboard = ["selftest-ps2-input"]
+# Checks the known file and directory in the xtask initrd fixture.
+selftest-initrd = []
 
 [dependencies]
 limine = "0.6.5"
 kitty-hal = { path = "../hal" }
+kitty-acpi = { path = "../drivers/acpi", optional = true }
+kitty-apic = { path = "../drivers/apic", optional = true }
+
+kitty-pit = { path = "../drivers/pit" }
+kitty-ps2 = { path = "../drivers/ps2" }
+kitty-vfs = { path = "../fs/vfs" }
