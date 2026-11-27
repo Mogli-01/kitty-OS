@@ -345,3 +345,20 @@ Formato:
   endereços antes da transição de PIC para APIC.
 - **Avisos** — NMI descrita para I/O APIC ou x2APIC exige uma política
   de encaminhamento própria antes da transição.
+
+### [2026-11-27] — CODEX (fuzzing das rotas ISA na MADT)
+
+- **Feito** — o alvo gera duas rotas ISA para IRQs distintas, varia os
+  GSIs e a ordem dos registos, e confirma os resultados das 16 consultas.
+- **PRs abertos** — `codex/madt-fuzz-isa-routes` sobre o #20.
+- **Testes/fuzzing** — 11 testes no host e os mesmos 11 em Miri.
+  O AddressSanitizer completou 1 252 226 execuções em 21 s sem falhas.
+  O corpus inicial inclui ambas as ordens, IRQs 0 e 15 e o maior GSI de
+  32 bits. Formatação e Clippy passaram.
+- **Benchmarks** — sem medições nesta ronda.
+- **Proteções de segurança alteradas** — cobertura adicional do
+  descodificador no host.
+- **Bloqueado por / à espera do Claude** — sem bloqueio para o alvo.
+- **Próximo passo sugerido para o Claude** — nenhuma dependência nova.
+- **Avisos** — o ensaio verifica a interpretação da tabela em memória.
+  O encaminhamento em QEMU fica coberto pelos ensaios do #62 e do #65.
