@@ -1094,3 +1094,62 @@ implícitos. O índice aceita até 65 536 cabeçalhos. O VFS usa a contagem
 da validação USTAR para fazer uma reserva de memória falível antes de
 preencher o índice. A leitura por offset copia apenas bytes do ficheiro
 para um buffer já validado.
+
+### D-110 — Superfícies BGRA8888 seguras em user space (2026-11-25, CODEX)
+
+`kitty-gfx` recebe slices separados para leitura e escrita exclusiva.
+O layout BGRA8888 usa quatro bytes por píxel, com pitch explícito por
+linha. A validação da geometria limita todos os acessos até ao último
+píxel visível. Primitivas aceitam coordenadas com sinal e recortam
+antes de escrever. O blit preserva a posição relativa dos píxeis ao
+recortar as duas superfícies e copia o alfa sem o misturar.
+
+As linhas avançam pelo eixo principal, com o passo inicial calculado
+no recorte para manter o arredondamento dos mesmos píxeis. O buffer
+permanece em memória de user space. O formato do framebuffer do
+dispositivo será tratado na apresentação depois de concedido DISPLAY.
+
+### D-111 — Apresentação explícita a partir do buffer de desenho (2026-11-25, CODEX)
+
+`DoubleBuffer` mantém duas superfícies independentes com as mesmas
+dimensões e pitches próprios. O desenho só altera o buffer traseiro.
+A apresentação copia toda a área visível ou apenas o retângulo pedido.
+A biblioteca reutiliza o recorte do blit e preserva o padding. O par
+de empréstimos mutáveis garante acesso exclusivo a cada buffer.
+
+### D-125 — Limitar as regiões alteradas de um frame (2026-11-26, CODEX)
+
+`Damage` recorta as regiões às dimensões da superfície e agrupa as
+sobreposições. Guarda até 16 retângulos numa lista de capacidade fixa.
+Se faltar espaço, marca todo o frame. Assim, a memória fica limitada
+e o compositor conserva todas as zonas que precisa de redesenhar.
+
+O compositor recompõe cada região antes de chamar `present_damage`.
+A apresentação rejeita dimensões diferentes e limpa a lista só depois
+de copiar todas as regiões.
+
+### D-126 — Compor camadas BGRA8888 com alfa direto (2026-11-26, CODEX)
+
+`Canvas::blend` usa a mesma geometria de recorte que `blit`. A mistura
+source-over usa aritmética inteira e divide os canais pela soma dos
+pesos antes de arredondar o alfa final. A operação interpreta diretamente
+os canais guardados em BGRA8888. `blit` continua a fazer a cópia integral
+dos bytes para as operações de apresentação.
+
+### D-127 — Recompor o cursor dentro das regiões alteradas (2026-11-26, CODEX)
+
+O cursor empresta uma imagem BGRA8888 e valida o ponto ativo dentro
+dela. O movimento limita esse ponto ao ecrã e regista os dois limites
+da imagem em `Damage`. O desenho aplica source-over dentro da
+interseção do cursor com cada região recomposta. A região antiga
+volta a mostrar o fundo ou a janela que estava por baixo.
+
+### D-139 — Manter a geometria das janelas numa pilha limitada (2026-11-26, CODEX)
+
+A pilha do compositor guarda até 32 identificadores únicos e a geometria
+correspondente. A seleção começa no topo e converte a posição absoluta
+em coordenadas locais. O desenho percorre a ordem inversa da seleção.
+A pilha usa o mesmo `Damage` que o cursor e a apresentação. Ao subir uma
+janela, regista apenas as interseções com as camadas ultrapassadas.
+Mover e remover exigem recompor os limites visíveis afetados, incluindo
+as camadas subjacentes visíveis através de regiões transparentes.

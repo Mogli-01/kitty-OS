@@ -150,9 +150,9 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 ## Fase 10 — Gráficos base
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Biblioteca gráfica em user space: píxeis, retângulos, linhas, blit | CODEX | TODO |
+| Biblioteca gráfica em user space: píxeis, retângulos, linhas, blit | CODEX | Primitivas BGRA8888 em revisão no ramo `codex/graficos-base` |
 | Fontes bitmap, depois PSF e TrueType simples | CODEX | TODO |
-| Double buffering | CODEX | TODO |
+| Double buffering | CODEX | Dois buffers com apresentação total ou parcial em revisão no ramo `codex/double-buffer` |
 | Framebuffer mapeado com write-combining (usa a API de PAT da Fase 3) | CODEX | TODO |
 | Objeto `DISPLAY`: `display_map(h)` exige um handle com `MAP`, que o `init` dá só ao compositor; a consola do kernel larga o ecrã (D-058) | CLAUDE | TODO |
 | Identidade "kitty": ecrã de arranque com o logótipo do gato e uma animação simples | CODEX | TODO |
@@ -187,8 +187,8 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 |---|---|---|
 | Protocolo compositor ↔ aplicações (mensagens, buffers, eventos) em `docs/INTERFACES.md` | CLAUDE | TODO |
 | Foco, encaminhamento do input e "secure attention key" (combinação de teclas que só o compositor vê) | CLAUDE | TODO |
-| Composição das janelas, cursor, cliques | CODEX | TODO |
-| Redesenhar só as zonas alteradas (dirty rectangles) | CODEX | TODO |
+| Composição das janelas, cursor, cliques | CODEX | Composição com alfa, cursor por software e seleção por ordem das janelas em revisão. Encaminhamento de cliques pendente |
+| Redesenhar só as zonas alteradas (dirty rectangles) | CODEX | Registo e apresentação parcial em revisão no ramo `codex/zonas-alteradas` |
 | Revisão de segurança do compositor (isolamento entre janelas, ver SECURITY.md) | CLAUDE | TODO |
 
 ## Fase 14 — Toolkit e aplicações

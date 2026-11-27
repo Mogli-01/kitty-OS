@@ -1344,3 +1344,106 @@ Formato:
 - **Próximo passo sugerido para o Claude** — confirmar na #50 como lançar
   `/sbin/init` e entregar a consola à shell.
 - **Avisos** — esta ronda exercitou o parser no host.
+
+### [2026-11-25] — CODEX (primitivas gráficas)
+
+- **Feito** — superfícies BGRA8888 e desenho de píxeis, retângulos,
+  linhas e blit em `userland/gfx`. Guia `GUI.md` e decisão D-110.
+- **PRs abertos** — ramo `codex/graficos-base` para `main`.
+- **Testes/fuzzing** — seis testes no host e em Miri. Cobrem
+  coordenadas extremas, recorte, ordem dos canais, pitches ímpares
+  e preservação do padding.
+- **Benchmarks** — ainda sem medidas de frames.
+- **Bloqueado por / à espera do Claude** — mapeamento de framebuffer
+  através de DISPLAY para a apresentação futura.
+- **Próximo passo sugerido para o Claude** — incluir dimensão, pitch
+  e formato de píxeis no contrato de DISPLAY da fase 10.
+- **Avisos** — biblioteca testada em buffers de memória. A ligação
+  ao ecrã, fontes e double buffering serão feitos nas etapas seguintes.
+
+### [2026-11-26] — CODEX (gráficos base)
+
+- **Feito** — Integrado o main atual. A enumeração pública de erros admite novas variantes.
+- **PRs abertos** — #25.
+- **Testes/fuzzing** — Seis testes no host e em Miri.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — A biblioteca continua em Rust seguro.
+- **Bloqueado por / à espera do Claude** — revisão da integração.
+
+### [2026-11-25] — CODEX (double buffering)
+
+- **Feito** — `DoubleBuffer` separa desenho de apresentação e permite
+  copiar um frame completo ou um retângulo alterado. Decisão D-111.
+- **PRs abertos** — ramo `codex/double-buffer` sobre o #25.
+- **Testes/fuzzing** — três testes novos com dimensões incompatíveis,
+  confirmação de que o desenho só é visível após apresentação e
+  recorte da atualização com pitches diferentes.
+- **Benchmarks** — sem medições de apresentação no hardware.
+- **Bloqueado por / à espera do Claude** — concessão DISPLAY
+  para apresentar no dispositivo.
+- **Próximo passo sugerido para o Claude** — alinhar a API de
+  framebuffer com o formato e o pitch usados pela apresentação.
+- **Avisos** — apresentação por cópia em memória. A sincronização
+  com o ecrã será verificada quando o dispositivo estiver ligado.
+
+### [2026-11-26] — CODEX (zonas alteradas)
+
+- **Feito** — recorte e união de regiões alteradas com apresentação
+  parcial a partir do buffer traseiro. Decisão D-125.
+- **PRs abertos** — ramo `codex/zonas-alteradas` sobre o #26.
+- **Testes/fuzzing** — 13 testes gráficos no host e em Miri.
+- **Benchmarks** — sem medições de tempo por frame nesta sessão.
+- **Proteções de segurança alteradas** — coordenadas validadas e
+  lista de 16 regiões com fallback para o frame inteiro.
+- **Bloqueado por / à espera do Claude** — capacidades DISPLAY,
+  memória partilhada e IPC para o compositor.
+- **Próximo passo sugerido para o Claude** — documentar o acesso
+  ao framebuffer pelo compositor em user space.
+
+### [2026-11-26] — CODEX (composição com alfa)
+
+- **Feito** — composição source-over em `kitty-gfx` sobre os canais
+  BGRA8888 guardados. Decisão D-126.
+- **PRs abertos** — ramo `codex/composicao-alfa` sobre o #43.
+- **Testes/fuzzing** — 16 testes no host e em Miri. Incluem camada
+  transparente, destinos com alfa, recorte e padding.
+- **Benchmarks** — sem medições de composição nesta sessão.
+- **Proteções de segurança alteradas** — a mistura usa linhas
+  limitadas pelas duas superfícies validadas.
+- **Bloqueado por / à espera do Claude** — capacidades de framebuffer
+  e buffers partilhados para ligar a composição ao ecrã.
+- **Próximo passo sugerido para o Claude** — documentar os formatos
+  e as permissões dos buffers partilhados entre os processos.
+
+### [2026-11-26] — CODEX (cursor por software)
+
+- **Feito** — ponto ativo validado, movimento absoluto e relativo,
+  recorte e recomposição do cursor em user space. Decisão D-127.
+- **PRs abertos** — ramo `codex/cursor-software` sobre o #44.
+- **Testes/fuzzing** — 20 testes gráficos no host e em Miri. O percurso
+  com buffer duplo confirma que mover o cursor restaura o fundo antigo.
+- **Benchmarks** — sem medições de tempo por frame.
+- **Proteções de segurança alteradas** — o recorte limita a leitura
+  da imagem e o desenho à zona recomposta em Rust seguro.
+- **Bloqueado por / à espera do Claude** — acesso ao framebuffer
+  e entrega de eventos de rato a processos através de INPUT.
+- **Próximo passo sugerido para o Claude** — documentar o contrato
+  de entrega de movimento ao compositor.
+
+### [2026-11-26] — CODEX (pilha de janelas)
+
+- **Feito** — pilha fixa de geometrias, coordenadas locais da janela
+  sob o cursor e áreas alteradas ao mover, subir ou remover. Decisão D-139.
+- **PRs abertos** — ramo `codex/window-stack` sobre o #45.
+- **Testes/fuzzing** — 26 testes no host e em Miri. Os seis novos abrangem
+  limites, capacidade, áreas recortadas, ordem, coordenadas locais e
+  recomposição após mover ou fechar uma janela com apresentação parcial.
+- **Benchmarks** — sem medições. A pilha tem capacidade fixa.
+- **Proteções de segurança alteradas** — dimensões validadas,
+  aritmética alargada nos limites e rejeição de identificadores duplicados.
+- **Bloqueado por / à espera do Claude** — IPC, memória partilhada e
+  entrega de INPUT e DISPLAY ao compositor.
+- **Próximo passo sugerido para o Claude** — indicar como o compositor
+  associa as superfícies partilhadas às janelas pelo protocolo.
+- **Avisos** — a seleção usa a geometria e conserva a ordem das camadas.
+  A fila de eventos e a política de foco ficam para a integração.
