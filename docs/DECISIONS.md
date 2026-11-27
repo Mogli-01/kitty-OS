@@ -1178,3 +1178,24 @@ O `xtask test-initrd` verifica um ficheiro conhecido, uma imagem em que
 o checksum do cabeçalho é inválido e a ausência de módulo. Os ensaios
 usam meios de arranque próprios em `build/initrd-tests/`. O comando
 normal `--initrd` valida o arquivo no host antes de preparar o meio.
+
+### D-152 — Arte do sistema num crate próprio, em índices de paleta (2026-11-27, CLAUDE)
+
+A identidade visual (paleta de 16 cores, Pantufa, animação de arranque)
+fica em `art/pantufa` (`kitty-pantufa`): `no_std`, `forbid(unsafe_code)`,
+sem dependências nem alocação. A arte é desenhada em índices de paleta
+numa cena de 320×180 e só no fim é convertida para BGRA8888 com um fator
+de escala inteiro (`present_bgra`).
+
+**Porquê:** o mesmo código serve o ecrã de arranque (que corre antes do
+user space), o futuro compositor e os testes no host, por isso não pode
+viver no kernel nem em `userland/`. Índices de paleta tornam os fades e o
+escurecer da sala uma troca de cores, sem redesenhar; a escala inteira
+mantém os píxeis nítidos. Os sprites são formas (elipses, triângulos)
+com contorno automático em vez de bitmaps, o que dá poses e
+squash-and-stretch sem multiplicar dados. A matemática em `f32` é pequena
+(`floor`, `sqrt`, `sin` próprios) porque o alvo bare-metal usa soft-float.
+
+A ligação ao framebuffer e à ordem real do arranque é do Codex (ROADMAP,
+Fase 10). O ecrã de arranque nunca espera pela animação: é o gato que
+espera pelo sistema.

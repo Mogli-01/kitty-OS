@@ -46,6 +46,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "kitty-pantufa"
+version = "0.1.0"
+
+[[package]]
 name = "kitty-pci"
 version = "0.1.0"
 

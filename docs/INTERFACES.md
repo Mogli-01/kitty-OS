@@ -488,6 +488,47 @@ continua o arranque sem a raiz. `selftest-initrd` verifica a listagem e
 os bytes de `/etc/kitty.txt` no arquivo de teste e emite
 `[vfs] initrd read verified (/etc/kitty.txt)` quando ambos coincidem.
 
+### Arte e ecrã de arranque (`kitty-pantufa`) — INSTÁVEL
+
+Fornece: CLAUDE (`art/pantufa`). Usa: CODEX (ecrã de arranque, compositor).
+`no_std`, sem `unsafe`, sem alocação: todos os buffers são do chamador.
+Referência visual de todos os ecrãs: `docs/identidade/pantufa.html`.
+
+```rust
+pub struct Canvas<'a>;                       // índices de paleta, 1 byte/píxel
+impl<'a> Canvas<'a> {
+    pub fn new(width: usize, height: usize, px: &'a mut [u8]) -> Option<Self>;
+}
+pub struct BootSplash;                       // ~12 KiB: static ou heap
+impl BootSplash {
+    pub const fn new() -> Self;
+    pub fn draw(&mut self, scene: &mut Canvas<'_>, t_ms: u32,
+                stages_done: u8, ready: bool) -> BootFrame;
+}
+pub struct BootFrame { pub brightness: u8, pub finished: bool }
+pub struct Target { pub width: usize, pub height: usize, pub pitch: usize }
+pub fn present_bgra(scene: &Canvas<'_>, quarters: u8, dst: &mut [u8],
+                    target: Target) -> Result<usize, PresentError>;
+```
+
+A cena tem `SCENE_WIDTH`×`SCENE_HEIGHT` (320×180) índices da paleta de
+16 cores (`palette::PALETTE`; `palette::TRANSPARENT` = vazio).
+`present_bgra` escala pelo maior fator inteiro que cabe, centra, pinta as
+margens com a cor da noite e aplica o brilho `quarters` (0–4) dos fades.
+Preserva os bytes de padding de cada linha e recusa alvos inválidos.
+
+Contrato do arranque: `t_ms` conta desde o início do ecrã;
+`stages_done` (0–8) acende uma pegada por fase real (memória,
+interrupções, drivers, ficheiros, rede, firewall, interface, login);
+`ready` deixa o gato saltar. Até 1,95 s a cena segue o relógio. Depois,
+se `ready` ainda não chegou, o gato fica agachado em loop. O fim
+(`finished`) chega 1,35 s depois de `ready` (3,3 s no total se o sistema
+já estiver pronto). A animação nunca atrasa o arranque. Os sons, quando
+existirem, tocam aos 1,5 s (jingle) e aos 2,38 s (miau) de tempo de cena.
+
+`cargo run -p kitty-pantufa --example boot_png` grava frames em
+`target/pantufa/` para rever a arte sem arrancar o sistema.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |
