@@ -11,6 +11,7 @@
 //!   bench-boot [--release] [--bios]    sample time to the boot-complete serial line
 //!   test-keyboard [--release] [--bios] check PS/2 key events through IRQ1 in QEMU
 //!   test-mouse [--release] [--bios]    check PS/2 mouse reports through IRQ12 in QEMU
+//!   bench-scheduler [--release] [--bios]   sample cooperative yield+switch TSC cycles
 //!
 //! Extra options:
 //!   --features <a,b>   extra kernel cargo features (e.g. selftest-page-fault)
@@ -35,6 +36,7 @@ mod boot_trace;
 mod input_tests;
 mod memory_tests;
 mod visual_test;
+mod scheduler_bench;
 
 /// Limine binary release we boot with. Pinned to an exact commit of the
 /// official `v11.x-binary` branch so a compromised or changed branch cannot
@@ -111,6 +113,7 @@ fn main() -> ExitCode {
         "bench-boot" => boot_bench::run(&opts),
         "test-keyboard" => input_tests::run(&opts, input_tests::KEYBOARD),
         "test-mouse" => input_tests::run(&opts, input_tests::MOUSE),
+        "bench-scheduler" => scheduler_bench::run(&opts),
         _ => {
             eprintln!(
                 "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--expect-panic] [--expect text]"
@@ -121,6 +124,7 @@ fn main() -> ExitCode {
             eprintln!(
                 "       cargo xtask <test-keyboard|test-mouse> [--release] [--bios] [--features a,b] [--expect text]"
             );
+            eprintln!("       cargo xtask bench-scheduler [--release] [--bios]");
             return ExitCode::FAILURE;
         }
     };
@@ -451,7 +455,11 @@ fn debug_exit_command(opts: &Opts, kernel: &Path) -> Result<Command> {
 
 fn boot_test(opts: &Opts, log: &Path) -> Result<String> {
     let kernel = build_kernel(opts, true)?;
-    let mut command = debug_exit_command(opts, &kernel)?;
+    boot_test_with_kernel(opts, &kernel, log)
+}
+
+fn boot_test_with_kernel(opts: &Opts, kernel: &Path, log: &Path) -> Result<String> {
+    let mut command = debug_exit_command(opts, kernel)?;
     let mode = if opts.bios { "BIOS/ISO" } else { "UEFI" };
     println!("xtask: boot test ({mode})");
 

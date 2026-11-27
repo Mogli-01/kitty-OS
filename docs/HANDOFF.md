@@ -1136,3 +1136,54 @@ Formato:
 - **Avisos** — os testes usam snapshots sintéticos. O descodificador
   devolve endereços e atributos. A descoberta do tamanho, a atribuição
   e o mapeamento de recursos ficam para a integração com o hardware.
+
+### [2026-11-26] — CODEX (testes do scheduler e das pilhas)
+
+- **Feito** — CI verifica os marcadores de arranque do scheduler e das
+  filas de espera, preempção com IRQ e transição por idle, e o relatório
+  #DF na IST para a guarda da pilha de thread. Decisão D-124.
+- **PRs abertos** — ramo `codex/ci-scheduler` sobre o #40.
+- **Testes/fuzzing** — os 20 arranques da etapa de CI passaram em QEMU
+  8.2.2 com BIOS e UEFI, debug e release, com um log série por cenário.
+- **Benchmarks** — sem medições nesta sessão.
+- **Proteções de segurança alteradas** — a CI exige a falha de guarda
+  com o relatório esperado e o código de saída de panic.
+- **Bloqueado por / à espera do Claude** — revisão sobre alocação e
+  libertação de memória nos métodos de acordar a partir de IRQ no #40.
+- **Próximo passo sugerido para o Claude** — preservar a capacidade das
+  filas usada pelos handlers e manter os marcadores dos autotestes.
+
+### [2026-11-26] — CODEX (CI do scheduler na revisão do #40)
+
+- **Feito** — atualizado o ramo da CI com `ddc578a`, incluindo as
+  alterações do Claude para manter capacidade nas filas.
+- **PRs abertos** — #42 sobre o #40. Seguimento das revisões no #39 e #40.
+- **Testes/fuzzing** — espera, arranque cooperativo, preempção e
+  despertar por IRQ passaram no QEMU em release, BIOS e UEFI.
+- **Benchmarks** — sem medições comparáveis.
+- **Proteções de segurança alteradas** — sem alterações próprias ao
+  scheduler. A CI conserva os autotestes da guarda das pilhas.
+- **Bloqueado por / à espera do Claude** — revisão da ordem de locks
+  em `wake_all` e da reserva de slots em caso de falta de memória.
+- **Próximo passo sugerido para o Claude** — decidir as correções nos
+  comentários dos PRs #39 e #40.
+- **Avisos** — compilar só `selftest-preempt` gera um aviso de importação
+  não usada no autoteste de CPU. Os dois arranques passaram.
+
+### [2026-11-26] — CODEX (benchmark cooperativo do scheduler)
+
+- **Feito** — `cargo xtask bench-scheduler` recolhe sete medições do
+  autoteste depois do aquecimento e apresenta mínimo, mediana e máximo.
+- **PRs abertos** — ramo `codex/scheduler-bench` sobre o #42.
+- **Testes/fuzzing** — cinco testes de `xtask` passaram no host e em
+  Miri. Os oito arranques passaram em cada firmware no QEMU 8.2.2 release.
+- **Benchmarks** — mediana de 1 282 ciclos TSC em BIOS e 1 532 em UEFI.
+  Configuração e intervalos em `docs/BENCHMARKS.md`.
+- **Proteções de segurança alteradas** — a medição usa a validação do
+  arranque e limita a leitura a um resultado válido por amostra.
+- **Bloqueado por / à espera do Claude** — o benchmark de syscalls
+  depende da entrada em user mode e da implementação das syscalls.
+- **Próximo passo sugerido para o Claude** — manter o marcador do
+  autoteste cooperativo enquanto a recolha do host depender dele.
+- **Avisos** — a amostra mede o caminho cooperativo em TCG e inclui a
+  preparação do autoteste. A CI valida o parser sem impor um limiar.

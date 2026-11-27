@@ -95,7 +95,8 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | DESEMPENHO: medir a troca de contexto em ciclos (rdtsc) | CLAUDE | FEITO (autoteste no arranque) |
 | SEGURANÇA: pilhas de thread com página de guarda, limpas ao libertar; sem preempção com spinlock preso | CLAUDE | FEITO |
 | GUI-PREP: filas de espera (bloquear/acordar threads) — base do IPC e dos eventos de input | CLAUDE | FEITO |
-| Benchmarks automáticos (troca de contexto, syscalls) | CODEX | TODO |
+| Benchmark de `yield` cooperativo e troca de contexto | CODEX | `cargo xtask bench-scheduler` em revisão. Resultados em [BENCHMARKS.md](BENCHMARKS.md) |
+| Testes QEMU de preempção, espera e guarda das pilhas de threads | CODEX | #42 atualizado com o #40. Arranque, espera e preempção verificados em BIOS e UEFI |
 
 ## Fase 6 — User mode
 | Tarefa | Dono | Estado |
@@ -110,6 +111,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | PREP-15: campos `uid`/`gid` no processo e pontos de auditoria nas syscalls sensíveis (sem efeito até à Fase 15) | CLAUDE | TODO |
 | SEGURANÇA: SMEP, SMAP, UMIP ativos | CLAUDE | FEITO |
 | Biblioteca de syscalls para userland | CODEX | TODO |
+| Benchmark de ciclos por syscall | CODEX | TODO |
 | Fuzzing das syscalls | CODEX | TODO |
 | Ronda 1 de red team vs blue team (`docs/REDTEAM.md`) | CLAUDE + CODEX | TODO |
 
