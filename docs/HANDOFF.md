@@ -1620,3 +1620,53 @@ Formato:
 - **Próximo passo sugerido para o Claude** — documentar a concessão de
   buffers e os próximos passos das interfaces de consola e apresentação.
 - **Avisos** — o ensaio valida composição em memória.
+
+### [2026-11-27] — CODEX (demonstração gráfica no host)
+
+- **Feito** — exemplo `terminal_windows` sobre o #63. Mostra texto
+  acentuado em duas janelas e redesenha as regiões depois do movimento.
+- **PRs abertos** — ramo `codex/terminal-window-demo`.
+- **Testes/fuzzing** — 38 testes gráficos no host, fmt e Clippy. O
+  exemplo gerou imagens PPM com uma fonte PSF2 real. Foram verificados
+  os píxeis de sobreposição e a preservação de uma imagem existente.
+- **Benchmarks** — sem novas medições.
+- **Proteções de segurança alteradas** — o exemplo limita a leitura
+  da fonte a 4 MiB e cria os ficheiros sem sobrescrever os existentes.
+- **Bloqueado por / à espera do Claude** — consola e apresentação no
+  sistema continuam dependentes das interfaces do núcleo.
+- **Próximo passo sugerido para o Claude** — manter o estado dessas
+  interfaces no handoff.
+- **Avisos** — execução no host com uma fonte PSF2 fornecida pelo utilizador.
+
+### [2026-11-27] — CODEX (fontes da demonstração gráfica)
+
+- **Feito** — o exemplo valida todos os glifos usados nas duas janelas
+  e indica o primeiro carácter ausente antes de criar os ficheiros.
+- **PRs abertos** — atualização do #64.
+- **Testes/fuzzing** — 38 testes gráficos no host, fmt e Clippy
+  passaram. A fonte LatGrkCyr-12x22 produziu os dois PPM de referência
+  byte a byte. Uma fonte PSF2 sintética com os três acentos mas sem
+  o glifo de `T` foi recusada sem criar o diretório de saída.
+- **Benchmarks** — sem medições nesta ronda.
+- **Proteções de segurança alteradas** — validação da fonte fornecida
+  ao exemplo antes de escrever ficheiros no host.
+- **Bloqueado por / à espera do Claude** — consola e apresentação de
+  aplicações gráficas no QEMU.
+- **Próximo passo sugerido para o Claude** — manter o estado das
+  interfaces de consola e apresentação no handoff.
+
+### 2026-11-27 — CODEX (PRs pendentes)
+- Feito: atualizadas as bases dos PRs #27, #54, #57, #66, #63, #64,
+  #80 e #78 depois da integração de gráficos e drivers no #82.
+- PRs abertos: #27 sobre `main`; #54 sobre #27; #57 e #66 sobre #54;
+  #63 sobre #57; #64 sobre #63. #78 e #80 têm `main` por base.
+- Testes/fuzzing: 38 testes gráficos, demonstração em PPM e 3 000
+  casos do fuzzing PSF2. Nove testes UART no host e no Miri. No #80,
+  os quatro ficheiros de vetores foram validados e o check defensivo
+  arrancou em QEMU e confirmou as proteções esperadas.
+- Benchmarks: sem comparações novas.
+- Bloqueado por / à espera do Claude: contrato de hardware da UART
+  na issue #72. A integração dos PRs requer revisão humana.
+- Próximo passo sugerido para o Claude: confirmar a concessão da UART e
+  verificar os PRs contra as novas bases.
+- Avisos: a demonstração em duas janelas corre no host.

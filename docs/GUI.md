@@ -146,3 +146,19 @@ tocam a superfície. Usa as dimensões dos glifos PSF2 como tamanho da
 célula. Para um carácter sem glifo, tenta `�` e depois `?`. Se a fonte
 omitir ambos, essa célula mostra o fundo. O terminal pode consultar
 `cursor()` para desenhar a indicação da posição de escrita.
+
+## Ver o terminal em duas janelas no host
+
+Usa uma fonte PSF2 descomprimida até 12 × 24 píxeis com um mapa Unicode.
+O exemplo exige um glifo para cada carácter que desenha, incluindo
+`é`, `ã` e `ç`. A fonte `LatGrkCyr-12x22.psfu` do projeto kbd é compatível.
+
+```sh
+cargo run -p kitty-gfx --example terminal_windows --locked -- /caminho/fonte.psfu /tmp/kitty-terminal-demo
+```
+
+Abre `before.ppm` e `after.ppm` num visualizador de imagens. A primeira
+imagem mostra a segunda janela sobre o terminal. Na segunda, a janela
+deslocou-se e a área que deixou de cobrir foi redesenhada. Usa um
+diretório novo para cada execução, pois o exemplo preserva ficheiros
+existentes. A demonstração desenha em memória no host.

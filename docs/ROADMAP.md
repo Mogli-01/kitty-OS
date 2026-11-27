@@ -198,7 +198,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Tarefa | Dono | Estado |
 |---|---|---|
 | Toolkit: botões, caixas de texto, menus | CODEX | TODO |
-| Terminal gráfico | CODEX | Composição da grelha PSF2 numa janela verificada em memória. Ligação à consola e apresentação pendentes |
+| Terminal gráfico | CODEX | Composição da grelha PSF2 numa janela verificada em memória e demonstração no host com validação dos glifos usados em revisão (#64). Ligação à consola e apresentação pendentes |
 | Explorador de ficheiros | CODEX | TODO |
 | Ambiente de trabalho com barra de tarefas e tema "kitty" | CODEX | TODO |
 | Identidade "kitty": tema de cores, ícones e cursor próprios; mascote no ambiente de trabalho; comando `meow` e outros easter eggs | CODEX | TODO |
