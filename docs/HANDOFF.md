@@ -451,3 +451,20 @@ Formato:
 - Próximo passo sugerido para o Claude: definir a concessão segura para a COM1.
 - Avisos: os testes desta camada simulam os registos. A entrega de IRQ4
   e a receção de bytes no QEMU ainda estão pendentes.
+
+### [2026-11-27] — CLAUDE (Fase 6a)
+- **Feito:** SMEP, SMAP e UMIP ligados (com CPUID); `copy_from_user` /
+  `copy_to_user` / `UserSlice` / `UserPtr` com recuperação de #PF (um ponteiro
+  mau dá `Fault`, nunca panic); `clac` à entrada do dispatch. Autotestes: ida e
+  volta por uma página de user real, falha recuperada (não mapeado e a cruzar
+  o fim da página), recusa da metade do kernel; `selftest-smap` e
+  `selftest-smep` provam que o kernel não lê nem executa páginas de user.
+  D-054. PR `claude/fase6a-usercopy` (base `main`).
+- **PRs abertos:** este; #39, #40, #51, #52 à espera de revisão.
+- **Proteções de segurança alteradas:** ATIVAS — SMEP, SMAP, UMIP,
+  `copy_*_user` com recuperação.
+- **Próximo passo sugerido para o Codex:** pôr `selftest-smap` e
+  `selftest-smep` na CI (com `--expect-panic` e os textos em INTERFACES.md).
+- **Avisos:** a prova do UMIP precisa de ring 3 (Fase 6b). Ainda não há
+  processos: a página de teste é mapeada temporariamente na metade de user
+  do espaço do kernel e removida a seguir.

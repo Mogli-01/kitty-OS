@@ -83,14 +83,14 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Tarefa | Dono | Estado |
 |---|---|---|
 | `syscall`/`sysret`, tabela de syscalls, validação de TODOS os argumentos | CLAUDE | TODO |
-| `UserPtr<T>`, `copy_from_user` / `copy_to_user` | CLAUDE | TODO |
+| `UserPtr<T>`, `copy_from_user` / `copy_to_user` (com recuperação de #PF) | CLAUDE | FEITO |
 | Espaços de endereçamento separados por processo | CLAUDE | TODO |
 | ELF loader | CLAUDE | TODO |
 | GUI-PREP/CAPS: objetos do kernel + tabela de handles por processo, com direitos (D-018, D-051) | CLAUDE | TODO |
 | CAPS: ABI "capability-first": toda a syscall com efeito fora do próprio processo recebe um handle; sem nomes nem caminhos globais; bits de direitos 16–31 reservados por tipo de objeto; `E_BADSIG` reservado (D-058) | CLAUDE | TODO |
 | CAPS: `process_spawn(imagem, handles[])`, a única forma de dar autoridade a um processo novo (por defeito, nenhuma) | CLAUDE | TODO |
 | PREP-15: campos `uid`/`gid` no processo e pontos de auditoria nas syscalls sensíveis (sem efeito até à Fase 15) | CLAUDE | TODO |
-| SEGURANÇA: SMEP, SMAP, UMIP ativos | CLAUDE | TODO |
+| SEGURANÇA: SMEP, SMAP, UMIP ativos | CLAUDE | FEITO |
 | Biblioteca de syscalls para userland | CODEX | TODO |
 | Fuzzing das syscalls | CODEX | TODO |
 | Ronda 1 de red team vs blue team (`docs/REDTEAM.md`) | CLAUDE + CODEX | TODO |
