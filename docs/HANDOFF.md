@@ -1536,3 +1536,21 @@ Formato:
   ficheiros para os processos quando o user mode estiver disponível.
 - **Avisos** — o autoteste usa arquivos e meios de arranque próprios
   em `build/initrd-tests/`.
+
+### [2026-11-27] — CODEX (transporte da shell)
+
+- **Feito** — sessão com prompt sobre um transporte de bytes. A sessão
+  mantém o editor entre leituras, completa escritas parciais e distingue
+  falhas de leitura, escrita e contagens inválidas.
+- **PRs abertos** — ramo `codex/shell-transporte`.
+- **Testes/fuzzing** — 14 testes no host e em Miri, incluindo UTF-8 e
+  teclas divididos entre leituras. A demonstração no host executou
+  `help` e `echo "olá mundo"`. A biblioteca compila para
+  `x86_64-unknown-none`.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — contagens limitadas ao tamanho
+  dos buffers. Escrita sem progresso termina com erro. Sem `unsafe` novo.
+- **Bloqueado por / à espera do Claude** — números das syscalls de
+  consola e carregamento de `/sbin/init` (issue #50).
+- **Avisos** — a demonstração usa a consola do host. O redesenho da
+  linha em edição pertence ao consumidor do transporte.

@@ -121,7 +121,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 |---|---|---|
 | VFS | CODEX | TODO |
 | initrd (módulo do Limine) | CODEX | TODO |
-| Shell em userland | CODEX | Analisador (#47), editor (#49) e sessão para ler o fluxo da consola (`codex/shell-consola`) em revisão. Faltam as syscalls e o arranque de `/sbin/init` |
+| Shell em userland | CODEX | Parser, editor e sessão no main. Transporte com escritas parciais e demonstração no host em revisão em `codex/shell-transporte`. Faltam as syscalls e o arranque de `/sbin/init` |
 
 | VFS | CODEX | Raiz só de leitura com índice limitado, pesquisa e listagem em revisão no #24. Montagem no arranque em preparação |
 | initrd (módulo do Limine) | CODEX | Parser USTAR em revisão no #23. Entrega do módulo disponível no #38 |
