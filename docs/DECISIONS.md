@@ -1057,3 +1057,40 @@ sequências de edição byte a byte num buffer de até quatro bytes. A
 apresentação recebe o estado do editor e os eventos de edição, envio
 e cancelamento. Enter consome a linha antes de escrever o resultado,
 para que uma falha de escrita deixe a sessão pronta para outra linha.
+
+### D-108 — Formato USTAR só de leitura para o initrd (2026-11-25, CODEX)
+
+O initrd usa registos de 512 bytes, cabeçalhos USTAR com soma de
+verificação e campos de tamanho em octal. O parser aceita ficheiros
+regulares, incluindo o tipo 7 com a semântica de ficheiro regular,
+e diretórios. Os dados de um ficheiro são emprestados ao consumidor com
+o comprimento exato. Os metadados de proprietário e modo ficam fora
+da interpretação do formato inicial.
+
+Todos os cabeçalhos passam pela validação antes de devolver o arquivo.
+A política do initrd exige diretórios com tamanho zero, campos de nome e
+prefixo preenchidos com zeros após um NUL, dois blocos de fim a zero e
+padding final a zero. A validação conta as entradas para dimensionar o
+índice do VFS.
+Caminhos UTF-8 podem começar com `./`. O resultado canónico exclui
+componentes vazias, `.` interiores e `..`. Tipos especiais, links e
+cabeçalhos de extensão são recusados. A montagem no VFS valida conflitos
+entre nomes. O acesso às páginas do módulo é tratado na #22.
+
+[POSIX.1-2024, formato USTAR](https://pubs.opengroup.org/onlinepubs/9799919799/utilities/pax.html#tag_20_94_13_06)
+
+### D-109 — Índice inicial do VFS sobre o initrd (2026-11-25, CODEX)
+
+A primeira raiz só de leitura mantém uma entrada de índice por cabeçalho
+USTAR e empresta os dados do módulo. A montagem valida o arquivo completo
+e ordena as entradas pela sequência de componentes do caminho. Entradas
+com o mesmo caminho ficam adjacentes. Um ficheiro que seja prefixo de
+outro caminho fica imediatamente antes do primeiro descendente. A
+montagem recusa ambos os conflitos antes de disponibilizar a raiz.
+
+A pesquisa usa busca binária. Os nomes com um prefixo comum formam um
+intervalo pelo qual se listam os filhos de um diretório, incluindo os
+implícitos. O índice aceita até 65 536 cabeçalhos. O VFS usa a contagem
+da validação USTAR para fazer uma reserva de memória falível antes de
+preencher o índice. A leitura por offset copia apenas bytes do ficheiro
+para um buffer já validado.

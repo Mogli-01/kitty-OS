@@ -25,6 +25,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "kitty-initrd"
+version = "0.1.0"
+
+[[package]]
 name = "kitty-kernel"
 version = "0.1.0"
 dependencies = [
@@ -64,6 +68,13 @@ name = "kitty-uart"
 version = "0.1.0"
 dependencies = [
  "kitty-hal",
+]
+
+[[package]]
+name = "kitty-vfs"
+version = "0.1.0"
+dependencies = [
+ "kitty-initrd",
 ]
 
 [[package]]

@@ -451,6 +451,36 @@ erro que torne a posição desconhecida exige nova configuração do rato.
 A entrega a processos e os timestamps dependem das futuras interfaces de
 `INPUT` e de tempo monotónico.
 
+### Raiz só de leitura do initrd (`kitty-vfs`) — INSTÁVEL
+
+Fornece: CODEX (`fs/vfs`). O módulo de arranque vem do núcleo (#22).
+
+A montagem aceita até 65 536 entradas USTAR, contando o cabeçalho da raiz
+quando presente. Acima desse limite, devolve `Error::TooManyEntries` antes
+de reservar memória para o índice.
+
+```rust
+impl<'a> InitrdFs<'a> {
+    pub fn mount(bytes: &'a [u8]) -> Result<Self, Error>;
+    pub fn lookup(&self, path: &str) -> Result<Inode<'a>, Error>;
+    pub fn read_dir(&self, path: &str) -> Result<ReadDir<'_, 'a>, Error>;
+}
+impl File<'_> {
+    pub fn read_at(self, offset: u64, destination: &mut [u8]) -> usize;
+}
+```
+
+`lookup` e `read_dir` recebem caminhos absolutos canónicos UTF-8. A raiz
+é `/`. Os restantes caminhos têm até 256 bytes depois da barra inicial.
+`lookup` devolve `Inode::Directory` ou `Inode::File(File)`. `read_dir`
+enumera os filhos diretos por ordem das componentes, incluindo diretórios
+implícitos. `read_at` lê para um buffer Rust já validado, devolve zero no
+fim do ficheiro e preserva o resto do buffer. O inode de ficheiro e as
+entradas de diretório conservam o tempo de vida dos bytes do arquivo.
+
+O caminho por syscall depende de validação de ponteiros e direitos pelo
+núcleo. Esta interface é a primeira implementação da raiz do VFS.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |

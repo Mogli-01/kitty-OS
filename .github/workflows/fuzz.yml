@@ -21,9 +21,9 @@ jobs:
         run: |
           rustup toolchain install
           rustup component add miri
-      - run: cargo clippy -p kitty-acpi -p kitty-shell --all-targets --locked -- -D warnings
-      - run: cargo test -p kitty-acpi -p kitty-shell --locked
-      - run: cargo miri test -p kitty-acpi -p kitty-shell --locked
+      - run: cargo clippy -p kitty-acpi -p kitty-initrd -p kitty-shell -p kitty-vfs --all-targets --locked -- -D warnings
+      - run: cargo test -p kitty-acpi -p kitty-initrd -p kitty-shell -p kitty-vfs --locked
+      - run: cargo miri test -p kitty-acpi -p kitty-initrd -p kitty-shell -p kitty-vfs --locked
       - run: cargo fmt --manifest-path fuzz/Cargo.toml --all --check
       - run: cargo install cargo-fuzz --version 0.13.2 --locked
       - run: cargo fetch --manifest-path fuzz/Cargo.toml --locked
@@ -35,4 +35,8 @@ jobs:
         env:
           CARGO_NET_OFFLINE: 'true'
         run: cargo fuzz run shell -- -max_total_time=15 -timeout=5 -max_len=2048
+      - name: Fuzz the USTAR parser under AddressSanitizer
+        env:
+          CARGO_NET_OFFLINE: 'true'
+        run: cargo fuzz run initrd -- -max_total_time=15 -timeout=5 -max_len=65536
       - run: git diff --exit-code -- fuzz/Cargo.lock

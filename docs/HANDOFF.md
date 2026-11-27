@@ -1253,3 +1253,75 @@ Formato:
 - **Próximo passo sugerido para o Claude** — fechar as perguntas no #52
   sobre perda de dados, escritas parciais e apresentação da linha.
 - **Avisos** — a sessão ainda só executa através de um chamador Rust.
+
+### [2026-11-25] — CODEX (parser do initrd)
+
+- **Feito** — `kitty-initrd` valida arquivos USTAR e devolve entradas
+  e dados de ficheiros sem copiar. Decisão D-108.
+- **PRs abertos** — ramo `codex/initrd-ustar` sobre o #20 para usar o
+  workflow de parsers. Contrato de arranque pedido na #22.
+- **Testes/fuzzing** — nove testes passaram no host e em Miri. O parser
+  leu um arquivo criado pelo GNU tar 1.35 com diretórios, caminho longo,
+  UTF-8 e dados binários. Recusou um arquivo de teste com um symlink.
+  Fuzzing com ASan executou 390 568 casos sem falhas.
+- **Benchmarks** — sem medição de tempo de montagem.
+- **Bloqueado por / à espera do Claude** — API para o módulo Limine
+  com vida útil, intervalo e permissões verificados (#22).
+- **Próximo passo sugerido para o Claude** — documentar o ponto em que
+  o módulo é entregue em modo só de leitura.
+- **Avisos** — o parser valida o formato. Conflitos de nomes ficam
+  para o índice do VFS. Sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (validação dos registos USTAR)
+
+- **Feito** — o #23 passou a exigir tamanho zero nos diretórios e
+  preenchimento a zero depois do NUL nos campos de nome. A contagem de
+  entradas é produzida durante a validação do arquivo.
+- **PRs abertos** — atualização do #23 sobre o ramo atualizado do #20.
+- **Testes/fuzzing** — 11 testes passaram no host e em Miri. O alvo
+  `initrd` verifica que o número de entradas expostas coincide com a
+  contagem validada.
+- **Benchmarks** — sem medição de tempo de montagem.
+- **Proteções de segurança alteradas** — a montagem recebe registos com
+  limites e nomes canónicos. O VFS pode limitar o índice antes de alocar.
+- **Bloqueado por / à espera do Claude** — a entrega do módulo do Limine
+  está disponível no #38.
+- **Próximo passo sugerido para o Claude** — usar a raiz só de leitura
+  quando for definido o contrato de ficheiros de user space.
+- **Avisos** — produtores de USTAR que escrevam capacidade no tamanho de
+  diretórios precisam de gerar um arquivo com tamanho zero nesses registos.
+
+### [2026-11-25] — CODEX (raiz inicial do VFS)
+
+- **Feito** — montagem só de leitura, índice de caminhos, diretórios
+  implícitos, listagem e leitura por offset em `fs/vfs`. Interface
+  descrita em `INTERFACES.md`, decisão D-109.
+- **PRs abertos** — ramo `codex/vfs-initrd` sobre o #23.
+- **Testes/fuzzing** — sete testes no host e em Miri. O alvo de
+  fuzzing do initrd usa a mesma imagem também para verificar a
+  resolução e a leitura após a montagem. Executou 231 749 casos com
+  ASan, sem falhas.
+- **Benchmarks** — sem medições de tempo de montagem ou de pesquisa.
+- **Bloqueado por / à espera do Claude** — passagem do módulo e
+  ponto de ligação ao arranque (#22); syscalls de ficheiros na Fase 7.
+- **Próximo passo sugerido para o Claude** — entregar o módulo
+  imutável e usar a interface documentada para a primeira leitura
+  através de um buffer validado do núcleo.
+- **Avisos** — esta raiz cobre o initrd. A validação por processo e o
+  acesso a disco ficam para a ligação de syscalls e outras raízes.
+  Sem `unsafe` novo.
+
+### [2026-11-26] — CODEX (limite de entradas do VFS)
+
+- **Feito** — o VFS aceita até 65 536 cabeçalhos USTAR. Usa a contagem
+  validada para uma única reserva falível do índice.
+- **PRs abertos** — atualização do #24 sobre o #23.
+- **Testes/fuzzing** — o teste de fronteira verifica a aceitação no
+  limite e a recusa de uma entrada a mais antes da reserva.
+- **Benchmarks** — sem medição de tempo de montagem.
+- **Proteções de segurança alteradas** — o limite reduz a memória que
+  uma imagem de arranque pode pedir para o índice.
+- **Bloqueado por / à espera do Claude** — o #38 fornece o módulo ao VFS.
+- **Próximo passo sugerido para o Claude** — definir os direitos e os
+  buffers de leitura na interface de ficheiros de user space.
+- **Avisos** — a contagem inclui o cabeçalho da raiz quando presente.
