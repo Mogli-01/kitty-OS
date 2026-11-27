@@ -488,6 +488,23 @@ continua o arranque sem a raiz. `selftest-initrd` verifica a listagem e
 os bytes de `/etc/kitty.txt` no arquivo de teste e emite
 `[vfs] initrd read verified (/etc/kitty.txt)` quando ambos coincidem.
 
+### Processos e user mode: `proc`, `mm::uspace`, `sched::spawn_user` (Fase 6b) — INSTÁVEL
+Fornece: CLAUDE. Usa: núcleo (6c/6d: syscalls, ELF loader).
+```rust
+pub fn UserSpace::new() -> Result<UserSpace, MapError>;               // metade do kernel partilhada
+pub fn UserSpace::map_page(&mut self, virt: u64, perm: UserPerm, contents: &[u8]) -> Result<(), MapError>;
+pub fn UserSpace::audit(&self) -> UserAudit;                          // U em tudo, sem W+X, nada abaixo de 1 MiB
+pub fn sched::spawn_user(name, process: Arc<Process>, rip: u64, rsp: u64) -> Result<ThreadId, SpawnError>;
+pub fn Process::kill(&self);                                          // morre na próxima volta a ring 3
+pub fn Process::status(&self) -> Status;                              // Running | Killed | Fault(vector)
+```
+- Layout: nada abaixo de `USER_MIN = 1 MiB`; código a partir de 4 MiB; pilha
+  com topo em `0x0000_7FFF_FFFF_0000`.
+- Uma exceção causada por código de user mata o processo (relatório só na
+  série, linha `[proc] user fault: …`).
+- Marcador de arranque: `[proc] user-mode self-test passed`.
+- Ainda **não há syscalls** (6c): um programa só acaba por falha ou `kill`.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |

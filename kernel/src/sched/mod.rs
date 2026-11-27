@@ -17,20 +17,30 @@
 //! Waiting: [`wait::WaitQueue`] blocks a thread until another thread or an
 //! interrupt handler wakes it (no busy waiting).
 //!
+//! User threads (Phase 6b, D-060): a thread may belong to a process. On
+//! every switch the scheduler loads the next thread's address space (CR3:
+//! its process's, or the kernel's for kernel threads), points `TSS.RSP0`
+//! at the top of its kernel stack (where traps from ring 3 land), and
+//! saves/restores user FPU/SSE state so no process sees another's
+//! registers.
+//!
 //! `unsafe` is allowed here (D-044): switching stacks and turning the entry
 //! address back into a function pointer cannot be done in safe Rust.
 
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, VecDeque};
+use alloc::sync::Arc;
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 pub mod wait;
 
 pub use wait::WaitQueue;
 
-use crate::arch::x86_64::{context, cpu};
-use crate::mm::paging::MapError;
+use crate::arch::x86_64::usermode::{self, FpuState};
+use crate::arch::x86_64::{context, cpu, gdt};
+use crate::mm::paging::{MapError, USER_END, USER_MIN};
 use crate::mm::stack::KernelStack;
+use crate::proc::Process;
 use crate::sync::{IrqSpinLock, preempt};
 
 /// Identifier of a kernel thread. 0 is the boot thread; a dedicated idle
@@ -64,9 +74,26 @@ struct Thread {
     /// Saved RSP while not running.
     rsp: u64,
     /// `None` for the boot thread, which runs on the static main stack.
-    /// Never read: it is owned so that dropping the thread frees the stack.
-    #[expect(dead_code, reason = "owned only to free the stack on drop")]
+    /// Owned so that dropping the thread frees the stack.
     stack: Option<KernelStack>,
+    /// Top of the kernel stack (`TSS.RSP0` while this thread runs); 0 for
+    /// the boot thread.
+    kstack_top: u64,
+    /// User side, for threads that run a process.
+    user: Option<UserThread>,
+}
+
+/// What a user thread has on top of a kernel thread.
+struct UserThread {
+    /// Keeps the process (and its address space) alive while the thread
+    /// exists, even after it died and until it is reaped.
+    process: Arc<Process>,
+    /// CR3 value while the thread runs.
+    root: u64,
+    /// Saved FPU/SSE registers while the thread is not running.
+    fpu: Box<FpuState>,
+    /// First user instruction and stack pointer.
+    entry: (u64, u64),
 }
 
 struct Scheduler {
@@ -89,6 +116,12 @@ struct Scheduler {
 static SCHED: IrqSpinLock<Option<Scheduler>> = IrqSpinLock::new(None);
 static NEED_RESCHED: AtomicBool = AtomicBool::new(false);
 static SWITCHES: AtomicU64 = AtomicU64::new(0);
+static TICKS: AtomicU64 = AtomicU64::new(0);
+/// The kernel's page tables (CR3 for kernel threads), recorded by `init`.
+static KERNEL_ROOT: AtomicU64 = AtomicU64::new(0);
+/// RSP0 while the boot thread (no stack of its own) runs: the bottom of the
+/// idle thread's stack, right above its guard page.
+static NO_USER_RSP0: AtomicU64 = AtomicU64::new(0);
 
 /// Errors from [`spawn`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -97,6 +130,8 @@ pub enum SpawnError {
     NotInitialised,
     /// No memory for the stack or the thread.
     OutOfMemory,
+    /// A user entry point or stack outside the user half.
+    BadUserAddress,
 }
 
 impl From<MapError> for SpawnError {
@@ -111,6 +146,7 @@ pub fn init() {
     if guard.is_some() {
         return;
     }
+    KERNEL_ROOT.store(cpu::read_cr3(), Ordering::Release);
     let mut threads = BTreeMap::new();
     threads.insert(
         ThreadId(0),
@@ -119,6 +155,8 @@ pub fn init() {
             state: State::Running,
             rsp: 0,
             stack: None,
+            kstack_top: 0,
+            user: None,
         }),
     );
     *guard = Some(Scheduler {
@@ -138,6 +176,9 @@ pub fn init() {
         if let Some(s) = guard.as_mut() {
             s.ready.retain(|&t| t != id);
             s.idle = Some(id);
+            if let Some(stack) = s.threads.get(&id).and_then(|t| t.stack.as_ref()) {
+                NO_USER_RSP0.store(stack.bottom(), Ordering::Relaxed);
+            }
         }
     }
 }
@@ -162,6 +203,57 @@ fn idle_loop() {
 /// Creates a kernel thread that runs `entry` and is queued as ready.
 /// When `entry` returns, the thread exits.
 pub fn spawn(name: &'static str, entry: fn()) -> Result<ThreadId, SpawnError> {
+    spawn_inner(name, entry, None)
+}
+
+/// Creates a thread of `process` that starts running user code at `rip`
+/// with stack `rsp` (both user-half addresses), and queues it as ready.
+pub fn spawn_user(
+    name: &'static str,
+    process: Arc<Process>,
+    rip: u64,
+    rsp: u64,
+) -> Result<ThreadId, SpawnError> {
+    // `iretq` to a non-canonical RIP faults in ring 0 with the user GS
+    // base loaded (the frame's CS is the kernel's): refuse here, so the
+    // contract of `enter_user` holds for every caller (security review).
+    let user_half = USER_MIN..USER_END;
+    if !user_half.contains(&rip) || rsp <= USER_MIN || rsp > USER_END || !rsp.is_multiple_of(16) {
+        return Err(SpawnError::BadUserAddress);
+    }
+    let user = UserThread {
+        root: process.root(),
+        process,
+        fpu: Box::new(FpuState::initial()),
+        entry: (rip, rsp),
+    };
+    spawn_inner(name, user_thread_main, Some(user))
+}
+
+/// Kernel-side start of every user thread: leave for ring 3.
+fn user_thread_main() {
+    let entry = SCHED
+        .lock()
+        .as_ref()
+        .and_then(|s| s.threads.get(&s.current))
+        .and_then(|t| t.user.as_ref().map(|u| u.entry));
+    let Some((rip, rsp)) = entry else {
+        return;
+    };
+    cpu::disable_interrupts();
+    // SAFETY: we are a user thread that `schedule` just switched to, so CR3
+    // is our process's address space and TSS.RSP0 the top of our kernel
+    // stack. `spawn_user` checked that `rip` is in the user half and `rsp`
+    // a 16-aligned user-half stack top. Nothing on this kernel stack is
+    // used again.
+    unsafe { usermode::enter_user(rip, rsp) }
+}
+
+fn spawn_inner(
+    name: &'static str,
+    entry: fn(),
+    user: Option<UserThread>,
+) -> Result<ThreadId, SpawnError> {
     let frame = context::initial_frame(entry as *const () as usize as u64);
     let stack = KernelStack::new(&frame)?;
     let rsp = stack.top() - (context::INITIAL_FRAME_WORDS as u64) * 8;
@@ -169,7 +261,9 @@ pub fn spawn(name: &'static str, entry: fn()) -> Result<ThreadId, SpawnError> {
         name,
         state: State::Ready,
         rsp,
+        kstack_top: stack.top(),
         stack: Some(stack),
+        user,
     });
     let mut guard = SCHED.lock();
     let s = guard.as_mut().ok_or(SpawnError::NotInitialised)?;
@@ -199,7 +293,23 @@ pub fn yield_now() {
 /// Called by the timer interrupt handler (Codex's timer driver): requests a
 /// reschedule at the end of the current interrupt. Cheap and lock-free.
 pub fn tick() {
+    TICKS.fetch_add(1, Ordering::Relaxed);
     NEED_RESCHED.store(true, Ordering::Release);
+}
+
+/// Number of timer ticks so far (0 if no timer drives the scheduler).
+pub fn ticks() -> u64 {
+    TICKS.load(Ordering::Relaxed)
+}
+
+/// The process the running thread belongs to, if it is a user thread.
+/// Lock-free apart from the scheduler lock; no allocation (safe in IRQ).
+pub fn current_process() -> Option<Arc<Process>> {
+    SCHED
+        .lock()
+        .as_ref()
+        .and_then(|s| s.threads.get(&s.current))
+        .and_then(|t| t.user.as_ref().map(|u| Arc::clone(&u.process)))
 }
 
 /// Called by the interrupt core after the handler and the EOI, with
@@ -305,7 +415,7 @@ fn schedule(how: Leave) -> bool {
     // does not re-enable them.
     cpu::disable_interrupts();
 
-    let (save, resume, reap) = {
+    let (save, resume, reap, next_env, save_fpu) = {
         let mut guard = SCHED.lock();
         let Some(s) = guard.as_mut() else {
             drop(guard);
@@ -332,6 +442,14 @@ fn schedule(how: Leave) -> bool {
         };
         s.current = next;
 
+        // FPU state of the current thread, saved below unless it dies.
+        let save_fpu: *mut FpuState = match (how, s.threads.get_mut(&cur)) {
+            (Leave::Requeue | Leave::Block, Some(t)) => t
+                .user
+                .as_mut()
+                .map_or(core::ptr::null_mut(), |u| &raw mut *u.fpu),
+            _ => core::ptr::null_mut(),
+        };
         let save: *mut u64 = if how == Leave::Die {
             match s.threads.remove(&cur) {
                 Some(mut t) => {
@@ -361,14 +479,26 @@ fn schedule(how: Leave) -> bool {
                 None => core::ptr::null_mut(),
             }
         };
+        let mut next_env = SwitchEnv {
+            kstack_top: NO_USER_RSP0.load(Ordering::Relaxed),
+            root: KERNEL_ROOT.load(Ordering::Acquire),
+            fpu: core::ptr::null(),
+        };
         let resume = match s.threads.get_mut(&next) {
             Some(t) => {
                 t.state = State::Running;
+                if t.kstack_top != 0 {
+                    next_env.kstack_top = t.kstack_top;
+                }
+                if let Some(u) = t.user.as_ref() {
+                    next_env.root = u.root;
+                    next_env.fpu = &raw const *u.fpu;
+                }
                 t.rsp
             }
             None => 0,
         };
-        (save, resume, reap)
+        (save, resume, reap, next_env, save_fpu)
     };
 
     // Free stacks of threads that died earlier (never the current one: a
@@ -380,6 +510,34 @@ fn schedule(how: Leave) -> bool {
         panic!("sched: corrupted thread table");
     }
     SWITCHES.fetch_add(1, Ordering::Relaxed);
+
+    if !save_fpu.is_null() {
+        // SAFETY: `save_fpu` points into the boxed `UserThread` of the
+        // current thread, which stays in the thread table (it is not dying)
+        // and is only touched by the running thread with interrupts off.
+        usermode::fpu_save(unsafe { &mut *save_fpu });
+    }
+    // SAFETY: interrupts are off; the value is the next thread's own
+    // kernel stack top, or (boot thread, which never enters ring 3) the
+    // bottom of the idle stack, whose guard page turns a stray trap from
+    // ring 3 into a double fault instead of a write to reused memory.
+    unsafe { gdt::set_kernel_stack(next_env.kstack_top) };
+    if next_env.root != 0 && cpu::read_cr3() != next_env.root {
+        // SAFETY: the root is either the kernel's page tables or a live
+        // process's (kept alive by the next thread's `Arc<Process>`), and
+        // every address space shares the kernel half, so the code, this
+        // stack and every kernel object stay mapped across the switch.
+        unsafe { cpu::write_cr3(next_env.root) };
+    }
+    if !next_env.fpu.is_null() {
+        // A user thread runs next: no data selector set by another process
+        // may survive into it (covert channel; security review).
+        usermode::reset_user_selectors();
+        // SAFETY: points into the boxed `UserThread` of the next thread,
+        // which cannot be freed before it runs (it is not dead).
+        usermode::fpu_restore(unsafe { &*next_env.fpu });
+    }
+
     // SAFETY: interrupts are disabled (single CPU: nothing else touches the
     // scheduler until we resume). `save` points into a live boxed `Thread`
     // (in `threads` or the `dead` slot, neither freed before the next
@@ -392,6 +550,13 @@ fn schedule(how: Leave) -> bool {
     // Resumed: some other thread switched back to us.
     restore(were_enabled);
     true
+}
+
+/// What the next thread needs from the CPU besides its stack.
+struct SwitchEnv {
+    kstack_top: u64,
+    root: u64,
+    fpu: *const FpuState,
 }
 
 fn restore(were_enabled: bool) {

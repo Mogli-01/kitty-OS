@@ -1178,3 +1178,38 @@ O `xtask test-initrd` verifica um ficheiro conhecido, uma imagem em que
 o checksum do cabeçalho é inválido e a ausência de módulo. Os ensaios
 usam meios de arranque próprios em `build/initrd-tests/`. O comando
 normal `--initrd` valida o arquivo no host antes de preparar o meio.
+
+### D-060 — Implementação da 6b: processos, ring 3, RSP0, swapgs, FPU (2026-11-28, CLAUDE)
+- **Espaço de endereçamento:** cada processo tem um PML4 próprio.
+  - As entradas 256–511 são **copiadas** do PML4 do kernel e apontam para as mesmas PDPTs, que foram pré-criadas na Fase 3. Por isso, um mapeamento novo do kernel é visto por todos os processos.
+  - A metade de user só se constrói com `map_user_frame`, que recusa tudo abaixo de 1 MiB, tudo a partir de 2^47, páginas sem o bit U, páginas globais e W+X.
+  - Cada folha é dona do seu frame, marcada com o bit de software 9 (`OWNED`). `destroy_user` liberta só essas folhas e as tabelas da metade de user, e recusa destruir o espaço que está em CR3.
+  - As folhas sem `OWNED` (no futuro, o framebuffer) são só desmapeadas.
+- **CR3 por thread:** uma thread de user corre com o CR3 do seu processo. As threads do kernel correm sempre com o CR3 do kernel, e não "emprestado" de um processo: se o fizessem, um processo morto podia ter as tabelas libertadas enquanto ainda estavam em uso.
+- **`TSS.RSP0`** passa a ser o topo da pilha de kernel da thread que vai correr, e é escrito em cada troca, com as interrupções desligadas.
+- **Entrada em ring 3:** a primeira entrada é por `iretq`, com todos os registos de uso geral a zero e RFLAGS = IF | bit 1 (IOPL 0).
+  - Os seletores de dados com DPL 0 que estavam em DS/ES/FS/GS ficam nulos ao descer para CPL 3.
+  - O GS base de user é 0; o do kernel aponta para um bloco por CPU.
+- **`swapgs`** acontece à entrada e à saída do `trap_common`, só quando o CS guardado tem RPL 3, seguido de `lfence` (CVE-2019-1125). Limite conhecido: um NMI ou #MC na primeira instrução da entrada vê CS = kernel com o GS de user. Hoje é inofensivo, porque nenhum handler usa o GS. A 6c tem de verificar o MSR nos handlers IST.
+- **Exceções de user** (todas menos NMI, #DF e #MC) matam o processo. O relatório vai só para a série. Um `kill` pendente é honrado em cada volta a ring 3.
+- **FPU/SSE:** o kernel é soft-float e nunca toca nesses registos.
+  - Liga-se `CR4.OSFXSR`/`OSXMMEXCPT` só para user space.
+  - Cada thread de user tem 512 B de estado `fxsave64`, guardado ao sair e reposto ao entrar. Uma thread nova parte do estado inicial arquitetural (FCW 0x037F, MXCSR 0x1F80, tudo a zero).
+  - O AVX/XSAVE fica desligado (dá #UD).
+  - **Porquê:** sem isto, um processo lia os XMM de outro depois de uma troca de contexto.
+- **Limites conhecidos:**
+  - a libertação de um processo morto acontece dentro do `schedule` seguinte, com as interrupções desligadas. É barato para processos pequenos; para processos grandes vai para uma thread "reaper";
+  - há uma só thread por processo;
+  - ainda não há PCID (cada troca para user limpa a TLB das páginas não globais).
+  - **Sem KPTI nem mitigações Meltdown/MDS/IBPB.** A metade do kernel, incluindo o HHDM, está mapeada (sem bit U) em todos os processos. Num CPU Intel vulnerável ao Meltdown, um processo em ring 3 pode ler a memória física por canal lateral. Fica para a revisão de canais laterais prevista no SECURITY.md.
+- **Revisto depois do `security-reviewer`:**
+  - `spawn_user` valida o RIP e o RSP (um `iretq` para um RIP não canónico falhava em ring 0 com o GS de user);
+  - `CR4.OSXSAVE` e `CR4.FSGSBASE` ficam **desligados** de forma explícita, porque podem vir ligados do firmware: os YMM altos fugiam entre processos, e o `wrgsbase` deixava o user escolher o GS que o `swapgs` dá ao kernel;
+  - `CR0.NE` ligado (as exceções x87 dão #MF);
+  - DS/ES/FS/GS ficam nulos antes de cada thread de user (canal encoberto entre processos);
+  - não se honra o `kill` dentro de NMI/#DF/#MC (pilhas IST);
+  - `set_kernel_stack` é `unsafe` e só aceita ser chamado com as interrupções desligadas;
+  - com a thread de boot, o RSP0 aponta para o fundo da pilha da thread idle (por cima da página de guarda), em vez de uma pilha possivelmente libertada;
+  - `map_page` recusa conteúdo maior do que uma página.
+
+  Os testes do autoteste confirmam a limpeza dos seletores e da FPU: tirar uma das duas linhas do scheduler faz o autoteste falhar.

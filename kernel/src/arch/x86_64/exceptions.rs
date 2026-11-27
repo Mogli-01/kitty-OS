@@ -1,9 +1,13 @@
 //! CPU exception handling policy and crash reports.
 //!
-//! Phase 2 policy: any exception raised by the kernel is a kernel bug, so it
-//! is fatal — except `#BP` (breakpoint, used as a self-test) and NMI, which
-//! are reported and resumed. User-mode exceptions (Phase 6) will kill the
-//! offending process instead of the kernel.
+//! Policy:
+//! - Any exception raised by the **kernel** is a kernel bug, so it is fatal
+//!   — except `#BP` (breakpoint, used as a self-test), NMI (reported and
+//!   resumed) and a #PF on the user-copy instruction (becomes `E_FAULT`).
+//! - An exception raised by **user code** (saved CS has RPL 3) kills the
+//!   offending process, never the kernel (Phase 6b, D-060). Exceptions that
+//!   are not the program's doing — NMI, machine check, double fault — keep
+//!   the kernel policy.
 //!
 //! Security: the full report (registers, addresses) goes **only to the
 //! serial debug console**. The screen gets the exception name without any
@@ -64,8 +68,25 @@ pub fn name(vector: u64) -> &'static str {
         .unwrap_or("Unknown vector")
 }
 
+const VEC_MACHINE_CHECK: u64 = 18;
+
+/// Number of user faults seen with the kernel GS base correctly restored
+/// by `swapgs` (and with a wrong one): evidence for the self-test.
+static SWAPGS_OK: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+static SWAPGS_BAD: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
+/// `(good, bad)` GS-base checks made on user faults so far.
+pub fn swapgs_checks() -> (u64, u64) {
+    use core::sync::atomic::Ordering::Relaxed;
+    (SWAPGS_OK.load(Relaxed), SWAPGS_BAD.load(Relaxed))
+}
+
 /// Entry point from the trap stub.
 pub(super) fn handle(frame: &mut TrapFrame) {
+    let from_user = frame.cs & 3 != 0;
+    if from_user && !matches!(frame.vector, VEC_NMI | VEC_DOUBLE_FAULT | VEC_MACHINE_CHECK) {
+        user_fault(frame);
+    }
     // A page fault on the user-copy instruction is an expected outcome (a
     // bad user pointer), not a kernel bug: resume at the copy's fixup,
     // which returns an error to the caller. Only faults raised in ring 0
@@ -99,6 +120,38 @@ pub(super) fn handle(frame: &mut TrapFrame) {
         }
         _ => fatal(frame),
     }
+}
+
+/// A user program faulted: report it (serial only — even user addresses
+/// stay off the screen, D-023) and kill its process.
+fn user_fault(frame: &TrapFrame) -> ! {
+    use core::sync::atomic::Ordering::Relaxed;
+    if super::cpu::gs_base() == super::gdt::percpu_address() {
+        SWAPGS_OK.fetch_add(1, Relaxed);
+    } else {
+        SWAPGS_BAD.fetch_add(1, Relaxed);
+    }
+    console::debug_print(format_args!(
+        "[proc] user fault: {} at rip={:#x} rsp={:#x} error={:#x}{}
+",
+        name(frame.vector),
+        frame.rip,
+        frame.rsp,
+        frame.error_code,
+        if frame.vector == VEC_PAGE_FAULT {
+            " (page fault)"
+        } else {
+            ""
+        },
+    ));
+    if frame.vector == VEC_PAGE_FAULT {
+        console::debug_print(format_args!(
+            "    cr2={:#x}
+",
+            cpu::read_cr2()
+        ));
+    }
+    crate::proc::exit_current_on_fault(frame.vector as u8)
 }
 
 fn fatal(frame: &TrapFrame) -> ! {

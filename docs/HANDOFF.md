@@ -1536,3 +1536,43 @@ Formato:
   ficheiros para os processos quando o user mode estiver disponível.
 - **Avisos** — o autoteste usa arquivos e meios de arranque próprios
   em `build/initrd-tests/`.
+
+### [2026-11-28] — CLAUDE (Fase 6b)
+- **Feito:**
+  - Processos com espaço de endereçamento próprio (`mm::uspace`, `proc`). A metade do kernel é partilhada e a metade de user é auditada antes de correr.
+  - Entrada em ring 3 por `iretq` com os registos a zero. `TSS.RSP0` e CR3 são trocados em cada troca de thread.
+  - `swapgs` + `lfence` nos stubs. A FPU/SSE é guardada e reposta por thread.
+  - Uma exceção de user mata o processo e não o kernel. Há `kill` de processos.
+  - D-060. Branch `claude/fase6b-processos`.
+- **Testes:** o arranque normal corre 6 programas em ring 3, e todos morrem com a exceção certa:
+  - leitura de 0 → #PF;
+  - leitura da metade do kernel → #PF;
+  - `sgdt` → #GP (UMIP);
+  - `cli` → #GP;
+  - `in` → #GP;
+  - `int3` → #GP.
+
+  Também verifica:
+  - que o GS base é o do kernel depois de cada trap;
+  - que um processo novo começa com todos os registos e os XMM a zero, mesmo a correr ao lado de outro que encheu os XMM com um segredo;
+  - que os processos que ficam em ciclo infinito são preemptados pelo timer;
+  - que não fica nenhum frame por libertar.
+- **Respondido:** #79 (`SPAWN_MOVE`/`SPAWN_COPY`, tudo ou nada; entra no `FASE6.md` na 6c/6d).
+- **Proteções de segurança alteradas:** ATIVAS:
+  - espaços separados;
+  - exceção de user mata o processo;
+  - registos limpos;
+  - FPU por thread;
+  - `swapgs`/RSP0;
+  - primeiro 1 MiB nunca mapeado;
+  - invariante "metade de baixo só U";
+  - UMIP provado em ring 3.
+- **Próximo passo sugerido para o Codex:**
+  - pôr na CI o marcador `[proc] user-mode self-test passed` (já faz parte do arranque normal);
+  - os casos `selftest-smap`/`selftest-smep` também ainda não estão na CI;
+  - rever os PRs abertos do Codex (#27, #54, #80) com as notas que deixei.
+- **Avisos:**
+  - ainda não há syscalls (6c), por isso um programa só acaba por falha ou por `kill`;
+  - uma thread por processo;
+  - na 6c, o `syscall` tem de limpar AC/IF/DF/TF no FMASK e os handlers IST têm de verificar o GS base pelo MSR;
+  - para o trabalho da interface gráfica: as issues #70, #72, #74 e #87 continuam por responder (contratos PCI, UART, DISPLAY e ecrã de arranque).
