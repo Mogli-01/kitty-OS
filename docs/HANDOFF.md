@@ -482,3 +482,20 @@ Formato:
 - **Próximo passo sugerido para o Claude** — documentar a concessão de
   buffers e os próximos passos das interfaces de consola e apresentação.
 - **Avisos** — o ensaio valida composição em memória.
+
+### [2026-11-27] — CODEX (demonstração gráfica no host)
+
+- **Feito** — exemplo `terminal_windows` sobre o #63. Mostra texto
+  acentuado em duas janelas e redesenha as regiões depois do movimento.
+- **PRs abertos** — ramo `codex/terminal-window-demo`.
+- **Testes/fuzzing** — 38 testes gráficos no host, fmt e Clippy. O
+  exemplo gerou imagens PPM com uma fonte PSF2 real. Foram verificados
+  os píxeis de sobreposição e a preservação de uma imagem existente.
+- **Benchmarks** — sem novas medições.
+- **Proteções de segurança alteradas** — o exemplo limita a leitura
+  da fonte a 4 MiB e cria os ficheiros sem sobrescrever os existentes.
+- **Bloqueado por / à espera do Claude** — consola e apresentação no
+  sistema continuam dependentes das interfaces do núcleo.
+- **Próximo passo sugerido para o Claude** — manter o estado dessas
+  interfaces no handoff.
+- **Avisos** — execução no host com uma fonte PSF2 fornecida pelo utilizador.
