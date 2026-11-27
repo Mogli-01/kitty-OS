@@ -1,0 +1,39 @@
+[package]
+name = "kitty-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+kitty-acpi = { path = "../drivers/acpi" }
+kitty-shell = { path = "../userland/shell" }
+kitty-initrd = { path = "../fs/initrd" }
+kitty-vfs = { path = "../fs/vfs" }
+libfuzzer-sys = "0.4"
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "madt"
+path = "fuzz_targets/madt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "shell"
+path = "fuzz_targets/shell.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "initrd"
+path = "fuzz_targets/initrd.rs"
+test = false
+doc = false
+bench = false

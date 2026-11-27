@@ -37,6 +37,62 @@ alterado, preservando o resto da imagem apresentada.
 A apresentação é uma cópia de memória. A sincronização com a leitura
 do ecrã depende da futura interface de apresentação do dispositivo.
 
+## Zonas alteradas
+
+`Damage::new` cria uma lista para as dimensões do ecrã. O compositor
+regista a região antiga e a nova sempre que move ou redimensiona uma
+janela. `record` recorta as coordenadas aos limites do ecrã. Regiões
+sobrepostas são agrupadas no retângulo que as contém. Ao exceder 16
+regiões distintas, a lista passa a cobrir o ecrã inteiro.
+
+O compositor recompõe cada retângulo devolvido por `regions()` no
+buffer traseiro. Depois, `DoubleBuffer::present_damage` copia essas
+regiões para a frente e esvazia a lista. Se as dimensões forem
+incompatíveis, a lista continua disponível para corrigir e repetir.
+
+## Composição de camadas
+
+`Canvas::blend` coloca uma camada BGRA8888 sobre o que já está no
+canvas. Usa alfa direto e a operação source-over. Cada canal é
+calculado a partir dos valores guardados no buffer e do alfa das
+duas camadas. A composição conserva o alinhamento quando a origem ou
+o destino são recortados. Para desenhar um frame, o compositor pinta
+primeiro o fundo e depois percorre as camadas de trás para a frente.
+
+## Cursor por software
+
+`Cursor` recebe a imagem e o ponto ativo dentro dela. O ponto ativo
+é a coordenada usada para localizar cliques. `move_by` recebe um
+deslocamento relativo e `move_to` aceita coordenadas absolutas. Os
+dois limitam o ponto ativo à área visível e registam a posição antiga
+e a nova em `Damage`.
+
+No primeiro frame ou ao reconstruir o ecrã, marca o frame inteiro.
+Para cada região alterada, desenha o fundo e as janelas e chama
+`Cursor::draw_in` com o mesmo retângulo. O cursor é composto sobre
+píxeis acabados de redesenhar. Por fim, apresenta as regiões com
+`DoubleBuffer::present_damage`.
+
+## Ordem e seleção de janelas
+
+`WindowStack` guarda até 32 identificadores e retângulos de janela
+em memória do compositor. `windows()` devolve a ordem de desenho,
+do fundo para o topo. `hit_test` recusa pontos fora do ecrã e devolve
+a janela mais alta que contém o ponto, com as suas coordenadas locais.
+A seleção usa os limites geométricos. O alfa é aplicado durante o
+desenho.
+
+Inserir ou remover uma janela regista a área visível. Mover regista
+os limites antigos e os novos. Subir na pilha regista apenas as
+interseções com as janelas ultrapassadas. `Damage` recorta estas
+regiões ao ecrã e conserva as suas regras de agrupamento.
+
+Usa `damage_mut()` para registar a posição do cursor e para apresentar
+as regiões recompostas com `DoubleBuffer::present_damage`. No primeiro
+frame, marca o ecrã completo. Depois, para desenhar cada janela numa
+região, calcula a interseção com `Rect::intersection` e usa os limites
+originais para converter a origem em coordenadas da superfície.
+
 ## Texto em bitmap
 
 O atlas guarda glifos de dimensões fixas, com um bit por píxel e a
