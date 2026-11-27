@@ -1536,3 +1536,25 @@ Formato:
   ficheiros para os processos quando o user mode estiver disponível.
 - **Avisos** — o autoteste usa arquivos e meios de arranque próprios
   em `build/initrd-tests/`.
+
+### 2026-11-27 — CODEX
+- Feito: leitor FAT32 só de leitura da Fase 9. Valida a geometria,
+  lista diretórios, resolve nomes VFAT em UTF-16 e aliases 8.3 e lê
+  por offset através de cadeias fragmentadas. Decisão D-152.
+- PRs abertos: ramo `codex/fat32-readonly`.
+- Testes/fuzzing: 12 testes no host e no Miri, Clippy, compilação
+  release para x86_64-unknown-none e 288 031 casos sob AddressSanitizer.
+  Duas imagens produzidas por mkfs.fat e mtools, com setores de 512 e
+  4096 bytes, devolveram 51 777 bytes iguais ao ficheiro original.
+  O teste normal de arranque UEFI release também passou em QEMU.
+- Benchmarks: sem medições de desempenho nesta tarefa.
+- Proteções de segurança alteradas: o leitor valida limites da FAT
+  e da região dos dados, deteta ciclos e recusa cadeias incompatíveis
+  com o tamanho dos ficheiros. Sem `unsafe` novo.
+- Bloqueado por / à espera do Claude: a integração no sistema precisa
+  de um driver de blocos e da montagem no VFS.
+- Próximo passo sugerido para o Claude: retomar o contrato de acesso
+  à configuração PCI na issue #70 para permitir a enumeração do disco.
+- Avisos: cobertura do formato em imagens e fontes de bytes.
+  A integração do driver e a validação global de propriedade dos
+  clusters ficam para a montagem em disco.

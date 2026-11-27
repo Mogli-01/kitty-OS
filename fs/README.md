@@ -26,3 +26,39 @@ módulo do Limine através do contrato da #22.
 de ficheiros com um offset. Diretórios implícitos existem quando um
 ficheiro tem um caminho válido sob eles. A montagem recusa nomes
 duplicados e ficheiros que sejam usados como diretórios.
+
+## Volumes FAT32 só de leitura
+
+`fat32/` monta um volume que começa no seu setor de arranque. A camada
+de partições ou de blocos fornece um `ReadAt` limitado aos bytes do volume.
+Uma imagem em memória pode ser usada diretamente com
+`Fat32::mount(image.as_slice())`. A fonte tem de permanecer estável
+durante a montagem e disponibilizar leituras sem alinhamento.
+
+`read_dir("/config")` lista os filhos diretos do diretório.
+`open("/config/Configuração do kitty.txt")` devolve um ficheiro cuja cadeia
+de clusters foi verificada. `read_at(offset, buffer)` funciona em ficheiros
+fragmentados, devolve zero no fim e reaproveita a posição para leituras
+sequenciais. Um erro de I/O pode deixar parte do buffer de destino escrita.
+
+O leitor aceita setores de 512, 1024, 2048 ou 4096 bytes e clusters até
+32 KiB. Valida os limites da FAT e da região dos dados, recusa ciclos,
+clusters reservados e cadeias de ficheiros incompatíveis com o tamanho.
+Os nomes longos VFAT validam a ordem das entradas, o checksum do alias
+e UTF-16. Se a sequência estiver danificada, fica disponível o alias 8.3
+em CP437. A pesquisa ignora diferenças de maiúsculas em ASCII, compara
+literalmente os restantes caracteres e recusa correspondências ambíguas.
+
+O leitor utiliza uma das FATs indicadas pelo cabeçalho. A validação é
+feita conforme se percorre o volume, incluindo a cadeia de cada ficheiro
+antes da leitura. A validação de propriedade exclusiva de todos os
+clusters do volume e a aplicação de permissões pertencem à futura
+montagem do VFS. Esta camada ainda precisa de um driver de blocos e da
+ligação ao VFS para ser usada pelo sistema operativo.
+
+```sh
+cargo test -p kitty-fat32 --locked
+cargo miri test -p kitty-fat32 --locked
+cargo build -p kitty-fat32 --target x86_64-unknown-none --release --locked
+cargo fuzz run fat32 -- -max_total_time=15 -timeout=5 -max_len=2049
+```

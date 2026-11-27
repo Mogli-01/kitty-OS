@@ -58,10 +58,15 @@ name = "kitty-acpi"
 version = "0.1.0"
 
 [[package]]
+name = "kitty-fat32"
+version = "0.1.0"
+
+[[package]]
 name = "kitty-fuzz"
 version = "0.0.0"
 dependencies = [
  "kitty-acpi",
+ "kitty-fat32",
  "kitty-initrd",
  "kitty-shell",
  "kitty-vfs",
