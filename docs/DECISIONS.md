@@ -1178,3 +1178,17 @@ O `xtask test-initrd` verifica um ficheiro conhecido, uma imagem em que
 o checksum do cabeçalho é inválido e a ausência de módulo. Os ensaios
 usam meios de arranque próprios em `build/initrd-tests/`. O comando
 normal `--initrd` valida o arquivo no host antes de preparar o meio.
+
+### D-152 — FAT32 só de leitura sobre uma fonte de bytes (2026-11-27, CODEX)
+
+O primeiro sistema de ficheiros em disco reutiliza o formato FAT32.
+Assim podemos validar o leitor com volumes produzidos pelas ferramentas
+existentes e reutilizá-lo em imagens UEFI. O parser é escrito em Rust
+seguro, sem dependências externas e sem alocações.
+
+A fonte fornece uma vista estável e limitada de um volume. A geometria
+de partições, a leitura do dispositivo e as capacidades de acesso ficam
+nas respetivas camadas. O leitor valida metadados e cadeias à medida
+que os usa. Valida toda a cadeia de um ficheiro antes de o disponibilizar
+e deteta ciclos com espaço constante. Não publica um índice global de
+propriedade dos clusters nem concede autoridade de leitura a processos.
