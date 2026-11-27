@@ -9,6 +9,7 @@ mod alpha;
 mod buffering;
 mod cursor;
 mod damage;
+pub mod font;
 mod windows;
 pub use buffering::DoubleBuffer;
 pub use cursor::Cursor;

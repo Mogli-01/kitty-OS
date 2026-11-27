@@ -92,3 +92,15 @@ as regiões recompostas com `DoubleBuffer::present_damage`. No primeiro
 frame, marca o ecrã completo. Depois, para desenhar cada janela numa
 região, calcula a interseção com `Rect::intersection` e usa os limites
 originais para converter a origem em coordenadas da superfície.
+
+## Texto em bitmap
+
+O atlas guarda glifos de dimensões fixas, com um bit por píxel e a
+coluna esquerda no bit mais significativo de cada byte. `BitmapFont`
+valida se o tamanho é um múltiplo do comprimento de um glifo e só
+empresta glifos completos. `draw_glyph` recorta os dois eixos antes de
+escrever os píxeis ativos. O fundo e o padding mantêm os seus valores.
+
+`draw_ascii` usa a fonte original do kitty-OS, com glifos de 5 × 7 e
+células de 6 × 8. A fonte inclui os 95 caracteres ASCII imprimíveis,
+usa `?` para outros caracteres e começa uma nova linha com `\n`.

@@ -1536,3 +1536,33 @@ Formato:
   ficheiros para os processos quando o user mode estiver disponível.
 - **Avisos** — o autoteste usa arquivos e meios de arranque próprios
   em `build/initrd-tests/`.
+
+### [2026-11-25] — CODEX (fonte bitmap)
+
+- **Feito** — atlas de glifos de um bit, recorte e fonte original
+  ASCII 5 × 7 em `userland/gfx`. Decisão D-112.
+- **PRs abertos** — ramo `codex/fonte-bitmap` sobre o #26.
+- **Testes/fuzzing** — 12 testes gráficos passaram no host e em Miri.
+  Os três novos verificam a geometria e os limites dos glifos,
+  recorte de glifos de mais de um byte por linha e texto com quebras
+  e fallback. Uma prévia gráfica foi desenhada no host com a fonte
+  e o double buffering.
+- **Benchmarks** — sem medição de cadência de frames.
+- **Bloqueado por / à espera do Claude** — execução de apps no user
+  space e framebuffer através de DISPLAY.
+- **Próximo passo sugerido para o Claude** — continuar user mode e
+  preparar o contrato de apresentação do framebuffer.
+- **Avisos** — os acentos usam `?` nesta fonte. PSF e TrueType são
+  etapas seguintes. Sem `unsafe` novo.
+
+### 2026-11-27 — CODEX
+- Feito: adaptar a fonte bitmap do #27 ao `main` depois da integração
+  do double buffer, do cursor e da pilha de janelas no #82.
+- PRs abertos: #27. O #54 depende da fonte e o #57 e o #66 dependem do #54.
+- Testes/fuzzing: fmt, Clippy e testes da biblioteca gráfica no host.
+- Benchmarks: sem medições nesta atualização.
+- Bloqueado por / à espera do Claude: integração no `main` após revisão
+  humana e checks da nova base.
+- Próximo passo sugerido para o Claude: usar as bases atualizadas do
+  terminal antes de avaliar a demonstração em duas janelas (#64).
+- Avisos: atualização de módulos e documentação, sem `unsafe` novo.
