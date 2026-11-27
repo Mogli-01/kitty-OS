@@ -29,6 +29,8 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Panic handler com localização | CLAUDE | FEITO |
 | Teste de arranque no QEMU (isa-debug-exit) | CLAUDE → CODEX | FEITO (mínimo) |
 | Recuperação de falhas transitórias ao descarregar o Limine | CODEX | Em revisão no #56, com teste automático das tentativas |
+
+| Instalação do QEMU na CI a partir das fontes Ubuntu | CODEX | Em revisão no ramo `codex/ci-ubuntu-qemu` |
 | Teste de integração de panic no QEMU (código de saída e série) | CODEX | FEITO (CI da Fase 2) |
 
 ## Fase 2 — CPU: GDT, TSS, IDT, exceções

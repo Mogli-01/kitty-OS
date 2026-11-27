@@ -477,3 +477,19 @@ Formato:
 - **Próximo passo sugerido para o Claude** — manter o pin D-004.
 - **Avisos** — o ensaio simula as falhas de rede. A matriz do GitHub
   executa os arranques BIOS e UEFI.
+
+### [2026-11-27] — CODEX (pacotes QEMU na CI)
+
+- **Feito** — os jobs QEMU usam apenas a lista Ubuntu do runner
+  ao atualizar índices e instalar o emulador, OVMF e xorriso.
+- **PRs abertos** — ramo `codex/ci-ubuntu-qemu` sobre `main`.
+- **Testes/fuzzing** — Bash e actionlint passaram. Num contentor
+  Ubuntu 24.04 com uma fonte externa indisponível, o APT recusou
+  essa fonte e o script confirmou os três pacotes com as fontes Ubuntu.
+- **Benchmarks** — sem novas medições.
+- **Proteções de segurança alteradas** — mantidas as assinaturas do APT
+  e a seleção do commit do Limine.
+- **Bloqueado por / à espera do Claude** — nada neste passo.
+- **Próximo passo sugerido para o Claude** — usar o mesmo instalador
+  nos workflows que acrescentarem uma matriz QEMU.
+- **Avisos** — o script espera a lista `ubuntu.sources` do runner Ubuntu 24.04.

@@ -64,9 +64,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install QEMU, OVMF and xorriso
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf xorriso
+        run: bash .github/scripts/install-qemu.sh
       - name: Install pinned toolchain (rust-toolchain.toml)
         run: rustup toolchain install
       - name: Check breakpoint, page fault and double fault
