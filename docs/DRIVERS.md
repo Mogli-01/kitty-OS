@@ -43,3 +43,21 @@ cargo build -p kitty-uart --target x86_64-unknown-none --release --locked
 Os testes simulam as respostas do `PortBlock` e confirmam a ordem dos
 acessos, o tratamento das falhas e a preservação dos bytes ainda em fila.
 [Referência dos registos TL16C550C](https://www.ti.com/lit/ds/symlink/tl16c550c.pdf)
+
+### Interrupções de receção da UART
+
+O offset 2 devolve o registo IIR numa leitura e continua a selecionar
+FCR numa escrita. O IIR indica se há uma interrupção e qual a fonte
+de maior prioridade. O driver distingue dados, timeout e erros de linha.
+
+`set_receive_interrupts(true)` ativa no IER apenas dados de receção e
+estado de linha. Depois ativa OUT2 no MCR, que liga a saída de IRQ na
+UART de um PC. Para desligar, fecha esse caminho e limpa o IER. Se
+uma escrita falhar ao ativar, tenta as duas operações de desativação.
+O chamador mantém a linha do controlador mascarada em caso de erro.
+
+O futuro handler pode consultar `interrupt_cause()` e chamar
+`try_read()` para tratar cada byte ou erro de linha. O handler precisa
+de um limite de trabalho e de uma estratégia para continuar a drenar
+a FIFO. O núcleo é responsável pelo EOI. A ligação às portas reais
+e a escolha da linha IRQ estão descritas na issue #72.

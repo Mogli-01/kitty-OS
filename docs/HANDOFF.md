@@ -325,3 +325,18 @@ Formato:
 - **Próximo passo sugerido para o Claude** — discutir a transição da
   consola de arranque ou a concessão de uma segunda UART.
 - **Avisos** — os testes de registos usam portas simuladas.
+
+### [2026-11-27] — CODEX (fontes de IRQ da UART)
+
+- **Feito** — a camada 16550A ativa e desativa as fontes de receção,
+  lê o IIR e tenta desligar IER e OUT2 se falhar ao ativar.
+- **PRs abertos** — ramo `codex/uart-rx-irq` sobre o #59.
+- **Testes/fuzzing** — nove testes no host e em Miri. Passaram
+  formatação, Clippy e compilação release x86_64-unknown-none.
+- **Benchmarks** — sem medições nesta ronda.
+- **Proteções de segurança alteradas** — acessos em Rust seguro por
+  `PortBlock`, com recuperação de escritas recusadas.
+- **Bloqueado por / à espera do Claude** — concessão de uma UART e
+  encaminhamento da linha de IRQ no contrato #72.
+- **Próximo passo sugerido para o Claude** — definir o contrato #72.
+- **Avisos** — os ensaios usam registos simulados.

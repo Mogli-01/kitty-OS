@@ -61,7 +61,7 @@ preparado para a interface gráfica (Fases 10–14).
 | Driver do Local APIC + IO APIC | CODEX | TODO |
 | Driver do timer (APIC timer / HPET) → chama `sched::tick()` | CODEX | TODO |
 | Driver do teclado PS/2 | CODEX | TODO |
-| Driver UART completo (interrupções, input) | CODEX | Configuração e polling de TX/RX testados no ramo `codex/uart-16550`. Integração com portas e IRQ pendente |
+| Driver UART completo (interrupções, input) | CODEX | I/O por polling (#59) e fontes de IRQ de receção em revisão no ramo `codex/uart-rx-irq`. Ligação a uma UART real aguarda #72 |
 
 ## Fase 5 — Scheduler
 | Tarefa | Dono | Estado |

@@ -10,6 +10,7 @@ use kitty_hal::PortBlock;
 // clear they refer to RBR/THR and IER respectively.
 const DATA: u16 = 0;
 const INTERRUPT_ENABLE: u16 = 1;
+const INTERRUPT_IDENTIFICATION: u16 = 2;
 const FIFO_CONTROL: u16 = 2;
 const LINE_CONTROL: u16 = 3;
 const MODEM_CONTROL: u16 = 4;
@@ -19,6 +20,10 @@ const LCR_8N1: u8 = 0x03;
 const LCR_DLAB: u8 = 1 << 7;
 const FCR_ENABLE_AND_CLEAR: u8 = 0x07;
 const MCR_DTR_AND_RTS: u8 = 0x03;
+const MCR_OUT2: u8 = 1 << 3;
+const IER_RECEIVE: u8 = (1 << 0) | (1 << 2);
+const IIR_NO_INTERRUPT: u8 = 1 << 0;
+const IIR_CAUSE: u8 = 0x0e;
 
 const LSR_DATA_READY: u8 = 1 << 0;
 const LSR_OVERRUN: u8 = 1 << 1;
@@ -43,6 +48,16 @@ pub struct ReceiveErrors {
     pub parity: bool,
     pub framing: bool,
     pub break_signal: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InterruptCause {
+    ModemStatus,
+    TransmitterEmpty,
+    ReceiveData,
+    ReceiveLineStatus,
+    ReceiveTimeout,
+    Reserved(u8),
 }
 
 pub struct Uart16550<P> {
@@ -132,10 +147,60 @@ impl<P: PortBlock> Uart16550<P> {
         }
     }
 
-    fn poll_status(&mut self) -> Result<u8, Error> {
+    /// Enables the UART's receive-data and line-status sources and the PC
+    /// OUT2 gate. The caller serializes this with its interrupt handler
+    /// and keeps the controller line masked until that handler is ready.
+    /// On failure, the caller must keep the controller line masked.
+    pub fn set_receive_interrupts(&mut self, enabled: bool) -> Result<(), Error> {
+        self.ensure_configured()?;
+        if !enabled {
+            return self.disable_interrupts();
+        }
+        let result = self
+            .write(INTERRUPT_ENABLE, IER_RECEIVE)
+            .and_then(|()| self.write(MODEM_CONTROL, MCR_DTR_AND_RTS | MCR_OUT2));
+        if result.is_err() {
+            let _ = self.disable_interrupts();
+        }
+        result
+    }
+
+    /// Reads the highest-priority pending source once. A receive handler
+    /// services data and line errors with `try_read` and leaves controller
+    /// acknowledgement to its caller. Reading IIR can acknowledge a
+    /// transmitter-empty source, which this driver does not enable.
+    pub fn interrupt_cause(&self) -> Result<Option<InterruptCause>, Error> {
+        self.ensure_configured()?;
+        let identification = self.read(INTERRUPT_IDENTIFICATION)?;
+        if identification & IIR_NO_INTERRUPT != 0 {
+            return Ok(None);
+        }
+        let cause = match identification & IIR_CAUSE {
+            0x00 => InterruptCause::ModemStatus,
+            0x02 => InterruptCause::TransmitterEmpty,
+            0x04 => InterruptCause::ReceiveData,
+            0x06 => InterruptCause::ReceiveLineStatus,
+            0x0c => InterruptCause::ReceiveTimeout,
+            reserved => InterruptCause::Reserved(reserved),
+        };
+        Ok(Some(cause))
+    }
+
+    fn disable_interrupts(&self) -> Result<(), Error> {
+        let gate = self.write(MODEM_CONTROL, MCR_DTR_AND_RTS);
+        let sources = self.write(INTERRUPT_ENABLE, 0);
+        gate.and(sources)
+    }
+
+    fn ensure_configured(&self) -> Result<(), Error> {
         if !self.configured {
             return Err(Error::NotConfigured);
         }
+        Ok(())
+    }
+
+    fn poll_status(&mut self) -> Result<u8, Error> {
+        self.ensure_configured()?;
         let status = self.read(LINE_STATUS)?;
         // Reading LSR acknowledges the receive error flags even when a
         // transmitter checked it. Keep them until the next receive result.
