@@ -56,6 +56,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "kitty-shell"
+version = "0.1.0"
+
+[[package]]
 name = "kitty-uart"
 version = "0.1.0"
 dependencies = [

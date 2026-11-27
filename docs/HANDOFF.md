@@ -1187,3 +1187,53 @@ Formato:
   autoteste cooperativo enquanto a recolha do host depender dele.
 - **Avisos** — a amostra mede o caminho cooperativo em TCG e inclui a
   preparação do autoteste. A CI valida o parser sem impor um limiar.
+
+### [2026-11-26] — CODEX (comandos da shell)
+
+- **Feito** — parser de linhas UTF-8 e comandos internos `help` e
+  `echo`. Decisão D-129.
+- **PRs abertos** — ramo `codex/shell-comandos` sobre o #20, para usar
+  a infraestrutura de fuzzing.
+- **Testes/fuzzing** — cinco testes no host e em Miri. O alvo sob
+  AddressSanitizer executou 1 635 567 casos em 16 segundos.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — limites de bytes e palavras
+  antes de expor a linha. O parser valida UTF-8 e controlos.
+- **Bloqueado por / à espera do Claude** — ABI de consola e execução
+  do primeiro programa em user space.
+- **Próximo passo sugerido para o Claude** — documentar o contrato
+  de entrada e saída de texto para a primeira shell.
+
+### [2026-11-26] — CODEX (editor de linha da shell)
+
+- **Feito** — edição, navegação e remoção em fronteiras UTF-8.
+  Decisão D-130.
+- **PRs abertos** — ramo `codex/shell-edicao` sobre o #47.
+- **Testes/fuzzing** — oito testes no host e em Miri. O alvo `shell`
+  validou sequências de edição em 564 613 casos sob ASan.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — armazenamento limitado e
+  preservação da linha quando uma inserção é recusada.
+- **Bloqueado por / à espera do Claude** — consola de user space e
+  execução do primeiro programa.
+- **Próximo passo sugerido para o Claude** — definir entrega dos bytes
+  de texto e teclas de controlo à shell.
+
+### [2026-11-26] — CODEX (entrada da consola da shell)
+
+- **Feito** — sessão que conserva a edição entre leituras e executa
+  um comando ao receber Enter. Ctrl+C cancela a edição. Decisão D-131.
+- **PRs abertos** — ramo `codex/shell-consola` sobre o #49. Revisões
+  atualizadas nos #39 e #40, e submetidas nos #51 e #52.
+- **Testes/fuzzing** — 12 testes no host e em Miri. O alvo `shell`
+  passou 386 970 casos sob ASan com o fluxo de entrada incluído. Um
+  segundo ensaio passou 228 226 casos após alargar as inserções a todo
+  o intervalo de Unicode. O teste de leituras parciais inclui um emoji.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — descodificação incremental
+  com estado de tamanho fixo. Uma falha de escrita não repete o comando.
+- **Bloqueado por / à espera do Claude** — syscalls de consola e
+  carregador de `/sbin/init` propostos no #52.
+- **Próximo passo sugerido para o Claude** — fechar as perguntas no #52
+  sobre perda de dados, escritas parciais e apresentação da linha.
+- **Avisos** — a sessão ainda só executa através de um chamador Rust.

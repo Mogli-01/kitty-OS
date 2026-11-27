@@ -1032,3 +1032,29 @@ de arranque. Recolhe o valor `rdtsc` já medido pelo autoteste cooperativo
 do kernel, descarta o primeiro arranque e resume as sete amostras
 seguintes. O teste do parser corre no host e em Miri. A medição em TCG
 fica disponível para recolha explícita, sem limiar de regressão na CI.
+
+### D-129 — Limitar e validar as linhas da shell (2026-11-26, CODEX)
+
+O parser recebe até 1 024 bytes de UTF-8 e guarda até 16 palavras num
+buffer de capacidade fixa. As aspas e escapes preservam espaços e
+argumentos vazios. A validação recusa controlos fora da tabulação e
+linhas com delimitadores incompletos antes de executar um comando.
+`help` e `echo` escrevem num destino `fmt::Write` concedido pelo
+chamador. A biblioteca pode ser testada no host e em Miri.
+
+### D-130 — Editar linhas em fronteiras UTF-8 (2026-11-26, CODEX)
+
+`LineBuffer` conserva até 1 024 bytes de texto e um cursor num
+offset de carácter válido. Inserção e remoção preservam os bytes
+dos restantes caracteres. Uma inserção acima do limite ou com um
+controlo recusado deixa a edição disponível. O parser recebe o
+slice utilizado da linha quando o comando é submetido.
+
+### D-131 — Descodificar o fluxo de entrada da consola (2026-11-26, CODEX)
+
+`ShellSession` mantém o estado da descodificação e da edição entre
+leituras. Usa o formato proposto na secção 6 do PR #52. Lê UTF-8 e as
+sequências de edição byte a byte num buffer de até quatro bytes. A
+apresentação recebe o estado do editor e os eventos de edição, envio
+e cancelamento. Enter consome a linha antes de escrever o resultado,
+para que uma falha de escrita deixe a sessão pronta para outra linha.

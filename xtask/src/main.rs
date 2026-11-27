@@ -35,8 +35,8 @@ mod boot_bench;
 mod boot_trace;
 mod input_tests;
 mod memory_tests;
-mod visual_test;
 mod scheduler_bench;
+mod visual_test;
 
 /// Limine binary release we boot with. Pinned to an exact commit of the
 /// official `v11.x-binary` branch so a compromised or changed branch cannot
