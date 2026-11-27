@@ -169,6 +169,60 @@ pub fn has_nx() -> bool {
     r.edx & (1 << 20) != 0
 }
 
+const CR4_UMIP: u64 = 1 << 11;
+const CR4_SMEP: u64 = 1 << 20;
+const CR4_SMAP: u64 = 1 << 21;
+
+/// CPU protections enabled by [`enable_user_protections`].
+#[derive(Clone, Copy, Debug)]
+pub struct UserProtections {
+    /// Supervisor Mode Execution Prevention: the kernel cannot execute
+    /// user pages (stops "ret2user" exploits).
+    pub smep: bool,
+    /// Supervisor Mode Access Prevention: the kernel cannot read/write user
+    /// pages except inside `copy_*_user` (stops kernel bugs from following
+    /// user-controlled pointers).
+    pub smap: bool,
+    /// User-Mode Instruction Prevention: `sgdt`, `sidt`, `sldt`, `smsw` and
+    /// `str` fault in ring 3 (they would leak kernel table addresses).
+    pub umip: bool,
+}
+
+/// Enables SMEP, SMAP and UMIP when the CPU supports them (CPUID leaf 7).
+/// Safe: each only *adds* restrictions; the kernel maps no user pages it
+/// relies on executing or accessing directly (the W^X audit checks that
+/// the kernel half has no user pages, and user memory is only touched by
+/// `usercopy`, which opens SMAP for one instruction).
+pub fn enable_user_protections() -> UserProtections {
+    let leaf7 = core::arch::x86_64::__cpuid_count(7, 0);
+    let wanted = UserProtections {
+        smep: leaf7.ebx & (1 << 7) != 0,
+        smap: leaf7.ebx & (1 << 20) != 0,
+        umip: leaf7.ecx & (1 << 2) != 0,
+    };
+    let mut cr4: u64;
+    // SAFETY: reading CR4 has no side effects.
+    unsafe { asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags)) };
+    if wanted.smep {
+        cr4 |= CR4_SMEP;
+    }
+    if wanted.smap {
+        cr4 |= CR4_SMAP;
+    }
+    if wanted.umip {
+        cr4 |= CR4_UMIP;
+    }
+    // SAFETY: only sets bits for features CPUID reports as supported (a
+    // reserved bit would #GP). Each one restricts what code may do; none
+    // breaks the kernel, which never runs, reads or writes user pages
+    // outside `usercopy`. Not `nomem`: accesses must not move across it.
+    unsafe { asm!("mov cr4, {}", in(reg) cr4, options(nostack, preserves_flags)) };
+    if wanted.smap {
+        super::usercopy::note_smap_enabled();
+    }
+    wanted
+}
+
 /// Sets EFER.NXE so page-table entries can forbid instruction fetches.
 ///
 /// Safe: it only *enables* a protection. Pages without the NX bit behave as
@@ -256,6 +310,13 @@ pub fn invlpg(addr: u64) {
     // SAFETY: see above. Not `nomem`: it must be ordered after the page
     // table write it follows.
     unsafe { asm!("invlpg [{}]", in(reg) addr, options(nostack, preserves_flags)) };
+}
+
+/// Reads the time-stamp counter (CPU cycles since reset, roughly).
+pub fn rdtsc() -> u64 {
+    // SAFETY: `rdtsc` only reads the time-stamp counter; it touches no
+    // memory and is allowed in ring 0.
+    unsafe { core::arch::x86_64::_rdtsc() }
 }
 
 /// Parks the current CPU forever.
