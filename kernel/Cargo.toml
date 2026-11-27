@@ -34,6 +34,15 @@ selftest-irq-pit = []
 # Opt in to the boot-CPU xAPIC controller while validating the handover.
 xapic = ["dep:kitty-acpi", "dep:kitty-apic"]
 selftest-xapic = ["xapic", "selftest-irq-pit"]
+# Two busy threads that never yield must both make progress (PIT ticks call
+# sched::tick). Does not panic: expect exit code 33.
+selftest-preempt = []
+# A kernel thread recurses into its stack guard page: expect a double fault.
+selftest-thread-stack-overflow = []
+# The kernel reads a user page directly: with SMAP, expect a #PF report.
+selftest-smap = []
+# The kernel executes a user page: with SMEP, expect a #PF report.
+selftest-smep = []
 
 [dependencies]
 limine = "0.6.5"
