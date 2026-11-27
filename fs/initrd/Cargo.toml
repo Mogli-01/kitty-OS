@@ -1,0 +1,5 @@
+[package]
+name = "kitty-initrd"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
