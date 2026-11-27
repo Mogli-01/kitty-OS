@@ -267,7 +267,8 @@ fn dispatch_syscall(frame: &mut TrapFrame) {
     // runs with DF clear and we do not carry IOPL, NT, RF, TF or AC back.
     frame.rflags = (frame.rflags & 0xcd5) | 0x202;
     super::cpu::enable_interrupts();
-    frame.rax = crate::syscall::dispatch(frame.rax, frame.rdi, frame.rsi, frame.rdx) as u64;
+    frame.rax =
+        crate::syscall::dispatch(frame.rax, frame.rdi, frame.rsi, frame.rdx, frame.r10) as u64;
     super::cpu::disable_interrupts();
     crate::proc::on_return_to_user();
 }

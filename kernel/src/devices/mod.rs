@@ -16,7 +16,7 @@
 #[cfg(feature = "xapic")]
 mod apic;
 mod initrd;
-pub(crate) use initrd::initrd_file;
+pub(crate) use initrd::{initrd_file, open_root_file};
 mod pit;
 mod ps2;
 #[cfg(all(

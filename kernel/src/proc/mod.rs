@@ -23,6 +23,7 @@ use crate::mm::uspace::{UserPerm, UserSpace};
 use crate::sched::{self, SpawnError};
 
 mod elf;
+pub(crate) mod files;
 
 /// Where test images put their code (docs/FASE6.md §1: ELF segments start
 /// at 4 MiB).
@@ -73,6 +74,8 @@ pub struct Process {
     space: UserSpace,
     kill: AtomicBool,
     console: AtomicBool,
+    pub(crate) files: crate::sync::IrqSpinLock<files::Files>,
+    pub(crate) root_dir: bool,
     status: AtomicU32,
 }
 
@@ -108,6 +111,8 @@ impl Process {
             space,
             kill: AtomicBool::new(false),
             console: AtomicBool::new(false),
+            files: files::Files::table(),
+            root_dir: false,
             status: AtomicU32::new(STATUS_RUNNING),
         }))
     }
@@ -187,6 +192,8 @@ pub(crate) fn start_init() {
         space,
         kill: AtomicBool::new(false),
         console: AtomicBool::new(false),
+        files: files::Files::table(),
+        root_dir: true,
         status: AtomicU32::new(STATUS_RUNNING),
     });
     process.grant_console();

@@ -55,3 +55,12 @@ pub(crate) fn initrd_file(path: &str) -> Option<&'static [u8]> {
         kitty_vfs::Inode::Directory => None,
     }
 }
+
+pub(crate) fn open_root_file(path: &str) -> Result<kitty_vfs::File<'static>, kitty_vfs::Error> {
+    let guard = ROOT.lock();
+    let root = guard.as_ref().ok_or(kitty_vfs::Error::NotFound)?;
+    match root.directory("/")?.lookup(path)? {
+        kitty_vfs::Inode::File(file) => Ok(file),
+        kitty_vfs::Inode::Directory => Err(kitty_vfs::Error::NotFound),
+    }
+}

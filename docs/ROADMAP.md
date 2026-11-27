@@ -102,7 +102,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 ## Fase 6 — User mode
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Entrada e tabela de syscalls | CLAUDE / CODEX | Entrada `syscall`, retorno IRETQ e consola em revisão em `codex/fase7-syscalls`. Faltam handles de ficheiros e integração de `init` |
+| Entrada e tabela de syscalls | CLAUDE / CODEX | Entrada `syscall`, retorno IRETQ e consola em revisão em `codex/fase7-syscalls`. Ficheiros e integração de `init` em revisão em `codex/fase7-shell-init`. |
 | `UserPtr<T>`, `copy_from_user` / `copy_to_user` (com recuperação de #PF) | CLAUDE | FEITO |
 | Espaços de endereçamento separados por processo; entrada em ring 3, `TSS.RSP0`, `swapgs`, exceções de user matam o processo, FPU/SSE por thread (6b) | CLAUDE | FEITO |
 | ELF loader | CLAUDE / CODEX | Carregamento estático de `/sbin/init` em revisão em `codex/fase7-init` |
@@ -121,9 +121,9 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 |---|---|---|
 | VFS | CODEX | Raiz só de leitura montada no arranque (#83). Pesquisa relativa por diretório em revisão em `codex/vfs-directorios` |
 | initrd (módulo do Limine) | CODEX | Parser USTAR, empacotamento e validação integrados. Montagem e leitura verificadas em BIOS e UEFI |
-| Shell em userland | CODEX | Parser, editor e sessão no main. Transporte de consola e teste com teclado QEMU e shell no host em revisão no #95. Faltam as syscalls e o arranque de `/sbin/init` |
+| Shell em userland | CODEX | `/sbin/init` em Ring 3, comandos e teste QEMU em revisão em `codex/fase7-shell-init` |
 | Entrega do módulo initrd ao VFS (`Platform::initrd`, validado, só de leitura) (#22) | CLAUDE | FEITO |
-| Syscalls de ficheiros no núcleo: `open_at(dir_handle, caminho, direitos)`, read/write/close; sem caminhos absolutos globais (D-058) | CLAUDE | TODO |
+| Syscalls de ficheiros no núcleo: `open_at`, read/write/close (D-058) | CLAUDE / CODEX | Leitura via handle DIR, escrita recusada na raiz só de leitura e fecho de ficheiros em revisão em `codex/fase7-shell-init` |
 
 ## Fase 8 — Aleatoriedade e permissões
 | Tarefa | Dono | Estado |

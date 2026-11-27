@@ -277,6 +277,7 @@ jobs:
           cargo xtask test-keyboard "${flags[@]}" --expect "$controller"
           cargo xtask test-mouse "${flags[@]}" --expect "$controller"
           cargo xtask test-initrd "${flags[@]}"
+          cargo xtask test-shell "${flags[@]}"
           fixture=$(mktemp -d)
           mkdir -p "$fixture/root/sbin"
           as tests/phase7/init.S -o "$fixture/init.o"
@@ -299,6 +300,7 @@ jobs:
             build/serial-logs/*.log
             build/visual/
             build/serial-keyboard.log
+            build/shell-tests/*/serial.log
             build/serial-mouse.log
             build/initrd-tests/*/*.log
           if-no-files-found: ignore

@@ -431,6 +431,10 @@ assinado em `rax`.
 | 1 | `yield()` |
 | 2 | `console_read(handle, buffer, len)` |
 | 3 | `console_write(handle, buffer, len)` |
+| 4 | `open_at(dir, path, len, rights)` |
+| 5 | `read(file, buffer, len)` |
+| 6 | `write(file, buffer, len)` |
+| 7 | `handle_close(file)` |
 
 A consola exige o handle 0 concedido ao processo. As transferências são
 limitadas a 4 KiB. A leitura bloqueia enquanto não houver input. O driver
@@ -438,7 +442,13 @@ PS/2 envia UTF-8 e teclas de edição pela função `console::input_push`.
 O núcleo procura `/sbin/init` no initrd. Um ELF64 estático válido
 arranca em Ring 3 com o handle de consola. Um ficheiro ausente ou
 recusado produz um diagnóstico e o núcleo continua.
-Os handles de ficheiros ficam para o próximo PR.
+O quarto argumento usa `r10`. A primeira shell recebe o handle
+DIR 1 para a raiz do initrd. `open_at` valida um caminho canónico
+relativo, com até 256 bytes, e aceita nesta etapa o direito READ
+(`0x1`). Os ficheiros são só de leitura, com no máximo 16
+handles de ficheiro por processo. Cada handle conserva um cursor e uma
+geração. A primeira versão usa os handles iniciais fixos de consola e
+diretório. A transferência e duplicação desses handles ficam pendentes.
 
 ### Memória de user: `mm::user` (Fase 6a) — INSTÁVEL
 Fornece: CLAUDE (`kernel/src/mm/user.rs`). Usa: núcleo (syscalls).

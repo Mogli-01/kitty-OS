@@ -1658,3 +1658,26 @@ Formato:
   pela syscall de consola.
 - **Avisos** — este ensaio liga o driver do convidado à shell no host.
   A transição de Ring 3 e as syscalls ficam para o ensaio integral.
+
+### [2026-11-27] — CODEX (shell real da Fase 7)
+
+- **Feito** — ELF da shell em `/sbin/init`, prompt e edição do
+  teclado no convidado. O `cat` abre e lê através do handle DIR,
+  avança o cursor de leitura e fecha o ficheiro. `shell-initrd`
+  prepara o arquivo para demonstração.
+- **PRs abertos** — ramo `codex/fase7-shell-init` sobre #99. Integra
+  também os ramos do VFS (#96) e do transporte da shell (#95).
+- **Testes/fuzzing** — `cargo xtask test-shell` passou nas quatro
+  combinações de BIOS e UEFI com debug e release. Verifica `help`,
+  edição e Ctrl+C, leitura de ficheiro, caminho inválido e ficheiro
+  inexistente. O ensaio ELF também verifica a recusa de direitos de
+  escrita. Sem medições de desempenho.
+- **Proteções de segurança alteradas** — direitos limitados à leitura
+  no initrd, caminhos confinados ao DIR e gerações para rejeitar
+  handles fechados. O adaptador asm tem justificação em UNSAFE.md.
+- **Bloqueado por / à espera do Claude** — revisão da ABI e do núcleo.
+- **Próximo passo sugerido para o Claude** — rever #98, #99 e a
+  integração da shell por esta ordem. Duplicação e transferência
+  genéricas de capacidades pertencem ao trabalho posterior.
+- **Avisos** — o teste usa a série para verificar UTF-8. A fonte inicial
+  do framebuffer só tem glifos ASCII.

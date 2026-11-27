@@ -79,5 +79,17 @@ cargo xtask test-keyboard --release --bios
 ```
 
 O teste verifica Ctrl+C, Backspace, setas, Enter e texto acentuado.
-A execução da shell no convidado depende das syscalls de consola e do
-carregamento de `/sbin/init`.
+### Arrancar a shell no kitty-OS
+
+```sh
+cargo xtask shell-initrd
+cargo xtask run --release --initrd build/shell/shell.tar
+cargo xtask test-shell --release
+cargo xtask test-shell --release --bios
+```
+
+`shell-initrd` compila o ELF estático e inclui-o como `/sbin/init`.
+O arquivo também inclui um ficheiro de demonstração. No convidado,
+usa `help`, `echo "olá mundo"` e `cat etc/kitty.txt`. O teclado
+segue o layout PT-PT. O comando `test-shell` verifica em Ring 3 o
+prompt, o teclado e a leitura de ficheiros.

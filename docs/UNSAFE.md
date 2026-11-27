@@ -55,3 +55,11 @@ respostas do bootloader). Usado só em `arch/x86_64/boot.rs`.
   após a validação do estado de retorno. O retorno usa IRETQ e seletores
   fixos. O scratch depende da execução num único CPU. Os handlers IST
   atuais não usam o scratch nem acedem a dados por GS.
+
+
+### Adaptador de syscalls da primeira shell
+
+- `userland/shell/src/bin/init.rs`: a instrução `syscall` usa os
+  registos e clobbers documentados em INTERFACES. As slices ficam vivas
+  durante a chamada síncrona e o núcleo valida os intervalos antes de
+  copiar. O símbolo de entrada chama Rust com alinhamento System V.
