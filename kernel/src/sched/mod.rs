@@ -206,6 +206,32 @@ pub fn spawn(name: &'static str, entry: fn()) -> Result<ThreadId, SpawnError> {
     spawn_inner(name, entry, None)
 }
 
+/// Whether `rip`/`rsp` may start a user thread. Both must lie strictly
+/// inside the user half, `[USER_MIN, USER_END)`: `iretq` to a
+/// non-canonical RIP faults in ring 0 with the user GS base loaded (the
+/// frame's CS is still the kernel's), and `USER_END` itself is the first
+/// non-canonical address, so it is refused for RSP too. RSP must also be
+/// above `USER_MIN` and 16-byte aligned. Refused here so the contract of
+/// `enter_user` holds for every caller (security review, #91).
+fn valid_user_entry(rip: u64, rsp: u64) -> bool {
+    let user_half = USER_MIN..USER_END;
+    user_half.contains(&rip) && user_half.contains(&rsp) && rsp > USER_MIN && rsp.is_multiple_of(16)
+}
+
+/// Boot check of `valid_user_entry` at its limits (no ring-3 entry).
+pub fn user_entry_selftest() -> bool {
+    let ok_rip = USER_MIN;
+    let top = USER_END - 16;
+    valid_user_entry(ok_rip, top)
+        && valid_user_entry(USER_END - 1, top)
+        && !valid_user_entry(ok_rip, USER_END) // exclusive upper limit
+        && !valid_user_entry(USER_END, top)
+        && !valid_user_entry(USER_MIN - 1, top)
+        && !valid_user_entry(ok_rip, USER_MIN) // empty stack at the bottom
+        && !valid_user_entry(ok_rip, top + 8) // misaligned
+        && !valid_user_entry(ok_rip, !0xF) // kernel half
+}
+
 /// Creates a thread of `process` that starts running user code at `rip`
 /// with stack `rsp` (both user-half addresses), and queues it as ready.
 pub fn spawn_user(
@@ -214,11 +240,7 @@ pub fn spawn_user(
     rip: u64,
     rsp: u64,
 ) -> Result<ThreadId, SpawnError> {
-    // `iretq` to a non-canonical RIP faults in ring 0 with the user GS
-    // base loaded (the frame's CS is the kernel's): refuse here, so the
-    // contract of `enter_user` holds for every caller (security review).
-    let user_half = USER_MIN..USER_END;
-    if !user_half.contains(&rip) || rsp <= USER_MIN || rsp > USER_END || !rsp.is_multiple_of(16) {
+    if !valid_user_entry(rip, rsp) {
         return Err(SpawnError::BadUserAddress);
     }
     let user = UserThread {
