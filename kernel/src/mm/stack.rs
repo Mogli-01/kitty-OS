@@ -59,6 +59,11 @@ impl KernelStack {
     }
 
     /// Address of the guard page (unmapped), for tests.
+    pub fn bottom(&self) -> u64 {
+        self.base()
+    }
+
+    /// Address of the guard page right below the stack.
     pub fn guard_page(&self) -> u64 {
         self.base() - GUARD_SIZE
     }

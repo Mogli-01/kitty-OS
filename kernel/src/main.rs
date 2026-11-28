@@ -33,6 +33,7 @@ pub mod firmware;
 #[allow(unsafe_code)]
 pub mod mm;
 mod panic;
+pub mod proc;
 #[allow(unsafe_code)]
 pub mod sched;
 pub mod security;
@@ -108,6 +109,7 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     );
 
     let prot = arch::x86_64::cpu::enable_user_protections();
+    arch::x86_64::cpu::enable_user_sse();
     kprintln!(
         "[cpu] user-mode protections: SMEP {}, SMAP {}, UMIP {}",
         if prot.smep { "on" } else { "UNSUPPORTED" },
@@ -210,6 +212,25 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
 
     assert!(sched::wait::selftest(), "wait queue self-test failed");
     kprintln!("[sched] wait queue self-test passed: waiter blocked, woken, value seen");
+    assert!(
+        sched::user_entry_selftest(),
+        "user entry validation self-test failed"
+    );
+    kprintln!("[sched] user entry validation self-test passed (RIP/RSP strictly below USER_END)");
+
+    match proc::selftest::run() {
+        Ok(r) => kprintln!(
+            "[proc] user-mode self-test passed: {} ring-3 faults killed their process (UMIP {}), preemption + register hygiene {}",
+            r.faults_ok,
+            if r.umip { "on" } else { "off" },
+            if r.preemption_tested {
+                "checked"
+            } else {
+                "skipped (no timer)"
+            }
+        ),
+        Err(why) => panic!("user-mode self-test failed: {}", why),
+    }
 
     #[cfg(feature = "selftest-preempt")]
     {

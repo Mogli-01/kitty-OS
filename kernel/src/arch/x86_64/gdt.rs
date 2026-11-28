@@ -97,9 +97,10 @@ struct CpuTables {
     tss: UnsafeCell<Tss>,
 }
 
-// SAFETY: the tables are written exactly once, by the single caller that
-// wins the `INITIALIZED` flag in `init`, before the CPU is told about them.
-// Afterwards Rust code never touches them again; only the CPU does.
+// SAFETY: the GDT is written exactly once, by the single caller that wins
+// the `INITIALIZED` flag in `init`, before the CPU is told about it. The
+// TSS is written by `init` and afterwards only its RSP0 field, by
+// `set_kernel_stack`, on one CPU with interrupts disabled.
 unsafe impl Sync for CpuTables {}
 
 static TABLES: CpuTables = CpuTables {
@@ -116,6 +117,23 @@ static TABLES: CpuTables = CpuTables {
 };
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+/// Per-CPU block that the kernel's GS base points at (Phase 6b, D-060).
+/// Today nothing reads it through GS; the `swapgs` self-check compares the
+/// GS base MSR with its address. Phase 6c puts the `syscall` scratch slots
+/// here (kernel RSP, saved user RSP).
+#[repr(C, align(64))]
+pub struct PerCpu {
+    _reserved: [u64; 8],
+}
+
+/// The boot CPU's block (Phase 9 / SMP: one per CPU).
+static PERCPU: PerCpu = PerCpu { _reserved: [0; 8] };
+
+/// Address the kernel GS base must hold while the kernel runs.
+pub fn percpu_address() -> u64 {
+    (&raw const PERCPU).addr() as u64
+}
 
 /// Operand of `lgdt`/`lidt`: 16-bit limit followed by a 64-bit base.
 #[repr(C, packed)]
@@ -215,4 +233,37 @@ pub fn init() {
             options(preserves_flags),
         );
     }
+
+    // SAFETY: `PERCPU` is a 'static block; loading GS above reset the GS
+    // base to 0, and nothing in the kernel uses GS before this.
+    unsafe { super::cpu::set_gs_bases(percpu_address()) };
+}
+
+/// Sets `TSS.RSP0`, the stack the CPU switches to when an interrupt or
+/// exception arrives while ring 3 runs. The scheduler calls it on every
+/// switch with the top of the next thread's kernel stack, so a trap from
+/// user space always lands on the stack of the thread that was running.
+///
+/// # Safety
+/// Interrupts must be disabled, and `top` must be the top of the kernel
+/// stack of the thread about to run (or the bottom of a stack whose guard
+/// page is below it, so that a stray trap from ring 3 double-faults): the
+/// next trap from ring 3 writes its frame there.
+pub(crate) unsafe fn set_kernel_stack(top: u64) {
+    assert!(
+        !super::cpu::interrupts_enabled(),
+        "gdt: RSP0 changed with interrupts enabled"
+    );
+    if !INITIALIZED.load(Ordering::Acquire) {
+        return;
+    }
+    let tss = TABLES.tss.get();
+    // SAFETY: `tss` points to the live, initialised TSS static; taking a raw
+    // pointer to one of its fields creates no reference.
+    let rsp0 = unsafe { &raw mut (*tss).rsp[0] };
+    // SAFETY: on a single CPU with interrupts disabled nothing else reads or
+    // writes the TSS now (the CPU only reads RSP0 when a trap from ring 3 is
+    // delivered, which cannot happen with IF=0). The field is only 4-byte
+    // aligned in the packed struct, hence the unaligned write.
+    unsafe { rsp0.write_unaligned(top) };
 }

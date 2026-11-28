@@ -223,6 +223,87 @@ pub fn enable_user_protections() -> UserProtections {
     wanted
 }
 
+const MSR_GS_BASE: u32 = 0xC000_0101;
+const MSR_KERNEL_GS_BASE: u32 = 0xC000_0102;
+const CR0_MP: u64 = 1 << 1;
+const CR0_EM: u64 = 1 << 2;
+const CR0_TS: u64 = 1 << 3;
+const CR4_OSFXSR: u64 = 1 << 9;
+const CR4_OSXMMEXCPT: u64 = 1 << 10;
+const CR0_NE: u64 = 1 << 5;
+const CR4_FSGSBASE: u64 = 1 << 16;
+const CR4_OSXSAVE: u64 = 1 << 18;
+
+/// Installs the GS bases for the boot CPU (Phase 6b, D-060): the kernel's
+/// GS base points at its per-CPU block, and the "other" GS base (what
+/// `swapgs` hands to user space) is 0, so user code never sees a kernel
+/// pointer in GS. Must run after the last `mov gs, …` (loading a selector
+/// resets the base).
+///
+/// # Safety
+/// `kernel_gs` must be the address of a per-CPU block that lives forever.
+pub(crate) unsafe fn set_gs_bases(kernel_gs: u64) {
+    // SAFETY: both MSRs exist on every x86_64 CPU; writing them only
+    // changes what GS-relative accesses resolve to, and the kernel does not
+    // use GS before this point (forwarded contract for the block).
+    unsafe { wrmsr(MSR_GS_BASE, kernel_gs) };
+    // SAFETY: as above; 0 is a valid (canonical) base for user space.
+    unsafe { wrmsr(MSR_KERNEL_GS_BASE, 0) };
+}
+
+/// Current GS base (for the swapgs self-check: after entering the kernel
+/// from ring 3 it must be the kernel's per-CPU block again).
+pub fn gs_base() -> u64 {
+    rdmsr(MSR_GS_BASE)
+}
+
+/// Enables SSE for **user** code (CR4.OSFXSR/OSXMMEXCPT, CR0.MP, no EM/TS).
+/// The kernel itself is built soft-float and never touches the FPU/SSE
+/// registers; user state is saved and restored per thread with
+/// `fxsave`/`fxrstor` (`usermode`), so one process never sees another's
+/// registers.
+///
+/// Explicitly **off** (the firmware or bootloader may have left them on):
+/// - CR4.OSXSAVE: AVX state (upper YMM halves) is not covered by `fxsave`,
+///   so with it on one process could read another's; AVX faults (#UD);
+/// - CR4.FSGSBASE: `wrgsbase` would let user code choose the base that
+///   `swapgs` hands to the kernel side.
+///
+/// CR0.NE on: x87 errors raise #MF (kills the process) instead of the
+/// legacy FERR#/IRQ 13 path.
+pub fn enable_user_sse() {
+    let mut cr0: u64;
+    // SAFETY: reading CR0 has no side effects.
+    unsafe { asm!("mov {}, cr0", out(reg) cr0, options(nomem, nostack, preserves_flags)) };
+    cr0 = (cr0 | CR0_MP | CR0_NE) & !(CR0_EM | CR0_TS);
+    // SAFETY: MP/EM/TS only control how x87/SSE instructions behave; the
+    // kernel executes none. Not `nomem`: ordered with the CR4 write below.
+    unsafe { asm!("mov cr0, {}", in(reg) cr0, options(nostack, preserves_flags)) };
+    let mut cr4: u64;
+    // SAFETY: reading CR4 has no side effects.
+    unsafe { asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags)) };
+    cr4 = (cr4 | CR4_OSFXSR | CR4_OSXMMEXCPT) & !(CR4_OSXSAVE | CR4_FSGSBASE);
+    // SAFETY: FXSR and SSE exceptions are architectural on every x86_64 CPU,
+    // so these bits are never reserved; clearing OSXSAVE/FSGSBASE only
+    // removes features (the kernel uses neither XSAVE nor *GSBASE).
+    unsafe { asm!("mov cr4, {}", in(reg) cr4, options(nostack, preserves_flags)) };
+    let check: u64;
+    // SAFETY: reading CR4 has no side effects.
+    unsafe { asm!("mov {}, cr4", out(reg) check, options(nomem, nostack, preserves_flags)) };
+    assert!(
+        check & (CR4_OSXSAVE | CR4_FSGSBASE) == 0,
+        "cpu: could not disable XSAVE/FSGSBASE for user space"
+    );
+}
+
+/// Whether CR4.UMIP is set (`sgdt` & co. fault in ring 3).
+pub fn umip_enabled() -> bool {
+    let cr4: u64;
+    // SAFETY: reading CR4 has no side effects.
+    unsafe { asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags)) };
+    cr4 & CR4_UMIP != 0
+}
+
 /// Sets EFER.NXE so page-table entries can forbid instruction fetches.
 ///
 /// Safe: it only *enables* a protection. Pages without the NX bit behave as

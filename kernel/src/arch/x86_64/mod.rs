@@ -30,6 +30,9 @@ pub mod serial;
 pub mod stacks;
 mod trap;
 pub mod usercopy;
+pub mod usermode;
+
+pub use exceptions::swapgs_checks;
 
 /// Brings up the CPU tables on the boot CPU: GDT + TSS (with the IST
 /// stacks), then the IDT, then the interrupt core (legacy PIC remapped and

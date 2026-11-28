@@ -36,6 +36,11 @@ const PCD: u64 = 1 << 4;
 const HUGE: u64 = 1 << 7;
 const GLOBAL: u64 = 1 << 8;
 const NO_EXECUTE: u64 = 1 << 63;
+/// Software bit (ignored by the CPU): this leaf owns a reference to its
+/// frame (taken with `PhysFrame::into_raw`), released when the address
+/// space is destroyed. Leaves without it (future: framebuffer/MMIO
+/// mappings) are only unmapped, never freed.
+const OWNED: u64 = 1 << 9;
 const ADDR_MASK: u64 = 0x000F_FFFF_FFFF_F000;
 
 /// Size of a 2 MiB large page.
@@ -134,6 +139,8 @@ pub enum MapError {
     UserInKernelHalf,
     /// No free frame for a page table.
     OutOfMemory,
+    /// The contents do not fit in the page.
+    TooLarge,
 }
 
 impl fmt::Display for MapError {
@@ -328,6 +335,191 @@ impl AddressSpace {
         }
         report
     }
+}
+
+/// Lowest user address that may ever be mapped: the first 1 MiB stays
+/// unmapped so null pointers and small offsets from them always fault
+/// (docs/FASE6.md §1).
+pub const USER_MIN: u64 = 0x10_0000;
+/// One past the highest user address (start of the non-canonical hole).
+pub const USER_END: u64 = 0x0000_8000_0000_0000;
+
+/// Result of [`AddressSpace::audit_user_half`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct UserAudit {
+    /// Leaf mappings checked.
+    pub mappings: u64,
+    /// Page-table frames in the user half (not counting the PML4).
+    pub tables: u64,
+    /// Present entries (any level) without the user bit: supervisor pages
+    /// in the user half would be reachable by `copy_*_user` (D-054).
+    pub not_user: u64,
+    /// Writable and executable leaves.
+    pub write_and_exec: u64,
+    /// Large pages (never created for user space).
+    pub large: u64,
+    /// Leaves below [`USER_MIN`].
+    pub below_min: u64,
+}
+
+impl UserAudit {
+    /// Whether the user half respects every rule.
+    pub fn is_clean(&self) -> bool {
+        self.not_user == 0 && self.write_and_exec == 0 && self.large == 0 && self.below_min == 0
+    }
+}
+
+impl AddressSpace {
+    /// Creates an address space for a process: an empty user half and the
+    /// kernel half **shared** with `kernel` (the same PDPTs, pre-created at
+    /// boot, so later kernel mappings are visible everywhere).
+    pub fn new_user(kernel: &AddressSpace) -> Result<Self, MapError> {
+        let space = Self::new()?;
+        for i in KERNEL_PML4_START..ENTRIES {
+            write_entry(space.root, i, read_entry(kernel.root, i));
+        }
+        Ok(space)
+    }
+
+    /// Maps `frame` at user address `virt`, transferring the frame
+    /// reference to the page table (released by [`Self::destroy_user`]).
+    /// Refuses addresses outside `[USER_MIN, USER_END)`, non-user flags,
+    /// global pages and W+X. On error the frame is released.
+    pub fn map_user_frame(
+        &mut self,
+        virt: VirtAddr,
+        frame: pmm::PhysFrame,
+        flags: MapFlags,
+    ) -> Result<(), MapError> {
+        let v = virt.as_u64();
+        if !(USER_MIN..USER_END).contains(&v) || !flags.user || flags.global {
+            return Err(MapError::UserInKernelHalf);
+        }
+        if !v.is_multiple_of(PAGE_SIZE) {
+            return Err(MapError::Misaligned);
+        }
+        let bits = Self::check(virt, flags)?;
+        let pdpt = self.next_table(self.root, index(virt, 4), true)?;
+        let pd = self.next_table(pdpt, index(virt, 3), true)?;
+        let pt = self.next_table(pd, index(virt, 2), true)?;
+        let idx = index(virt, 1);
+        if read_entry(pt, idx) & PRESENT != 0 {
+            return Err(MapError::AlreadyMapped);
+        }
+        let phys = frame.into_raw();
+        write_entry(pt, idx, phys.as_u64() | bits | OWNED);
+        Ok(())
+    }
+
+    /// Checks the user half (PML4 entries 0-255) against the rules: every
+    /// present entry has the user bit, no W+X, no large pages, nothing
+    /// below [`USER_MIN`].
+    pub fn audit_user_half(&self) -> UserAudit {
+        let mut report = UserAudit::default();
+        for i in 0..KERNEL_PML4_START {
+            let e = read_entry(self.root, i);
+            if e & PRESENT == 0 {
+                continue;
+            }
+            if e & USER == 0 {
+                report.not_user += 1;
+            }
+            if let Some(t) = entry_addr(e) {
+                report.tables += 1;
+                audit_user(t, 3, (i as u64) << 39, &mut report);
+            }
+        }
+        report
+    }
+
+    /// Frees the whole user half (every owned page and every table) and
+    /// the PML4 itself. The kernel half is shared and left untouched.
+    /// Returns how many frames were released.
+    ///
+    /// Panics if this address space is the one in CR3 (freeing the tables
+    /// the CPU is walking would be a use-after-free in hardware).
+    pub fn destroy_user(self) -> u64 {
+        assert!(
+            active_root() != Some(self.root),
+            "paging: destroying the active address space"
+        );
+        let mut freed = 0;
+        for i in 0..KERNEL_PML4_START {
+            let e = read_entry(self.root, i);
+            if e & PRESENT != 0
+                && let Some(t) = entry_addr(e)
+            {
+                freed += free_user_table(t, 3);
+            }
+            write_entry(self.root, i, 0);
+        }
+        // SAFETY: the PML4 frame was taken with `into_raw` in `new` and is
+        // released only here (`self` is consumed).
+        drop(unsafe { pmm::PhysFrame::from_raw(self.root) });
+        freed + 1
+    }
+}
+
+/// Recursive part of [`AddressSpace::audit_user_half`]; `base` is the
+/// virtual address covered by `table`.
+fn audit_user(table: PhysAddr, level: u32, base: u64, r: &mut UserAudit) {
+    let span = 1u64 << (12 + 9 * (level - 1));
+    for i in 0..ENTRIES {
+        let e = read_entry(table, i);
+        if e & PRESENT == 0 {
+            continue;
+        }
+        let virt = base + i as u64 * span;
+        if e & USER == 0 {
+            r.not_user += 1;
+        }
+        if level == 1 || e & HUGE != 0 {
+            r.mappings += 1;
+            if e & HUGE != 0 {
+                r.large += 1;
+            }
+            if e & WRITABLE != 0 && e & NO_EXECUTE == 0 {
+                r.write_and_exec += 1;
+            }
+            if virt < USER_MIN {
+                r.below_min += 1;
+            }
+        } else if let Some(next) = entry_addr(e) {
+            r.tables += 1;
+            audit_user(next, level - 1, virt, r);
+        }
+    }
+}
+
+/// Frees a user page table at `level` (3 = PDPT ... 1 = PT), its owned
+/// leaves and its sub-tables. Returns the number of frames released.
+fn free_user_table(table: PhysAddr, level: u32) -> u64 {
+    let mut freed = 0;
+    for i in 0..ENTRIES {
+        let e = read_entry(table, i);
+        if e & PRESENT == 0 {
+            continue;
+        }
+        let Some(addr) = entry_addr(e) else { continue };
+        if level == 1 {
+            if e & OWNED != 0 {
+                // SAFETY: leaves with OWNED were created by `map_user_frame`
+                // from `into_raw`; the entry is cleared below, so this
+                // reference is re-created exactly once.
+                drop(unsafe { pmm::PhysFrame::from_raw(addr) });
+                freed += 1;
+            }
+        } else if e & HUGE == 0 {
+            freed += free_user_table(addr, level - 1);
+        }
+        // Large pages are never created in the user half; one would not be
+        // OWNED and is simply dropped from the tables.
+        write_entry(table, i, 0);
+    }
+    // SAFETY: user-half tables are created by `next_table` from `into_raw`
+    // and referenced by exactly one entry, which our caller clears.
+    drop(unsafe { pmm::PhysFrame::from_raw(table) });
+    freed + 1
 }
 
 /// Result of [`AddressSpace::audit_kernel_half`].

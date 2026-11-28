@@ -75,7 +75,18 @@ const _: () = assert!(core::mem::size_of::<TrapFrame>() == 22 * 8);
 // `trap_common`:
 // - `cld`: the ABI requires the direction flag clear on function entry; the
 //   interrupted code may have set it.
-// - Phase 6 TODO: `swapgs` when coming from ring 3 (CS & 3 != 0).
+// - `swapgs` when the trap came from ring 3 (saved CS & 3 != 0), and again
+//   right before `iretq` when going back there (D-060). The kernel's GS
+//   base is its per-CPU block; user space only ever sees 0. At entry, the
+//   saved CS is at [rsp + 24] (above vector, error code and RIP); at exit,
+//   after dropping vector and error code, at [rsp + 8].
+// - `lfence` after the conditional `swapgs`, on both paths: without it the
+//   CPU may *speculatively* run kernel code with the wrong GS base
+//   (CVE-2019-1125, "SWAPGS" Spectre variant).
+// - Known limit until 6c: an NMI/#MC on the very first instruction of a
+//   ring-3 entry sees CS = kernel and the user GS base. Harmless today
+//   because no handler uses GS; 6c (which starts using GS on `syscall`)
+//   must make the IST handlers check the GS base MSR instead of CS.
 global_asm!(
     r#"
 .macro TRAP_NOERR n
@@ -107,6 +118,11 @@ kitty_trap_\n:
 
 kitty_trap_common:
     cld
+    test qword ptr [rsp + 24], 3
+    jz 1f
+    swapgs
+1:
+    lfence
     push rax
     push rbx
     push rcx
@@ -140,6 +156,10 @@ kitty_trap_common:
     pop rbx
     pop rax
     add rsp, 16
+    test qword ptr [rsp + 8], 3
+    jz 2f
+    swapgs
+2:
     iretq
 
 .section .rodata
@@ -181,5 +201,14 @@ extern "C" fn trap_dispatch(frame: &mut TrapFrame) {
     match u8::try_from(frame.vector) {
         Ok(v) if v >= super::irq::FIRST_INTERRUPT_VECTOR => super::irq::dispatch(v),
         _ => super::exceptions::handle(frame),
+    }
+    // Going back to ring 3: a process that was asked to die (`proc::kill`)
+    // dies here instead, before running another user instruction. Not on
+    // the IST vectors (NMI, #DF, #MC): dying there would switch threads on
+    // the shared IST stack, inside an NMI. The next normal trap (at the
+    // latest the timer) honours the kill.
+    const IST_VECTORS: [u64; 3] = [2, 8, 18];
+    if frame.cs & 3 != 0 && !IST_VECTORS.contains(&frame.vector) {
+        crate::proc::on_return_to_user();
     }
 }
