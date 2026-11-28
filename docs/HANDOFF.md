@@ -1738,3 +1738,17 @@ Formato:
   política na #104. O CSPRNG com estado continua na Fase 16.
 - **Próximo passo** — usar a API comum no caminho de ASLR do #108
   quando os dois PRs forem integrados.
+
+### [2026-11-28] — CODEX (API de entropia comum)
+
+- **Feito** — o #108 integra o #109 e chama a mesma API que o heap
+  para obter a palavra de hardware. A CI verifica os dois consumidores
+  com só RDRAND e com ambas as fontes indisponíveis.
+- **Testes/fuzzing** — oito arranques QEMU em BIOS e UEFI, fmt, Clippy,
+  actionlint e 12 testes de xtask. A shell do #100 arrancou em ambos
+  os firmwares release num checkout de integração. O mesmo initrd foi
+  recusado sem entropia e o heap manteve o modo de recurso.
+- **Proteções de segurança alteradas** — política de seleção partilhada.
+  Sem novos blocos unsafe.
+- **Bloqueado por / à espera do Claude** — revisão humana e integração
+  do carregador, da janela de pilha e da cadeia de entropia.
