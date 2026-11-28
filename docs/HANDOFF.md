@@ -1554,3 +1554,23 @@ Formato:
   quando o CPU não disponibiliza as fontes de entropia e como testar
   o deslocamento no arranque sem publicar endereços.
 - **Avisos** — o tipo ELF estático atual é `ET_EXEC`.
+
+### [2026-11-28] — CODEX (ABI do ELF do kernel)
+
+- **Feito** — o verificador do #103 valida o alinhamento declarado nos
+  segmentos carregáveis e recusa um interpretador externo ou uma declaração
+  de pilha executável.
+- **PRs abertos** — #103. O #100 continua em revisão sobre o carregador do #102.
+- **Testes/fuzzing** — 16 testes de xtask no host, quatro testes do
+  verificador em Miri, fmt e Clippy. Os ELF do kernel em debug e release
+  passaram, e `--expect-pie` recusou o ET_EXEC atual. O arranque release
+  passou em BIOS e UEFI no QEMU 10.0.13.
+- **Proteções de segurança alteradas** — validação adicional no host.
+  O ensaio da declaração da pilha não verifica as permissões da pilha
+  durante o arranque.
+- **Benchmarks** — sem medições nesta ronda.
+- **Bloqueado por / à espera do Claude** — contratos da Fase 8 na #104.
+  A validação do deslocamento requer um kernel PIE.
+- **Próximo passo sugerido para o Claude** — fechar o contrato de
+  relocação e definir o sinal de teste que permita verificar o
+  deslocamento sem publicar endereços.

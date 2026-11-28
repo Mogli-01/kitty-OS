@@ -8,6 +8,9 @@ use super::{Opts, Result, build_kernel};
 const ELF_HEADER: usize = 64;
 const PROGRAM_HEADER: usize = 56;
 const PAGE: u64 = 4096;
+const PT_LOAD: u32 = 1;
+const PT_INTERP: u32 = 3;
+const PT_GNU_STACK: u32 = 0x6474_e551;
 const EXECUTABLE: u32 = 1;
 const WRITABLE: u32 = 2;
 
@@ -31,7 +34,9 @@ pub(super) fn run(opts: &Opts, expect_pie: bool) -> Result<()> {
         Image::Fixed => "ET_EXEC",
         Image::Dynamic => "ET_DYN",
     };
-    println!("xtask: kernel ELF layout verified ({kind}, page separation, W^X, entry point)");
+    println!(
+        "xtask: kernel ELF layout verified ({kind}, load alignment, page separation, W^X, entry point, standalone loading)"
+    );
     Ok(())
 }
 
@@ -72,19 +77,31 @@ fn inspect(bytes: &[u8]) -> Result<Image> {
     let mut entry_is_executable = false;
 
     for (index, header) in table.as_chunks::<PROGRAM_HEADER>().0.iter().enumerate() {
-        if u32::from_le_bytes(at(header, 0)?) != 1 {
-            continue;
-        }
+        let segment_type = u32::from_le_bytes(at(header, 0)?);
         let flags = u32::from_le_bytes(at(header, 4)?);
+        match segment_type {
+            PT_INTERP => return Err("kernel ELF requests an external interpreter".into()),
+            PT_GNU_STACK if flags & EXECUTABLE != 0 => {
+                return Err("kernel ELF requests an executable stack".into());
+            }
+            PT_LOAD => {}
+            _ => continue,
+        }
         let offset = u64::from_le_bytes(at(header, 8)?);
         let address = u64::from_le_bytes(at(header, 16)?);
         let filesz = u64::from_le_bytes(at(header, 32)?);
         let memsz = u64::from_le_bytes(at(header, 40)?);
+        let alignment = u64::from_le_bytes(at(header, 48)?);
         if flags & (WRITABLE | EXECUTABLE) == (WRITABLE | EXECUTABLE) {
             return Err(format!("PT_LOAD {index} is writable and executable"));
         }
         if !address.is_multiple_of(PAGE) || !offset.is_multiple_of(PAGE) {
             return Err(format!("PT_LOAD {index} starts off a 4 KiB boundary"));
+        }
+        if alignment > 1
+            && (!alignment.is_power_of_two() || address % alignment != offset % alignment)
+        {
+            return Err(format!("PT_LOAD {index} has invalid p_align"));
         }
         if memsz < filesz
             || offset
@@ -138,6 +155,7 @@ mod tests {
         bytes[80..88].copy_from_slice(&0x2000u64.to_le_bytes());
         bytes[96..104].copy_from_slice(&64u64.to_le_bytes());
         bytes[104..112].copy_from_slice(&4096u64.to_le_bytes());
+        bytes[112..120].copy_from_slice(&PAGE.to_le_bytes());
         bytes
     }
 
@@ -171,5 +189,32 @@ mod tests {
                 .unwrap_err()
                 .contains("program table")
         );
+    }
+
+    #[test]
+    fn validates_declared_load_alignment() {
+        let mut bytes = image(3);
+        for alignment in [0, 1, PAGE] {
+            bytes[112..120].copy_from_slice(&alignment.to_le_bytes());
+            assert_eq!(inspect(&bytes), Ok(Image::Dynamic));
+        }
+        for alignment in [3, 2 * PAGE] {
+            bytes[112..120].copy_from_slice(&alignment.to_le_bytes());
+            assert!(inspect(&bytes).unwrap_err().contains("p_align"));
+        }
+    }
+
+    #[test]
+    fn enforces_standalone_loading_and_non_executable_stack_metadata() {
+        let mut bytes = image(3);
+        bytes[56..58].copy_from_slice(&2u16.to_le_bytes());
+        bytes[120..124].copy_from_slice(&PT_INTERP.to_le_bytes());
+        assert!(inspect(&bytes).unwrap_err().contains("interpreter"));
+
+        bytes[120..124].copy_from_slice(&PT_GNU_STACK.to_le_bytes());
+        bytes[124..128].copy_from_slice(&6u32.to_le_bytes());
+        assert_eq!(inspect(&bytes), Ok(Image::Dynamic));
+        bytes[124..128].copy_from_slice(&7u32.to_le_bytes());
+        assert!(inspect(&bytes).unwrap_err().contains("executable stack"));
     }
 }

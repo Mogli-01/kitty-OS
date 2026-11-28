@@ -67,9 +67,10 @@ inválido e um arranque sem módulo. Os logs e meios do teste ficam em
 cargo xtask test-kernel-elf --release
 ```
 
-O teste verifica os segmentos carregáveis, incluindo separação por
-página, W^X e a localização da entrada. Indica se a imagem é `ET_EXEC`
-ou `ET_DYN`. Ao testar a transição para PIE, acrescenta
+O teste verifica o alinhamento ELF, a separação por página, W^X e a
+localização da entrada. Também recusa imagens que declarem um
+interpretador externo ou peçam uma pilha executável. Indica se a imagem
+é `ET_EXEC` ou `ET_DYN`. Ao testar a transição para PIE, acrescenta
 `--expect-pie` para exigir `ET_DYN`. A verificação lê o ficheiro
 compilado. A confirmação do deslocamento efetivo exige arrancar o
 kernel com o Limine.
