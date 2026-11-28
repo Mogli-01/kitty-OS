@@ -734,8 +734,9 @@ pub fn aslr() -> Result<(), &'static str> {
     if !in_window(base_a) || !in_window(base_b) {
         return Err("a PIE base outside the ASLR window");
     }
-    // 2^24 bases and 2^16 stack slides: equal values mean ASLR is off.
-    if base_a == base_b || stack_a == stack_b {
+    // 2^24 bases and 2^16 stack slides: both equal means ASLR is off (one
+    // equal pair alone happens by chance, ~1 in 65 536 for the stack).
+    if base_a == base_b && stack_a == stack_b {
         return Err("two processes got the same base or stack (no ASLR)");
     }
     drop((a, b));
@@ -762,13 +763,43 @@ pub fn aslr() -> Result<(), &'static str> {
         &build_test_pie(code, target, |b| b[0x3028] = 16),
         "a bad DT_RELAENT was accepted",
     )?;
-    // PT_DYNAMIC in a fixed-address executable stays refused.
-    let exec_dyn = build_test_pie(code, target, |b| b[16] = 2);
-    // (Its segments at address 0 are refused too; either refusal will do.)
-    if !matches!(
-        Image::parse(&exec_dyn),
-        Err(ElfError::Dynamic | ElfError::OutOfRange)
-    ) {
+    for (tweak, why) in [
+        (
+            |b: &mut [u8]| b[0x3018] = 25,
+            "a DT_RELASZ not a multiple of 24 was accepted",
+        ),
+        (
+            |b: &mut [u8]| b[0x3100] = 1,
+            "a misaligned relocation was accepted",
+        ),
+        (
+            |b: &mut [u8]| b[0x3101] = 0x20,
+            "a relocation into read-only data was accepted",
+        ),
+        (
+            |b: &mut [u8]| b[0x3000] = 23,
+            "a PLT relocation table (DT_JMPREL) was accepted",
+        ),
+        (
+            |b: &mut [u8]| b[0x3000] = 36,
+            "packed RELR relocations were accepted unapplied",
+        ),
+        (
+            |b: &mut [u8]| b[0x3000] = 17,
+            "REL relocations were accepted unapplied",
+        ),
+    ] as [(fn(&mut [u8]), &str); 6]
+    {
+        refused(&build_test_pie(code, target, tweak), why)?;
+    }
+    // PT_DYNAMIC in a fixed-address executable stays refused: make it the
+    // first program header so nothing else is checked before it.
+    let exec_dyn = build_test_pie(code, target, |b| {
+        b[16] = 2;
+        let (first, rest) = b.split_at_mut(64 + 56);
+        first[64..].swap_with_slice(&mut rest[2 * 56..3 * 56]);
+    });
+    if Image::parse(&exec_dyn).err() != Some(ElfError::Dynamic) {
         return Err("PT_DYNAMIC in an ET_EXEC image was accepted");
     }
     Ok(())

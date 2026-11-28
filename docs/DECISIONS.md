@@ -1334,3 +1334,9 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
 - **Os `ET_EXEC`** continuam a funcionar nos endereços fixos (só a pilha é aleatória). O Codex deve gerar o `/sbin/init` e a shell como PIE para terem ASLR completo.
 - **Ainda não há** heap por `mmap` (não há `mmap`), por isso não há nada mais a aleatorizar em user space por agora.
 - **A entropia vem do `rng` (8a).** Em modo `weak`, o ASLR é tão fraco como a semente.
+- **Revisto depois do `security-reviewer`:**
+  - **Heap:** a tabela de relocações já não é copiada para o heap do kernel (até ~11 MiB por spawn, fora do `can_commit`). É validada no `parse` e reaplicada diretamente dos bytes, que são imutáveis.
+  - **`poke_u64`:** é `pub(crate)` e recusa páginas que o processo não pode escrever, por isso nunca contorna o W^X.
+  - **Tags recusadas:** `DT_REL*` e `DT_RELR*` são recusadas, em vez de deixarem correr um PIE por relocar.
+  - **Testes:** o teste "PT_DYNAMIC em ET_EXEC" passa a testar mesmo isso, e há casos negativos novos (`relasz`, desalinhamento, segmento só de leitura, PLT, RELR, REL). O teste de ASLR só falha se a base **e** a pilha coincidirem.
+  - **Fica para depois:** o `PT_GNU_RELRO` é ignorado (o `.data.rel.ro` fica RW). Mapear essas páginas só de leitura depois das relocações é o próximo endurecimento.

@@ -105,16 +105,24 @@ const DT_RELAENT: u64 = 9;
 const DT_TEXTREL: u64 = 22;
 const DT_JMPREL: u64 = 23;
 const DT_FLAGS: u64 = 30;
+const DT_REL: u64 = 17;
+const DT_RELSZ: u64 = 18;
+const DT_RELENT: u64 = 19;
+const DT_RELRSZ: u64 = 35;
+const DT_RELR: u64 = 36;
+const DT_RELRENT: u64 = 37;
 const DF_TEXTREL: u64 = 0x4;
 const R_X86_64_NONE: u32 = 0;
 const R_X86_64_RELATIVE: u32 = 8;
 
-/// One validated `R_X86_64_RELATIVE` relocation: at `offset` (image-
-/// relative, 8-aligned, inside a writable segment) store `base + addend`.
-#[derive(Clone, Copy, Debug)]
-struct Reloc {
-    offset: u64,
-    addend: u64,
+/// Where a PIE's validated relocation table is in the file: `count`
+/// entries of 24 bytes from `start`. The entries are not copied into the
+/// kernel heap (security review: up to ~11 MiB per spawn); `load` reads
+/// them again from the immutable image bytes.
+#[derive(Clone, Copy, Debug, Default)]
+struct RelaTable {
+    start: usize,
+    count: usize,
 }
 
 /// One validated loadable segment.
@@ -146,7 +154,7 @@ pub struct Image<'a> {
     segments: Vec<Segment>,
     /// Static PIE: addresses are offsets from a base chosen at load time.
     pie: bool,
-    relocs: Vec<Reloc>,
+    relocs: RelaTable,
 }
 
 fn u16_at(b: &[u8], at: usize) -> Result<u16, ElfError> {
@@ -286,7 +294,7 @@ impl<'a> Image<'a> {
         }
         let relocs = match dynamic {
             Some((offset, size)) => parse_relocs(bytes, &segments, offset, size)?,
-            None => Vec::new(),
+            None => RelaTable::default(),
         };
         Ok(Self {
             bytes,
@@ -365,23 +373,57 @@ impl<'a> Image<'a> {
                 p += PAGE;
             }
         }
-        for r in &self.relocs {
+        let table = self
+            .bytes
+            .get(self.relocs.start..self.relocs.start + self.relocs.count * 24)
+            .ok_or(ElfError::BadRelocation)?;
+        for r in table.as_chunks::<24>().0 {
+            // Validated by `parse` (same immutable bytes); checked again
+            // here because it costs nothing.
+            let Some((offset, addend)) = relocation(r, &self.segments)? else {
+                continue;
+            };
             space
-                .poke_u64(base + r.offset, base.wrapping_add(r.addend))
+                .poke_u64(base + offset, base.wrapping_add(addend))
                 .ok_or(ElfError::BadRelocation)?;
         }
         Ok(())
     }
 }
 
-/// Reads and validates a PIE's relocations from its dynamic section
+/// Validates one relocation entry: `Ok(None)` for `R_X86_64_NONE`,
+/// `Ok(Some((offset, addend)))` for a valid `R_X86_64_RELATIVE` into a
+/// writable segment, 8-aligned; anything else is `BadRelocation`.
+fn relocation(r: &[u8; 24], segments: &[Segment]) -> Result<Option<(u64, u64)>, ElfError> {
+    let r_offset = u64_at(r, 0)?;
+    let info = u64_at(r, 8)?;
+    let addend = u64_at(r, 16)?;
+    match (info & 0xFFFF_FFFF) as u32 {
+        R_X86_64_NONE => return Ok(None),
+        R_X86_64_RELATIVE if info >> 32 == 0 => {}
+        _ => return Err(ElfError::BadRelocation),
+    }
+    // Only into writable memory of the image, 8-aligned (never into code
+    // or read-only data, never across pages).
+    let in_rw = segments.iter().any(|s| {
+        s.perm == UserPerm::ReadWrite
+            && r_offset >= s.vaddr
+            && r_offset.saturating_add(8) <= s.vaddr + s.memsz
+    });
+    if !in_rw || !r_offset.is_multiple_of(8) {
+        return Err(ElfError::BadRelocation);
+    }
+    Ok(Some((r_offset, addend)))
+}
+
+/// Reads and validates a PIE's relocation table from its dynamic section
 /// (`offset`/`size` in the file).
 fn parse_relocs(
     bytes: &[u8],
     segments: &[Segment],
     offset: u64,
     size: u64,
-) -> Result<Vec<Reloc>, ElfError> {
+) -> Result<RelaTable, ElfError> {
     let start = usize::try_from(offset).map_err(|_| ElfError::BadRelocation)?;
     let len = usize::try_from(size).map_err(|_| ElfError::BadRelocation)?;
     let dynamic = bytes
@@ -393,7 +435,10 @@ fn parse_relocs(
         let val = u64_at(entry, 8)?;
         match tag {
             DT_NULL => break,
-            DT_NEEDED | DT_TEXTREL | DT_JMPREL => return Err(ElfError::BadRelocation),
+            // Shared libraries, PLT, text relocations, and the REL / RELR
+            // formats we do not apply: refuse rather than run unrelocated.
+            DT_NEEDED | DT_TEXTREL | DT_JMPREL | DT_REL | DT_RELSZ | DT_RELENT | DT_RELR
+            | DT_RELRSZ | DT_RELRENT => return Err(ElfError::BadRelocation),
             DT_PLTRELSZ if val != 0 => return Err(ElfError::BadRelocation),
             DT_FLAGS if val & DF_TEXTREL != 0 => return Err(ElfError::BadRelocation),
             DT_RELA => rela = Some(val),
@@ -404,7 +449,7 @@ fn parse_relocs(
     }
     let Some(rela) = rela else {
         return if relasz == 0 {
-            Ok(Vec::new())
+            Ok(RelaTable::default())
         } else {
             Err(ElfError::BadRelocation)
         };
@@ -424,35 +469,13 @@ fn parse_relocs(
     let table = bytes
         .get(file_start..file_start + relasz as usize)
         .ok_or(ElfError::BadRelocation)?;
-    let mut relocs = Vec::new();
-    relocs
-        .try_reserve(table.len() / 24)
-        .map_err(|_| ElfError::TooBig)?;
     for r in table.as_chunks::<24>().0 {
-        let r_offset = u64_at(r, 0)?;
-        let info = u64_at(r, 8)?;
-        let addend = u64_at(r, 16)?;
-        match (info & 0xFFFF_FFFF) as u32 {
-            R_X86_64_NONE => continue,
-            R_X86_64_RELATIVE if info >> 32 == 0 => {}
-            _ => return Err(ElfError::BadRelocation),
-        }
-        // Only into writable memory of the image, 8-aligned (never into
-        // code or read-only data, never across pages).
-        let in_rw = segments.iter().any(|s| {
-            s.perm == UserPerm::ReadWrite
-                && r_offset >= s.vaddr
-                && r_offset.saturating_add(8) <= s.vaddr + s.memsz
-        });
-        if !in_rw || r_offset % 8 != 0 {
-            return Err(ElfError::BadRelocation);
-        }
-        relocs.push(Reloc {
-            offset: r_offset,
-            addend,
-        });
+        relocation(r, segments)?;
     }
-    Ok(relocs)
+    Ok(RelaTable {
+        start: file_start,
+        count: table.len() / 24,
+    })
 }
 
 /// Builds a minimal valid ELF64 image (for self-tests): one `PT_LOAD` per

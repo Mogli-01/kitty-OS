@@ -541,8 +541,8 @@ Fornece: CLAUDE (`kernel/src/proc/{elf,fs,spawn}.rs`, D-064). Usa: CODEX (`/sbin
   - A imagem pode ocupar no máximo 64 MiB.
   - Para gerar: `-C relocation-model=pie` e ligar com `-static-pie` (ou `--pie --no-dynamic-linker`), sem PLT.
 - **Pilha (8b):** o topo é aleatório, até 256 MiB abaixo de `0x0000_7FFF_FFFF_0000`. O RSP inicial fica até 4 KiB abaixo do topo, alinhado a 16. Os programas não podem presumir nenhum endereço da pilha.
-- **Formato do executável:** ELF64 estático `ET_EXEC` x86_64, sem intérprete, sem `PT_DYNAMIC` e sem TLS. Até 16 `PT_LOAD`, nunca W+X, sem dois segmentos na mesma página, todos entre 1 MiB e `0x7FFF_FFFF_F000`. A entrada fica num segmento executável. Até 64 MiB de memória e até 16 MiB de ficheiro.
-- **Pilha:** 64 KiB com topo em `0x0000_7FFF_FFFF_0000` e página de guarda por baixo. RSP alinhado a 16 na entrada.
+- **Formato do executável:** ELF64 x86_64, `ET_EXEC` ou `ET_DYN` (PIE estático, ver acima), sem intérprete e sem TLS. Só o PIE pode ter `PT_DYNAMIC`. Um `ET_EXEC` não pode ter segmentos na janela da pilha (os ~256 MiB abaixo de `0x0000_7FFF_FFFF_0000`). Até 16 `PT_LOAD`, nunca W+X, sem dois segmentos na mesma página, todos entre 1 MiB e `0x7FFF_FFFF_F000`. A entrada fica num segmento executável. Até 64 MiB de memória e até 16 MiB de ficheiro.
+- **Pilha:** 64 KiB, com página de guarda por baixo e RSP alinhado a 16 na entrada. O topo é aleatório desde a 8b (ver acima).
 - **No arranque do processo:** todos os registos a zero; ainda não há `argv`/`envp` (virão num contrato próprio).
 - **Números das syscalls:** 9–12, ver a tabela em `docs/FASE6.md` §3.
 - **Marcador:** `[proc] ELF loader and process_spawn self-test passed`.
