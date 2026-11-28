@@ -18,8 +18,8 @@
 //!   linking"): `next ^ (chunk >> 12) ^ secret`. A use-after-free write that
 //!   overwrites it decodes to garbage, which is detected (range/alignment
 //!   check) and stops the kernel instead of handing out an attacker-chosen
-//!   address. The secret comes from the TSC for now; Phase 8 replaces it
-//!   with the kernel RNG.
+//!   address. The secret comes from the kernel RNG (Phase 8a), which is
+//!   seeded before the heap exists (it needs no allocation).
 //! - Freeing the chunk that is already at the head of its list (the most
 //!   common double free) is detected.
 //!
@@ -74,13 +74,14 @@ pub struct HeapStats {
     pub pages: u64,
 }
 
-/// Enables the heap. Must run after the VMM switched to the kernel tables.
+/// Enables the heap. Must run after the VMM switched to the kernel tables
+/// and after `rng::init` (the link secret comes from the kernel RNG).
 pub fn init() {
+    // Taken before the heap lock: the RNG has its own lock and never
+    // allocates, so there is no lock-order question.
+    let secret = crate::rng::u64() | 1;
     let mut heap = HEAP.inner.lock();
-    // Weak but non-constant secret until Phase 8 brings a real RNG.
-    // SAFETY: `rdtsc` only reads the time-stamp counter.
-    let tsc = unsafe { core::arch::x86_64::_rdtsc() };
-    heap.secret = tsc.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+    heap.secret = secret;
     heap.ready = true;
 }
 

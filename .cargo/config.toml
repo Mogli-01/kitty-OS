@@ -3,8 +3,9 @@
 xtask = "run --quiet --package xtask --"
 
 [target.x86_64-unknown-none]
-# relocation-model=static: the kernel is linked at a fixed higher-half address
-# (see kernel/linker-x86_64.ld). Phase 8 (KASLR) will switch to a PIE kernel.
-# code-model=kernel: all kernel symbols live in the top 2 GiB, so the compiler
-# can use sign-extended 32-bit absolute addresses (shorter, faster code).
-rustflags = ["-C", "relocation-model=static", "-C", "code-model=kernel"]
+# relocation-model=pie (Phase 8c, D-068): the kernel is a relocatable PIE so
+# Limine can load it at a random base (KASLR). Its only dynamic relocations
+# are R_X86_64_RELATIVE, applied by Limine before it jumps to us.
+# code-model=kernel: the kernel stays in the top 2 GiB wherever it lands
+# (Limine slides it within that range), as this code model requires.
+rustflags = ["-C", "relocation-model=pie", "-C", "code-model=kernel"]

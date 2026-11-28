@@ -565,6 +565,17 @@ pub fn Process::status(&self) -> Status;                              // Running
 - Marcador de arranque: `[proc] user-mode self-test passed`.
 - Um programa acaba por `exit` (6c), por falha ou por `kill`.
 
+### KASLR (Fase 8c, D-068)
+Fornece: CLAUDE (kernel, linker script). Usa: `xtask` (configuração do Limine) e a CI.
+- **Formato do kernel:** `kitty-kernel` é um ELF64 `ET_DYN` (PIE) com `PT_DYNAMIC` e **só** relocações `R_X86_64_RELATIVE`, sem PLT. Quem o carrega tem de o relocar (o Limine fá-lo).
+- **Configuração do Limine** (`LIMINE_CONF` no `xtask`): `kaslr: yes` e `randomise_hhdm_base: yes`. Tirar uma delas desliga a proteção e o arranque avisa.
+- **Pedidos ao Limine:** o kernel envia um `PagingModeRequest` com 4 níveis exatos (sem ele o Limine ignora `randomise_hhdm_base`).
+- **Marcadores de arranque** (para a CI):
+  - `[kaslr] kernel base randomized by the bootloader` (ou `[kaslr] WARNING: kernel at its link address (KASLR is off)`);
+  - `[kaslr] direct map (HHDM) base randomized` (ou `[kaslr] WARNING: direct map (HHDM) at its fixed address`);
+  - `[kaslr] WARNING: no UMIP, ...` em CPUs sem UMIP.
+- **Garantia:** nenhum output (ecrã, série, user space) escreve a base do kernel nem a do HHDM. Ninguém deve presumir endereços do kernel.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |

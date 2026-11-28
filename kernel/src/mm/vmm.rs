@@ -48,6 +48,14 @@ fn sym(s: *const u8) -> u64 {
     s.addr() as u64
 }
 
+/// Run-time address of the first byte of the kernel image, from the
+/// linker symbol (RIP-relative, so it follows the KASLR slide). The VMM
+/// maps the image from these symbols; boot checks they agree with the
+/// base the bootloader reports.
+pub fn kernel_image_start() -> u64 {
+    sym(&raw const __kernel_start)
+}
+
 fn page_down(x: u64) -> u64 {
     x & !(PAGE_SIZE - 1)
 }
@@ -187,6 +195,21 @@ fn map_kernel_image(space: &mut AddressSpace, limine_root: PhysAddr) -> u64 {
 /// Rebuilds the HHDM with per-region permissions. Uses 2 MiB pages where
 /// possible: a 4 GiB machine needs ~2000 entries instead of ~1 million.
 fn map_hhdm(space: &mut AddressSpace, boot: &BootInfo) -> u64 {
+    // With KASLR the bootloader moves the HHDM up to 32 TiB above its
+    // usual base (Phase 8c). It must still end below the kernel heap, the
+    // first fixed region after it, or the two would alias each other.
+    const HHDM_LIMIT: u64 = 0xFFFF_C000_0000_0000;
+    let top = boot
+        .memory_map
+        .iter()
+        .filter(|r| !matches!(r.kind, MemoryKind::Bad | MemoryKind::Reserved))
+        .filter_map(|r| r.base.checked_add(r.len))
+        .max()
+        .unwrap_or(0);
+    let fits = page_up(top)
+        .checked_add(boot.hhdm_offset)
+        .is_some_and(|end| boot.hhdm_offset >= 0xFFFF_8000_0000_0000 && end <= HHDM_LIMIT);
+    assert!(fits, "direct map (HHDM) would overlap the kernel heap");
     let mut bytes = 0;
     for region in boot.memory_map.iter() {
         let flags = match region.kind {

@@ -92,11 +92,11 @@ metade de baixo para o user space e a de cima para o kernel.
 | `0x0000_0000_0000_1000` | `0x0000_7FFF_FFFF_FFFF` | ~128 TiB | user space (um por processo) | Fase 6 |
 | (dentro do user space) | | | mapeamentos de buffers partilhados (janelas, framebuffer do compositor), em endereços aleatórios (ASLR) | Fase 12 |
 | `0x0000_8000_0000_0000` | `0xFFFF_7FFF_FFFF_FFFF` | — | não canónico (buraco) | hardware |
-| `0xFFFF_8000_0000_0000` | … | até 64 TiB | **HHDM**: toda a RAM física mapeada linearmente (offset dado pelo Limine) | Limine (hoje) |
+| `0xFFFF_8000_0000_0000` | … | até 64 TiB | **HHDM**: toda a RAM física mapeada linearmente (offset dado pelo Limine; desde a 8c numa base aleatória, D-068) | Limine (hoje) |
 | `0xFFFF_C000_0000_0000` | … | 1 TiB | heap do kernel (alocações grandes seguidas de página de guarda) | hoje |
 | `0xFFFF_D000_0000_0000` | … | 1 TiB | janela MMIO (`map_mmio`), uncached/WC, NX | hoje |
 | `0xFFFF_E000_0000_0000` | … | 1 TiB | pilhas das threads do kernel: slots de 64 KiB = guarda 4 KiB + pilha 32 KiB + 28 KiB por mapear | hoje |
-| `0xFFFF_FFFF_8000_0000` | `0xFFFF_FFFF_FFFF_FFFF` | 2 GiB | **imagem do kernel** (inclui a pilha principal e as IST em `.bss`, com páginas de guarda por mapear) | hoje |
+| `0xFFFF_FFFF_8000_0000` | `0xFFFF_FFFF_FFFF_FFFF` | 2 GiB | **imagem do kernel** (inclui a pilha principal e as IST em `.bss`, com páginas de guarda por mapear); desde a 8c (KASLR, D-068) fica numa base aleatória dentro destes 2 GiB | hoje |
 
 Porque é que o kernel está nos últimos 2 GiB: com `-C code-model=kernel` o
 compilador pode endereçar qualquer símbolo do kernel com um imediato de 32
@@ -110,13 +110,18 @@ endereços de 64 bits.
 |---|---|---|---|
 | `requests` | `.requests*` | R | o Limine escreve-as *antes* de nos passar o controlo; o kernel só lê, por isso nenhum bug pode redirecionar as respostas |
 | `text` | `.text` | R X | código: executável, nunca escrevível |
-| `rodata` | `.rodata` | R | constantes, strings, fonte |
+| `rodata` | `.rodata`, `.data.rel.ro`, `.got`, `.rela.dyn`, `.dynamic`, ... | R | constantes, strings, fonte; e, desde a 8c, as tabelas com endereços absolutos e as relocações que o Limine aplica para deslocar o kernel (KASLR). Só o Limine as escreve, antes de o kernel correr |
 | `data` | `.data`, `.bss` | R W (NX) | dados: escrevíveis, nunca executáveis |
 
 Desde a Fase 3 estas permissões são aplicadas pelas **nossas** tabelas de
 páginas (já não pelas do Limine), página a página, com três exceções em
 `.data`/`.bss`: as páginas de guarda das pilhas ficam por mapear e as
 páginas da GDT e da IDT ficam só de leitura.
+
+O kernel é um **PIE** (Fase 8c, D-068): ligado em `0xFFFF_FFFF_8000_0000`,
+mas o Limine escolhe outra base em cada arranque e aplica as relocações
+`R_X86_64_RELATIVE`. Não há PLT (o linker script falha se aparecer uma) e o
+`PT_DYNAMIC` aponta para tabelas no segmento `rodata`.
 
 Cada segmento começa numa fronteira de 4 KiB para que nenhuma página tenha
 de misturar permissões. Isto dá **W^X desde a primeira instrução** (verificado

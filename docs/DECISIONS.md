@@ -315,8 +315,8 @@ alocação já vem a zeros); o link da lista livre guardado no pedaço é
 validado ao tirar da lista — um use-after-free que o reescreva é detetado
 em vez de devolver um endereço escolhido pelo atacante; libertar o pedaço
 que já está à cabeça da lista (double free comum) é detetado.
-**Limitações conhecidas:** o segredo vem do TSC (fraco) até haver RNG na
-Fase 8; o espaço virtual das alocações grandes não é reutilizado (1 TiB
+**Limitações conhecidas:** o segredo vinha do TSC (fraco); desde a Fase 8
+vem do RNG do kernel, semeado antes do heap (ver D-068); o espaço virtual das alocações grandes não é reutilizado (1 TiB
 chega por agora); o heap usa `SpinLock` sem desligar interrupções, por isso
 **não se pode alocar em handlers de interrupção** até à Fase 4.
 Ordem de locks: heap → espaço de endereçamento do kernel → PMM.
@@ -1340,3 +1340,24 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
   - **Tags recusadas:** `DT_REL*` e `DT_RELR*` são recusadas, em vez de deixarem correr um PIE por relocar.
   - **Testes:** o teste "PT_DYNAMIC em ET_EXEC" passa a testar mesmo isso, e há casos negativos novos (`relasz`, desalinhamento, segmento só de leitura, PLT, RELR, REL). O teste de ASLR só falha se a base **e** a pilha coincidirem.
   - **Fica para depois:** o `PT_GNU_RELRO` é ignorado (o `.data.rel.ro` fica RW). Mapear essas páginas só de leitura depois das relocações é o próximo endurecimento.
+
+### D-068 — Fase 8c: KASLR (2026-11-28, CLAUDE)
+- **Kernel PIE:** o kernel passa a ser compilado com `-C relocation-model=pie` (mantendo `code-model=kernel`). O `rust-lld` produz um `ET_DYN` com `PT_DYNAMIC` e só relocações `R_X86_64_RELATIVE` (~2000, para tabelas com endereços absolutos, como os stubs de interrupção).
+- **Quem desloca:** o **Limine**, com `kaslr: yes` na configuração gerada pelo `xtask`. Escolhe uma base aleatória dentro dos 2 GiB de cima (como o `code-model=kernel` exige) e aplica as relocações antes de saltar para o kernel.
+  - O VMM mapeia a imagem a partir dos símbolos do linker (`__kernel_start`, `__text_start`, ...), lidos de forma relativa ao RIP, por isso seguem o deslocamento e o W^X e os alias continuam certos em qualquer base.
+  - O arranque verifica que `__kernel_start` coincide com a base que o Limine reporta (`ExecutableAddressRequest`) e para se não coincidir (sem escrever nenhum dos dois).
+  - **Porquê o Limine e não o próprio kernel:** o Limine já tem o código para relocar PIE, e corre antes de haver paginação nossa. Fazê-lo no kernel obrigava a um relocador em assembly a correr no endereço errado.
+- **Tabelas com endereços absolutos** (stubs, `&'static` em statics): vão para `.data.rel.ro`, que o linker script põe no segmento `rodata` (R). O Limine escreve as relocações na memória física antes de aplicar as permissões; para o kernel essa memória é só de leitura. Antes estavam em `.rodata`, o que num PIE seria uma "text relocation".
+- **Visibilidade:** o arranque escreve só `[kaslr] kernel base randomized by the bootloader` (ou um WARNING se o kernel estiver no endereço de ligação). **Nunca escreve a base**, nem no ecrã nem na série: escrevê-la anulava a proteção. Os relatórios de crash continuam a ter endereços, mas só na série (D-023).
+- **HHDM:** o `xtask` liga também `randomise_hhdm_base: yes`, para o mapa direto da memória física (por onde se chega às tabelas de páginas) não ficar em `0xFFFF_8000_0000_0000`. O arranque escreve `[kaslr] direct map (HHDM) base randomized` ou um WARNING.
+  - **Descoberta:** o Limine 11.4.1 só aplica esta opção se o kernel enviar o `PagingModeRequest` (no código do Limine, a decisão está dentro do tratamento desse pedido). Sem ele, a opção é ignorada em silêncio. O kernel passa a pedir **exatamente** paginação de 4 níveis (a que o VMM implementa) e para se o Limine responder outra coisa.
+  - O deslocamento é em passos de 1 GiB dentro de 32 TiB (2^15 posições, 15 bits, com 4 níveis).
+  - O VMM verifica que o HHDM deslocado acaba antes do heap do kernel (`0xFFFF_C000_0000_0000`) e para se não acabar: os dois nunca se sobrepõem.
+- **Sem PLT nem GOT escrevível:** a `.got` vai para o segmento só de leitura, e o linker script falha (`ASSERT`) se aparecer `.plt` ou `.got.plt`: seria uma tabela de ponteiros de código que um atacante podia reescrever.
+- **Entropia:** a base muda com o alinhamento dos segmentos dentro de ~2 GiB, ou seja, cerca de 19 bits. Quem a gera é o Limine, com um PRNG que **não** é criptográfico (semeado com RDRAND/RDSEED/TSC). Chega para obrigar a uma fuga de informação, não para resistir a força bruta local.
+- **Limites (conhecidos e documentados):**
+  - o **heap** do kernel (`HEAP_BASE`, `0xFFFF_C000_0000_0000`), a região das **pilhas** do kernel (`STACK_REGION`, `0xFFFF_E000_0000_0000`) e a janela de **MMIO** continuam em endereços fixos; aleatorizá-los fica para uma fase futura;
+  - **sem UMIP**, `sgdt`/`sidt` em ring 3 devolvem os endereços do GDT e do IDT, que estão na imagem do kernel e revelam a base. O arranque avisa (`[kaslr] WARNING: no UMIP ...`);
+  - sem KPTI (D-060), uma fuga por canal lateral revela a base.
+- **Correções da revisão de segurança:** a verificação da base, o HHDM aleatório, o aviso sem UMIP, a `.got` só de leitura e o `ASSERT` sem PLT vêm da revisão do `security-reviewer` a esta fase.
+- **Heap (depois da revisão dos PRs do Codex):** o segredo do "safe linking" da lista livre do heap (D-035) ainda vinha do TSC. O #109 do Codex apontou isto. Agora o `rng::init` corre **antes** do `heap::init` (o RNG não usa o heap) e o segredo é `rng::u64()`. Num arranque `weak`, é tão fraco como a semente do RNG, mas nunca pior do que o TSC sozinho.

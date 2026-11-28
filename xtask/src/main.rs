@@ -289,6 +289,12 @@ timeout: 0
 /kitty-OS
     protocol: limine
     path: boot():/boot/kitty-kernel
+    # KASLR (Phase 8c, D-068): the kernel is a relocatable PIE; Limine
+    # loads it at a random virtual base on every boot.
+    kaslr: yes
+    # The direct map of physical memory (HHDM) also gets a random base, so
+    # page tables cannot be found at a fixed address either.
+    randomise_hhdm_base: yes
 ";
 
 // ------------------------------------------------------------ boot media ---
