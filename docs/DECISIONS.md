@@ -1320,3 +1320,17 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
   - **Higiene:** o `Sha256` apaga o seu estado no `Drop`, e o `compress` e o `collect` apagam as cópias intermédias. O `ct_eq` usa `black_box` em cada passo.
   - **Testes:** vetores independentes do SHA-256 para 55, 56, 63, 64, 119 e 120 bytes.
 - **Limites:** ainda não há estimativa formal de entropia (NIST SP 800-90B). Sob emulação (QEMU TCG/`-icount`), o jitter vale cerca de 0 bits.
+
+### D-067 — Fase 8b: ASLR em user space (2026-11-28, CLAUDE)
+- **Pilha:**
+  - o topo é `STACK_TOP − k × 4096`, com `k` aleatório em 2^16 (16 bits, uma janela de 256 MiB);
+  - o RSP inicial fica `m × 16` bytes abaixo, com `m` em 2^8 (mais 8 bits);
+  - a página de guarda vai com a pilha;
+  - nenhum segmento ELF fixo pode ficar na janela inteira da pilha, por isso a guarda nunca é substituída, esteja a pilha onde estiver.
+- **Código:** o loader aceita **PIE estáticos** (`ET_DYN` sem intérprete), carregados numa base aleatória em `[4 GiB, 4 GiB + 2^24 × 4 KiB)` (24 bits).
+  - As relocações aceites são **só** `R_X86_64_RELATIVE` (escrever `base + addend`), alinhadas a 8 e dentro de segmentos **escrevíveis**. São aplicadas pelo HHDM antes de o processo existir, e o processo nunca vê o seu código escrevível.
+  - É recusado (`BadRelocation`) tudo o resto: `DT_NEEDED` (bibliotecas dinâmicas), PLT (`DT_JMPREL`/`DT_PLTRELSZ`), `TEXTREL`, outros tipos e entradas mal formadas.
+  - **Porquê só `RELATIVE`:** é o que um PIE estático precisa. Qualquer outro tipo pede símbolos, ou seja, um linker dinâmico no kernel: mais código não confiável e mais superfície de ataque.
+- **Os `ET_EXEC`** continuam a funcionar nos endereços fixos (só a pilha é aleatória). O Codex deve gerar o `/sbin/init` e a shell como PIE para terem ASLR completo.
+- **Ainda não há** heap por `mmap` (não há `mmap`), por isso não há nada mais a aleatorizar em user space por agora.
+- **A entropia vem do `rng` (8a).** Em modo `weak`, o ASLR é tão fraco como a semente.

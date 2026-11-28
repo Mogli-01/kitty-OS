@@ -107,6 +107,26 @@ impl UserSpace {
         // Volatile: user code may be writing it concurrently.
         Some(unsafe { ptr.read_volatile() })
     }
+
+    /// Writes a `u64` into this address space through the kernel's view of
+    /// the frame (the loader applies PIE relocations this way, before the
+    /// process exists). `&mut self`: nothing runs in this space yet.
+    /// `None` if `virt` is not mapped, not 8-aligned or not user.
+    pub fn poke_u64(&mut self, virt: u64, value: u64) -> Option<()> {
+        if !virt.is_multiple_of(8) || virt >= super::paging::USER_END {
+            return None;
+        }
+        let space = self.space.as_ref()?;
+        let phys = space.translate(VirtAddr::new(virt)?)?;
+        let ptr = hhdm::phys_to_virt(phys).as_u64() as *mut u64;
+        // SAFETY: `phys` is the frame of a present user page of this space,
+        // owned by its tables and mapped writable in the HHDM; `virt` is
+        // 8-aligned, so the u64 stays inside the page; `&mut self` and the
+        // fact that no thread runs in this space yet mean nobody else
+        // accesses it.
+        unsafe { ptr.write_volatile(value) };
+        Some(())
+    }
 }
 
 impl Drop for UserSpace {

@@ -32,7 +32,7 @@ Princípios:
 | `0x0000_0000_0000_0000` – `0x0000_0000_000F_FFFF` | **nunca mapeado** (1 MiB: apanha null derefs e índices pequenos) |
 | a partir de `0x0000_0000_0040_0000` | segmentos `PT_LOAD` do ELF (nos endereços pedidos, se válidos) |
 | … | heap do processo (`mem_map`, Fase 6b) |
-| `0x0000_7FFF_FFFF_0000` (topo) | pilha da thread principal, 64 KiB, com página de guarda por baixo |
+| `0x0000_7FFF_FFFF_0000` (topo máximo) | pilha da thread principal, 64 KiB; desde a 8b o topo é aleatório até 256 MiB abaixo deste (D-067), com página de guarda por baixo |
 | `0x0000_8000_0000_0000` e acima | metade do kernel: inacessível em ring 3 (bit U=0) |
 
 - As páginas de user têm U=1, NX salvo `.text`, e **W^X** como no kernel.

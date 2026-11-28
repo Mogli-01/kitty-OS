@@ -422,8 +422,9 @@ kitty_ut_elf_start:
     lea rsi, [rip + 92f]
     mov edx, 24 // length of the message at 92:
     syscall
-    // touch the bottom of the 64 KiB stack
-    mov qword ptr [rsp - 0x10000 + 8], 1
+    // touch near the bottom of the 64 KiB stack (the initial RSP may sit
+    // up to 4 KiB below the top: ASLR, Phase 8b)
+    mov qword ptr [rsp - 0xF000], 1
     // .bss (second segment, zero-filled)
     mov rdx, 0x402000
     mov rcx, qword ptr [rdx]
@@ -500,6 +501,29 @@ kitty_ut_random_start:
 .global kitty_ut_random_end
 kitty_ut_random_end:
 
+// Phase 8b: a static-PIE image. Its data page (image base + 0x1000) holds
+// a pointer the loader relocated to `kitty_ut_pie_target`; exit(1) if it
+// matches the address computed rip-relatively, else exit(2).
+.global kitty_ut_pie_start
+kitty_ut_pie_start:
+    lea rdx, [rip + kitty_ut_pie_start]
+    lea rax, [rip + kitty_ut_pie_target]
+    mov rcx, qword ptr [rdx + 0x1000]
+    cmp rax, rcx
+    jne 7f
+    mov eax, 0
+    mov edi, 1
+    syscall
+7:
+    mov eax, 0
+    mov edi, 2
+    syscall
+.global kitty_ut_pie_target
+kitty_ut_pie_target:
+    ud2
+.global kitty_ut_pie_end
+kitty_ut_pie_end:
+
 // Blocks forever in console_read (to test killing a blocked process).
 .global kitty_ut_reader_start
 kitty_ut_reader_start:
@@ -543,6 +567,9 @@ unsafe extern "C" {
     static kitty_ut_input_end: u8;
     static kitty_ut_random_start: u8;
     static kitty_ut_random_end: u8;
+    static kitty_ut_pie_start: u8;
+    static kitty_ut_pie_target: u8;
+    static kitty_ut_pie_end: u8;
 }
 
 /// The user test programs.
@@ -575,6 +602,15 @@ pub enum TestProgram {
     InputReader,
     /// Calls `random_fill` (good, bad pointer, empty), `exit(8)`.
     Random,
+    /// Static-PIE code: checks a relocated pointer, `exit(1)` if right.
+    Pie,
+}
+
+/// Offset of `kitty_ut_pie_target` inside the PIE test program.
+pub fn pie_target_offset() -> u64 {
+    let start = (&raw const kitty_ut_pie_start).addr();
+    let target = (&raw const kitty_ut_pie_target).addr();
+    target.saturating_sub(start) as u64
 }
 
 /// Machine code of `program`.
@@ -610,6 +646,7 @@ pub fn test_program(program: TestProgram) -> &'static [u8] {
             &raw const kitty_ut_random_start,
             &raw const kitty_ut_random_end,
         ),
+        TestProgram::Pie => (&raw const kitty_ut_pie_start, &raw const kitty_ut_pie_end),
         TestProgram::Secret => (
             &raw const kitty_ut_secret_start,
             &raw const kitty_ut_secret_end,

@@ -1673,3 +1673,16 @@ Formato:
 - **Avisos:**
   - a crypto é educativa e não auditada;
   - a seguir vêm a 8b (ASLR em user space, que usa `rng::below`) e a 8c (KASLR).
+
+### [2026-11-28] — CLAUDE (Fase 8b)
+- **Feito:**
+  - ASLR em user space: pilha aleatória (16 + 8 bits) e suporte a **PIE estáticos** (`ET_DYN`, só relocações `RELATIVE`) numa base aleatória de 24 bits;
+  - `UserSpace::poke_u64` para aplicar as relocações antes de o processo correr;
+  - D-067. Branch `claude/fase8b-aslr`, base `claude/fase8a-rng` (#115).
+- **Testes:**
+  - um PIE construído em memória verifica sozinho, em ring 3, que o ponteiro relocado aponta para o sítio certo;
+  - duas execuções têm bases e pilhas diferentes, dentro das janelas;
+  - são recusados: um R_X86_64_64, uma relocação para o código, `DT_NEEDED` e um `DT_RELAENT` mau.
+- **Proteções de segurança alteradas:** ATIVA: ASLR em user space.
+- **Próximo passo sugerido para o Codex:** gerar o `/sbin/init` e a shell como PIE estáticos (`-C relocation-model=pie`, `-static-pie`, sem PLT) e verificar na CI que arrancam (ver INTERFACES.md).
+- **Avisos:** o teste da 6d que tocava em `rsp − 64 KiB` passou a `rsp − 60 KiB`, porque o RSP inicial já não está no topo exato. A seguir vem a 8c (KASLR).

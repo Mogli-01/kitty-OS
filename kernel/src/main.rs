@@ -261,6 +261,9 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
                 "[input] self-test passed: one reader at a time, lost marker, no dup, ring emptied for the next owner"
             );
             kprintln!("[rng] random_fill self-test passed from ring 3");
+            kprintln!(
+                "[aslr] self-test passed: static PIE relocated at a random base, random stacks, bad relocations refused"
+            );
         }
         Err(why) => panic!("user-mode self-test failed: {}", why),
     }
