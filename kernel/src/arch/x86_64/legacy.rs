@@ -34,6 +34,14 @@ pub enum LegacyDevice {
     /// CMOS/RTC: index 0x70 (offset 0) and data 0x71 (offset 1). Bit 7 of
     /// the index (NMI disable) is always written as 0.
     Cmos,
+    /// Second serial port (COM2, 16550-compatible): 0x2F8-0x2FF, offsets
+    /// 0-7; its interrupt is ISA IRQ 3 (`irq::register_isa(3, …)`). COM1
+    /// is **not** claimable: it stays the kernel's diagnostics and panic
+    /// channel (issue #72, D-061). Its registers only affect the UART (and
+    /// its modem and IRQ lines); the DMA that some Super I/O UARTs (IrDA)
+    /// can request needs the 8237 DMA controller, which is never
+    /// claimable. Hence no value filter.
+    Com2,
 }
 
 /// i8042 controller commands a driver may send (offset 4 = port 0x64):
@@ -44,13 +52,19 @@ pub const I8042_ALLOWED_COMMANDS: &[u8] =
     &[0x20, 0x60, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAD, 0xAE, 0xD4];
 
 impl LegacyDevice {
-    const ALL: [LegacyDevice; 3] = [LegacyDevice::I8042, LegacyDevice::Pit, LegacyDevice::Cmos];
+    const ALL: [LegacyDevice; 4] = [
+        LegacyDevice::I8042,
+        LegacyDevice::Pit,
+        LegacyDevice::Cmos,
+        LegacyDevice::Com2,
+    ];
 
     fn base(self) -> u16 {
         match self {
             LegacyDevice::I8042 => 0x60,
             LegacyDevice::Pit => 0x40,
             LegacyDevice::Cmos => 0x70,
+            LegacyDevice::Com2 => 0x2F8,
         }
     }
 
@@ -59,6 +73,7 @@ impl LegacyDevice {
             LegacyDevice::I8042 => &[0, 4],
             LegacyDevice::Pit => &[0, 1, 2, 3],
             LegacyDevice::Cmos => &[0, 1],
+            LegacyDevice::Com2 => &[0, 1, 2, 3, 4, 5, 6, 7],
         }
     }
 
@@ -67,11 +82,13 @@ impl LegacyDevice {
             LegacyDevice::I8042 => 0,
             LegacyDevice::Pit => 1,
             LegacyDevice::Cmos => 2,
+            LegacyDevice::Com2 => 3,
         }
     }
 }
 
 static CLAIMED: [AtomicBool; LegacyDevice::ALL.len()] = [
+    AtomicBool::new(false),
     AtomicBool::new(false),
     AtomicBool::new(false),
     AtomicBool::new(false),
@@ -101,7 +118,9 @@ impl LegacyPorts {
         }
         let port = self.device.base().checked_add(offset)?;
         // SAFETY: `port` is one of the allow-listed registers of a device
-        // that has no DMA capability (PS/2 controller, PIT, CMOS). Reads have
+        // that cannot perform DMA on its own (PS/2 controller, PIT, CMOS,
+        // COM2: UART DMA would need the 8237, which no driver can claim).
+        // Reads have
         // no system-wide effect. Writes that could affect the whole machine
         // (i8042 output port / reset / line pulses, CMOS NMI-disable bit) are
         // filtered by `write8` *before* reaching this port, so the remaining
@@ -144,5 +163,8 @@ pub fn selftest() -> bool {
     let twice = claim(LegacyDevice::I8042).is_none();
     drop(kbd);
     let released = claim(LegacyDevice::I8042).is_some();
-    refused && bad_offsets && twice && released
+    // COM2: exactly its 8 registers, nothing past them.
+    let com2 =
+        claim(LegacyDevice::Com2).is_some_and(|c| c.read8(8).is_none() && c.write8(8, 0).is_none());
+    refused && bad_offsets && twice && released && com2
 }

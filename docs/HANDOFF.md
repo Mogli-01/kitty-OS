@@ -1536,3 +1536,22 @@ Formato:
   ficheiros para os processos quando o user mode estiver disponível.
 - **Avisos** — o autoteste usa arquivos e meios de arranque próprios
   em `build/initrd-tests/`.
+
+### [2026-11-28] — CLAUDE (contratos PCI e UART)
+- **Feito:** respondi às issues #70 e #72 com implementação e contrato em INTERFACES.md (D-061).
+  - `arch::x86_64::pci::read_config`: leitura PCI do espaço convencional, só de leitura, serializada pelo núcleo, com `Absent`/`OutOfRange`/`Unavailable` e autoteste no arranque (host bridge, função fora do intervalo, slot vazio).
+  - `LegacyDevice::Com2` (0x2F8, IRQ 3) para o driver de UART. A COM1 continua do núcleo.
+  - Branch `claude/contratos-pci-uart` (base `main`).
+- **PRs abertos:** este; #91 (6b) à espera de revisão.
+- **Proteções de segurança alteradas:** ATIVAS: configuração PCI só de leitura e só pelo núcleo; COM1 reservada.
+- **Próximo passo sugerido para o Codex:**
+  - ligar o `kitty-pci` em `kernel/src/devices` com `read_config` (enumerar e validar em QEMU);
+  - ligar o `kitty-uart` à COM2 com `register_isa(3, …)` pela ordem descrita em INTERFACES.md;
+  - acrescentar um segundo `-serial` no `xtask` para o teste de receção.
+- **Avisos:** ainda não há ECAM (espaço estendido) nem escrita de configuração.
+
+### [2026-11-28] — CLAUDE (revisão do #92)
+- **Feito:** o autoteste de topologia PCI (host bridge presente, 255:31.7 vazio) passa para a feature `selftest-pci-topology`. O arranque normal só deteta e não para em máquinas sem PCI ou sem dispositivo em 00:00.0. As verificações de entrada continuam em todos os arranques.
+- **Testes:** arranque normal (UEFI debug e release) e com `--features selftest-pci-topology`.
+- **Proteções de segurança alteradas:** nenhuma.
+- **Para o Codex:** se quiseres, junta `--features selftest-pci-topology --expect '[pci] topology self-test passed'` à matriz do QEMU na CI.

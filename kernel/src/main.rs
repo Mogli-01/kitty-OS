@@ -131,6 +131,28 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         arch::legacy::selftest(),
         "legacy port filter self-test failed"
     );
+    if let Err(why) = arch::x86_64::pci::validation_selftest() {
+        panic!("PCI input validation self-test failed: {}", why);
+    }
+    match arch::x86_64::pci::probe_host_bridge() {
+        arch::x86_64::pci::Probe::HostBridge(vendor) => kprintln!(
+            "[pci] read-only configuration access ready (host bridge vendor {:#06x})",
+            vendor
+        ),
+        arch::x86_64::pci::Probe::NoHostBridge => {
+            kprintln!("[pci] configuration mechanism #1 present, no device at 00:00.0")
+        }
+        arch::x86_64::pci::Probe::Unavailable => {
+            kprintln!("[pci] no configuration mechanism #1 on this machine")
+        }
+    }
+    #[cfg(feature = "selftest-pci-topology")]
+    match arch::x86_64::pci::topology_selftest() {
+        Ok(_) => {
+            kprintln!("[pci] topology self-test passed (host bridge present, empty slot absent)")
+        }
+        Err(why) => panic!("PCI topology self-test failed: {}", why),
+    }
 
     // ACPI: find and validate the MADT. Without it, stay on the 8259 PIC.
     let acpi = firmware::acpi::discover(rsdp_phys());

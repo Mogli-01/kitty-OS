@@ -31,6 +31,9 @@ selftest-heap-overflow = []
 # Fires a real hardware interrupt (PIT IRQ0 through the 8259 PIC) and
 # checks it reaches its handler. Does not panic: expect exit code 33.
 selftest-irq-pit = []
+# QEMU-only PCI topology checks (host bridge present, 255:31.7 empty).
+# Real machines guarantee neither, so normal boots only detect (#92).
+selftest-pci-topology = []
 # Opt in to the boot-CPU xAPIC controller while validating the handover.
 xapic = ["dep:kitty-acpi", "dep:kitty-apic"]
 selftest-xapic = ["xapic", "selftest-irq-pit"]
