@@ -264,6 +264,11 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
 
     assert!(sched::wait::selftest(), "wait queue self-test failed");
     kprintln!("[sched] wait queue self-test passed: waiter blocked, woken, value seen");
+    assert!(
+        sched::user_entry_selftest(),
+        "user entry validation self-test failed"
+    );
+    kprintln!("[sched] user entry validation self-test passed (RIP/RSP strictly below USER_END)");
 
     match proc::selftest::run() {
         Ok(r) => {
