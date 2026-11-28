@@ -56,6 +56,8 @@ selftest-ps2-input = []
 selftest-ps2-keyboard = ["selftest-ps2-input"]
 # Checks the known file and directory in the xtask initrd fixture.
 selftest-initrd = []
+# Reports hardware entropy instruction status only.
+selftest-entropy = []
 
 [dependencies]
 limine = "0.6.5"

@@ -137,7 +137,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 ## Fase 8 — Aleatoriedade e permissões
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Gerador de números aleatórios do kernel (RDRAND/RDSEED + entropia); é a base do CSPRNG da Fase 16 | CLAUDE | TODO |
+| Gerador de números aleatórios do kernel (RDRAND/RDSEED + entropia); é a base do CSPRNG da Fase 16 | CLAUDE | Leituras RDSEED/RDRAND em revisão em `codex/fase8-entropia-x86`. Política de fontes e gerador pendentes (#104) |
 | KASLR (kernel PIE + deslocamento do Limine) | CLAUDE | TODO |
 | ASLR em user space | CLAUDE | TODO |
 | Modelo de capacidades/permissões por processo | CLAUDE | MOVIDA (base na Fase 6, D-058; utilizadores e permissões na Fase 15) |
