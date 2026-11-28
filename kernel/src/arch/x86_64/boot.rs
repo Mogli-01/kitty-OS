@@ -14,9 +14,10 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use limine::BaseRevision;
 use limine::framebuffer::FRAMEBUFFER_RGB;
 use limine::memmap::{self, Entry};
+use limine::paging::PagingMode;
 use limine::request::{
     BootloaderInfoRequest, ExecutableAddressRequest, FramebufferRequest, HhdmRequest,
-    MemmapRequest, ModulesRequest, RsdpRequest,
+    MemmapRequest, ModulesRequest, PagingModeRequest, RsdpRequest,
 };
 use limine::{RequestsEndMarker, RequestsStartMarker};
 
@@ -70,6 +71,14 @@ static RSDP_REQUEST: RsdpRequest = RsdpRequest::new();
 #[unsafe(link_section = ".requests")]
 static MODULES_REQUEST: ModulesRequest = ModulesRequest::new();
 
+/// Exactly 4-level paging (what the VMM implements). Limine only applies
+/// `randomise_hhdm_base` when the kernel sends this request, so it is
+/// also what turns on the random HHDM base (Phase 8c, D-068).
+#[used]
+#[unsafe(link_section = ".requests")]
+static PAGING_MODE_REQUEST: PagingModeRequest =
+    PagingModeRequest::new_exact(PagingMode::X86_64_4LVL);
+
 #[used]
 #[unsafe(link_section = ".requests_end_marker")]
 static REQUESTS_END: RequestsEndMarker = RequestsEndMarker::new();
@@ -100,6 +109,17 @@ extern "C" fn kernel_entry() -> ! {
         }
         cpu::halt_forever();
     };
+
+    // The VMM builds 4-level tables; any other mode would be misread.
+    if PAGING_MODE_REQUEST
+        .response()
+        .is_some_and(|r| r.mode != PagingMode::X86_64_4LVL)
+    {
+        if let Some(mut s) = SerialPort::init_com1() {
+            let _ = writeln!(s, "kitty-OS: bootloader did not set 4-level paging");
+        }
+        cpu::halt_forever();
+    }
 
     let info = BootInfo {
         hhdm_offset: hhdm.offset,

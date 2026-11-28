@@ -8,8 +8,13 @@
  *   requests  R--   Limine boot protocol requests (written only by the
  *                   bootloader *before* paging is handed to us)
  *   text      R-X   code
- *   rodata    R--   constants, strings, font
+ *   rodata    R--   constants, strings, font, .data.rel.ro, .got and the
+ *                   dynamic/relocation tables (KASLR, Phase 8c)
  *   data      RW-   .data + .bss (NX)
+ *
+ * The kernel is a PIE (D-068): Limine picks a random base and applies the
+ * R_X86_64_RELATIVE relocations in .rela.dyn before jumping to us, while
+ * the memory is still writable for it; for the kernel it is read-only.
  *
  * Each segment starts on a 4 KiB page boundary so permissions never have to
  * be merged inside one page.
@@ -60,6 +65,8 @@ SECTIONS
     .gnu.hash : { *(.gnu.hash) } :rodata
     .hash     : { *(.hash) }     :rodata
     .rela.dyn : { *(.rela.dyn .rela.*) } :rodata
+    /* Absolute addresses, filled in by the bootloader: read-only for us. */
+    .got      : { *(.got) }      :rodata
     .dynamic  : { *(.dynamic) }  :rodata :dynamic
     __rodata_end = .;
 
@@ -67,7 +74,6 @@ SECTIONS
     __data_start = .;
     .data : {
         *(.data .data.*)
-        *(.got .got.*)
     } :data
 
     .bss : {
@@ -77,6 +83,13 @@ SECTIONS
     . = ALIGN(4K);
     __data_end = .;
     __kernel_end = .;
+
+    /* No PLT: every call is direct, and a writable .got.plt would be a
+     * table of code pointers an attacker could overwrite. */
+    .plt     : { *(.plt .plt.*) }
+    .got.plt : { *(.got.plt) }
+    ASSERT(SIZEOF(.plt) == 0, "kernel must not have a PLT")
+    ASSERT(SIZEOF(.got.plt) == 0, "kernel must not have a .got.plt")
 
     /* No unwinder in the kernel, and notes are useless at runtime. */
     /DISCARD/ : {

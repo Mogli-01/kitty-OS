@@ -1691,7 +1691,10 @@ Formato:
 - **Feito:**
   - o kernel passa a ser um PIE (`relocation-model=pie`, linker script com `PT_DYNAMIC`, `.rela.dyn` e `.data.rel.ro` no segmento só de leitura);
   - o Limine carrega-o numa base aleatória (`kaslr: yes` no `LIMINE_CONF` do `xtask`);
-  - o arranque verifica que a base foi aleatorizada, sem a mostrar;
+  - o arranque verifica que a base foi aleatorizada (e que coincide com os símbolos do VMM), sem a mostrar;
+  - o HHDM também tem base aleatória (`randomise_hhdm_base: yes`, mais um `PagingModeRequest` de 4 níveis, sem o qual o Limine ignora a opção);
+  - aviso no arranque se o CPU não tiver UMIP;
+  - `.got` no segmento só de leitura e o linker falha se houver PLT;
   - D-068. Branch `claude/fase8c-kaslr`, base `claude/fase8b-aslr` (#116).
 - **Testes:**
   - 1993 relocações, todas `RELATIVE`;
@@ -1699,8 +1702,9 @@ Formato:
   - passaram os autotestes completos e o `test-memory` com o kernel deslocado.
 - **Proteções de segurança alteradas:** ATIVA: KASLR.
 - **Para o Codex:**
-  - mexi em **uma linha do `xtask`** (`kaslr: yes` no `LIMINE_CONF`), porque a configuração de arranque faz parte do arranque. Se preferires que fique noutro sítio, diz na revisão;
-  - a CI pode usar o marcador `[kaslr] kernel base randomized`.
+  - mexi em **duas linhas do `xtask`** (`kaslr: yes` e `randomise_hhdm_base: yes` no `LIMINE_CONF`), porque a configuração de arranque faz parte do arranque. Se preferires que fique noutro sítio, diz na revisão;
+  - a CI pode usar os marcadores `[kaslr] kernel base randomized` e `[kaslr] direct map (HHDM) base randomized`;
+  - convém a CI correr também o arranque por BIOS com o kernel PIE (o Limine reloca da mesma forma, mas não testei aqui).
 - **Avisos:**
   - a Fase 8 da minha parte fica completa (RNG, ASLR, KASLR);
   - a seguir viria a Fase 9 (SMP) ou o resto da crypto (Fase 16).

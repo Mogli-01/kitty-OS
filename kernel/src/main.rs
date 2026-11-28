@@ -60,10 +60,23 @@ pub fn kmain(mut boot: BootInfo) -> ! {
     // LINK_BASE; the bootloader picks a random base. Only whether it moved
     // is shown, never where (the address would defeat the point).
     const LINK_BASE: u64 = 0xFFFF_FFFF_8000_0000;
+    // Where the 4-level HHDM sits when the bootloader does not move it.
+    const HHDM_FIXED: u64 = 0xFFFF_8000_0000_0000;
+    // The VMM maps the image from linker symbols; they must agree with the
+    // base the bootloader relocated us to (the address is not printed).
+    assert!(
+        mm::vmm::kernel_image_start() == boot.kernel_image.virt_base,
+        "kernel image base disagrees with the bootloader"
+    );
     if boot.kernel_image.virt_base == LINK_BASE {
         kprintln!("[kaslr] WARNING: kernel at its link address (KASLR is off)");
     } else {
         kprintln!("[kaslr] kernel base randomized by the bootloader");
+    }
+    if boot.hhdm_offset == HHDM_FIXED {
+        kprintln!("[kaslr] WARNING: direct map (HHDM) at its fixed address");
+    } else {
+        kprintln!("[kaslr] direct map (HHDM) base randomized");
     }
 
     arch::init();
@@ -144,6 +157,11 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         if prot.smap { "on" } else { "UNSUPPORTED" },
         if prot.umip { "on" } else { "UNSUPPORTED" }
     );
+    if !prot.umip {
+        // sgdt/sidt in ring 3 return the GDT/IDT addresses, which live in
+        // the kernel image: on this CPU they reveal the KASLR base.
+        kprintln!("[kaslr] WARNING: no UMIP, user code can learn the kernel base (sgdt/sidt)");
+    }
     assert!(mm::user::selftest(), "user-copy self-test failed");
     kprintln!("[mm] user-copy self-test passed (round trip, fault recovery, range checks)");
     #[cfg(feature = "selftest-smap")]
