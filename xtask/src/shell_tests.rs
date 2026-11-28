@@ -13,22 +13,31 @@ const PROMPT: &str = "kitty> ";
 
 pub(super) fn package(profile_dir: &std::path::Path) -> Result<PathBuf> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    run_cmd(Command::new(cargo).current_dir(root()).args([
-        "rustc",
-        "-p",
-        "kitty-shell",
-        "--bin",
-        "kitty-init",
-        "--features",
-        "init-image",
-        "--target",
-        "x86_64-unknown-none",
-        "--release",
-        "--locked",
-        "--",
-        "-Ccode-model=small",
-        "-Clink-arg=-Tuserland/shell/init.ld",
-    ]))?;
+    // The initrd loader expects a static executable at a fixed user address.
+    // Apply these flags to all target crates in this Cargo invocation under
+    // LTO. The small code model below applies only to the init executable.
+    let rustflags = ["-Crelocation-model=static", "-Ccode-model=kernel"].join("\x1f");
+    run_cmd(
+        Command::new(cargo)
+            .current_dir(root())
+            .env("CARGO_ENCODED_RUSTFLAGS", rustflags)
+            .args([
+                "rustc",
+                "-p",
+                "kitty-shell",
+                "--bin",
+                "kitty-init",
+                "--features",
+                "init-image",
+                "--target",
+                "x86_64-unknown-none",
+                "--release",
+                "--locked",
+                "--",
+                "-Ccode-model=small",
+                "-Clink-arg=-Tuserland/shell/init.ld",
+            ]),
+    )?;
 
     let files = profile_dir.join("files");
     for directory in ["sbin", "etc"] {

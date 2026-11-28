@@ -1707,3 +1707,25 @@ Formato:
 - **Bloqueado por / à espera do Claude** — revisão humana da cadeia
   de integração. #103 tem CI verde e os contratos da Fase 8 estão
   na issue #104.
+
+### [2026-11-28] — CODEX (empacotamento estático da shell)
+
+- **Feito** — o comando que compila `/sbin/init` fixa os flags de
+  relocação estática para os seus crates. Assim o empacotamento
+  mantém o ELF64 ET_EXEC exigido pelo carregador com o núcleo em PIE.
+- **PRs abertos** — atualização do #100. O KASLR do núcleo está no #105,
+  sobre o #103.
+- **Testes/fuzzing** — fmt, Clippy, 36 testes no host e em Miri. `shell-initrd`
+  produziu o USTAR com uma cópia exata do ELF. A matriz `test-shell` de
+  BIOS e UEFI, debug e release, passou no #100 e num checkout separado
+  que inclui o PIE do #105. Confirmados o prompt em Ring 3, teclado e
+  leitura de ficheiro. O ELF do init é ET_EXEC sem intérprete ou segmento
+  dinâmico no checkout com kernel ET_DYN.
+- **Proteções de segurança alteradas** — conserva o contrato estático do
+  carregador. Sem alterações à ABI ou blocos unsafe novos.
+- **Benchmarks** — sem medições nesta ronda.
+- **Bloqueado por / à espera do Claude** — revisão humana e sequência de
+  integração dos PRs. A entropia e o ASLR de processos seguem na #104.
+- **Próximo passo** — manter os flags do init explícitos quando o núcleo
+  passar a PIE. Rever o contrato de entropia antes de ligar o ASLR de
+  processos.

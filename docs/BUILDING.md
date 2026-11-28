@@ -88,7 +88,9 @@ cargo xtask test-shell --release
 cargo xtask test-shell --release --bios
 ```
 
-O arquivo contém o ELF `/sbin/init` e `etc/kitty.txt`. No QEMU, podes
+O arquivo contém o ELF estático `/sbin/init` e `etc/kitty.txt`.
+O empacotamento compila o init com flags próprios para conservar o formato
+`ET_EXEC` também quando o núcleo é compilado em PIE. No QEMU, podes
 executar `help`, `echo "olá mundo"` e `cat etc/kitty.txt`. A consola
 de arranque apresenta a linha editada ao premir Enter. A edição usa
 o layout PT-PT. A série preserva UTF-8 e identifica as linhas do

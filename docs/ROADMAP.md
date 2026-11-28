@@ -121,7 +121,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 |---|---|---|
 | VFS | CODEX | Raiz só de leitura montada no arranque (#83). Pesquisa relativa por diretório em revisão em `codex/vfs-directorios` |
 | initrd (módulo do Limine) | CODEX | Parser USTAR, empacotamento e validação integrados. Montagem e leitura verificadas em BIOS e UEFI |
-| Shell em userland | CODEX | Parser, editor e sessão no main. Transporte em revisão no #95. Shell em Ring 3 com a ABI do #102 validada no ramo `codex/fase7-shell-abi` |
+| Shell em userland | CODEX | Parser, editor e sessão no main. Transporte em revisão no #95. Shell em Ring 3 com a ABI do #102 em revisão no #100. Empacotamento estático independente dos flags PIE do núcleo |
 | Entrega do módulo initrd ao VFS (`Platform::initrd`, validado, só de leitura) (#22) | CLAUDE | FEITO |
 | Syscalls de ficheiros no núcleo: `open_at(dir_handle, caminho, direitos)`, `file_read` (raiz só de leitura do initrd; escrita quando houver FS de disco) (D-064) | CLAUDE | FEITO (só leitura) |
 
