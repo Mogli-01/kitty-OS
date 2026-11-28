@@ -380,7 +380,7 @@ pub fn elf() -> Result<(), &'static str> {
     if Image::parse(&on_guard).err() != Some(ElfError::OutOfRange) {
         return Err("a segment on the stack guard page was accepted");
     }
-    let process = super::spawn::spawn_from_kernel(
+    let process = super::spawn::spawn_test_from_kernel(
         &good,
         alloc::vec![(Object::Console, super::CONSOLE_RIGHTS)],
     )
@@ -488,7 +488,7 @@ pub fn input() -> Result<(), &'static str> {
             ..InputEvent::default()
         });
     }
-    let process = super::spawn::spawn_from_kernel(
+    let process = super::spawn::spawn_test_from_kernel(
         &image,
         alloc::vec![
             (Object::Console, super::CONSOLE_RIGHTS),

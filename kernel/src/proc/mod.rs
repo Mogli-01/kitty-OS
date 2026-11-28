@@ -151,6 +151,12 @@ impl Process {
         Self::create(space, handles, false)
     }
 
+    /// Like [`Process::new`], but the address space survives the process
+    /// (self-tests read what it wrote after it ended).
+    pub fn new_for_test(space: UserSpace, handles: HandleTable) -> Option<Arc<Self>> {
+        Self::create(space, handles, true)
+    }
+
     fn create(space: UserSpace, handles: HandleTable, retain_space: bool) -> Option<Arc<Self>> {
         if LIVE_PROCESSES.fetch_add(1, Ordering::AcqRel) >= MAX_PROCESSES {
             LIVE_PROCESSES.fetch_sub(1, Ordering::AcqRel);

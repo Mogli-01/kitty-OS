@@ -75,6 +75,7 @@ fn handle_failure(e: HandleError) -> SpawnFailure {
 fn build(
     image: &[u8],
     objects: Vec<(Object, Rights)>,
+    retain_space: bool,
 ) -> Result<(Arc<Process>, sched::ThreadId), SpawnFailure> {
     let elf = Image::parse(image).map_err(SpawnFailure::Elf)?;
     // Image + stack + a generous allowance for page tables and the thread.
@@ -95,7 +96,12 @@ fn build(
     for (object, rights) in objects {
         handles.insert(object, rights).map_err(handle_failure)?;
     }
-    let process = Process::new(space, handles).ok_or(SpawnFailure::NoMemory)?;
+    let process = if retain_space {
+        Process::new_for_test(space, handles)
+    } else {
+        Process::new(space, handles)
+    }
+    .ok_or(SpawnFailure::NoMemory)?;
     let thread = sched::spawn_user_parked("user", Arc::clone(&process), elf.entry(), STACK_TOP)
         .map_err(|_| SpawnFailure::NoMemory)?;
     Ok((process, thread))
@@ -106,7 +112,18 @@ pub fn spawn_from_kernel(
     image: &[u8],
     objects: Vec<(Object, Rights)>,
 ) -> Result<Arc<Process>, SpawnFailure> {
-    let (process, thread) = build(image, objects)?;
+    let (process, thread) = build(image, objects, false)?;
+    sched::unpark(thread);
+    Ok(process)
+}
+
+/// Like [`spawn_from_kernel`] for self-tests: the address space is kept
+/// after the process ends, so the test can inspect what it wrote.
+pub fn spawn_test_from_kernel(
+    image: &[u8],
+    objects: Vec<(Object, Rights)>,
+) -> Result<Arc<Process>, SpawnFailure> {
+    let (process, thread) = build(image, objects, true)?;
     sched::unpark(thread);
     Ok(process)
 }
@@ -160,7 +177,7 @@ pub fn spawn(
         .try_reserve(grants.len())
         .map_err(|_| SpawnFailure::NoMemory)?;
     // 2. Build the child, parked (the only step that allocates a lot).
-    let (child, thread) = build(image, objects)?;
+    let (child, thread) = build(image, objects, false)?;
     // 3. Commit under the parent's lock: re-check the moved handles, give
     //    the parent its PROCESS handle, take the moved handles.
     let committed = {
