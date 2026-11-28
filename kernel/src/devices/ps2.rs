@@ -2,7 +2,7 @@ use crate::arch::irq::{self, Vector};
 use crate::arch::legacy::{self, LegacyDevice, LegacyPorts};
 use crate::kprintln;
 use crate::sync::IrqSpinLock;
-use kitty_ps2::{ControllerError, Ps2Input};
+use kitty_ps2::{ControllerError, PortugueseKeyboard, Ps2Input};
 
 const KEYBOARD_IRQ: u8 = 1;
 const AUXILIARY_IRQ: u8 = 12;
@@ -24,19 +24,27 @@ fn on_interrupt(_line: u8) {
     // The status byte determines the source because both IRQs share DATA.
     devices.on_interrupt();
 
+    let event = devices.next_input();
+    drop(state);
     #[cfg(feature = "selftest-ps2-input")]
-    {
-        let event = devices.next_input();
-        drop(state);
-        log_test_event(_line, event);
+    log_test_event(_line, event);
+    static LAYOUT: IrqSpinLock<Option<PortugueseKeyboard>> = IrqSpinLock::new(None);
+    let text = event.and_then(|event| {
+        LAYOUT
+            .lock()
+            .get_or_insert_with(PortugueseKeyboard::default)
+            .push(event)
+    });
+    if let Some(text) = text {
+        crate::console::input_push(text.as_bytes());
+        #[cfg(feature = "selftest-ps2-input")]
+        crate::console::debug_print(format_args!("[kbd-test] text {:02x?}\n", text.as_bytes()));
     }
 }
 
 #[cfg(feature = "selftest-ps2-input")]
 fn log_test_event(line: u8, event: Option<kitty_ps2::InputEvent>) {
-    use kitty_ps2::{InputEvent, PortugueseKeyboard};
-
-    static LAYOUT: IrqSpinLock<Option<PortugueseKeyboard>> = IrqSpinLock::new(None);
+    use kitty_ps2::InputEvent;
 
     match event {
         Some(InputEvent::Key(event)) => crate::console::debug_print(format_args!(
@@ -57,18 +65,6 @@ fn log_test_event(line: u8, event: Option<kitty_ps2::InputEvent>) {
             ));
         }
         None => {}
-    }
-    if let Some(event) = event {
-        let bytes = LAYOUT
-            .lock()
-            .get_or_insert_with(PortugueseKeyboard::default)
-            .push(event);
-        if let Some(bytes) = bytes {
-            crate::console::debug_print(format_args!(
-                "[kbd-test] text {:02x?}\n",
-                bytes.as_bytes()
-            ));
-        }
     }
 }
 

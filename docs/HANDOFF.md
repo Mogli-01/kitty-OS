@@ -1636,3 +1636,96 @@ Formato:
   - empilhado sobre o #101 e o #91;
   - ainda não há `argv`, `wait` bloqueante nem escrita em ficheiros;
   - o ring de input da consola é global (D-063: a leitura exclusiva vem com o login).
+### [2026-11-27] — CODEX (diretórios do initrd)
+
+- **Feito** — vistas imutáveis de diretórios do initrd para pesquisas
+  relativas. O VFS reutiliza o índice ordenado e nunca procura fora da
+  vista selecionada. Atualizei o autoteste do núcleo para ler
+  `kitty.txt` a partir da vista de `/etc`.
+- **PRs abertos** — ramo `codex/vfs-directorios`.
+- **Testes/fuzzing** — 10 testes no host e em Miri. Seis arranques QEMU
+  release em BIOS e UEFI com initrd válido, checksum inválido e sem
+  initrd. O alvo existente compara a pesquisa relativa e absoluta
+  em arquivos montados.
+- **Benchmarks** — sem medições. A pesquisa não aloca nem copia caminhos.
+- **Proteções de segurança alteradas** — caminhos relativos canónicos
+  e pesquisa limitada ao subdiretório. Sem `unsafe` novo.
+- **Bloqueado por / à espera do Claude** — ligar a vista ao handle DIR,
+  validar direitos e copiar os argumentos de `open_at`.
+- **Avisos** — a raiz do initrd continua só de leitura.
+
+### [2026-11-27] — CODEX (transporte da shell)
+
+- **Feito** — sessão com prompt sobre um transporte de bytes. A sessão
+  mantém o editor entre leituras, completa escritas parciais e distingue
+  falhas de leitura, escrita e contagens inválidas.
+- **PRs abertos** — ramo `codex/shell-transporte`.
+- **Testes/fuzzing** — 14 testes no host e em Miri, incluindo UTF-8 e
+  teclas divididos entre leituras. A demonstração no host executou
+  `help` e `echo "olá mundo"`. A biblioteca compila para
+  `x86_64-unknown-none`.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — contagens limitadas ao tamanho
+  dos buffers. Escrita sem progresso termina com erro. Sem `unsafe` novo.
+- **Bloqueado por / à espera do Claude** — números das syscalls de
+  consola e carregamento de `/sbin/init` (issue #50).
+- **Avisos** — a demonstração usa a consola do host. O redesenho da
+  linha em edição pertence ao consumidor do transporte.
+
+### [2026-11-27] — CODEX (percurso teclado e shell)
+
+- **Feito** — o teste de teclado do QEMU envia uma sessão com Ctrl+C,
+  `help` e um `echo café` editado com setas e Backspace. O teste
+  entrega a saída traduzida pelo driver à shell no host, um byte
+  por leitura, e compara o prompt e a saída dos comandos.
+- **PRs abertos** — #95 sobre #96.
+- **Testes/fuzzing** — teclado QEMU em BIOS e UEFI, debug e release.
+  Testes da shell e VFS no host e em Miri, e fuzzing da shell.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — nenhuma. Sem `unsafe` novo.
+- **Bloqueado por / à espera do Claude** — #50. Falta o QEMU
+  demonstrar `/sbin/init` em Ring 3 a escrever o primeiro prompt
+  pela syscall de consola.
+- **Avisos** — este ensaio liga o driver do convidado à shell no host.
+  A transição de Ring 3 e as syscalls ficam para o ensaio integral.
+
+### [2026-11-28] — CODEX (shell sobre a ABI publicada)
+
+- **Feito** — adaptei a shell do #100 às syscalls do #101 e ao
+  carregador ELF do #102. O `cat` passa o offset explícito de leitura
+  e o PS/2 entrega os bytes traduzidos à consola. O teste de ponta a
+  ponta corre na matriz QEMU da CI.
+- **PRs abertos** — #100 sobre `claude/fase6d-elf-init`. Inclui a
+  integração dos ramos #95/#96 e preserva o histórico do protótipo.
+- **Testes/fuzzing** — QEMU em BIOS e UEFI, debug e release, com
+  `/sbin/init`, `help`, `echo café`, edição, cancelamento e `cat`.
+  Cobertura de caminho inválido e ficheiro inexistente. Clippy e
+  testes de xtask, shell e VFS no host.
+- **Proteções de segurança alteradas** — preserva o filtro de controlos
+  e o prefixo de utilizador da consola do #101. A linha editada aparece
+  ao premir Enter.
+- **Bloqueado por / à espera do Claude** — revisão humana da cadeia
+  de integração. #103 tem CI verde e os contratos da Fase 8 estão
+  na issue #104.
+
+### [2026-11-28] — CODEX (empacotamento estático da shell)
+
+- **Feito** — o comando que compila `/sbin/init` fixa os flags de
+  relocação estática para os seus crates. Assim o empacotamento
+  mantém o ELF64 ET_EXEC exigido pelo carregador com o núcleo em PIE.
+- **PRs abertos** — atualização do #100. O KASLR do núcleo está no #105,
+  sobre o #103.
+- **Testes/fuzzing** — fmt, Clippy, 36 testes no host e em Miri. `shell-initrd`
+  produziu o USTAR com uma cópia exata do ELF. A matriz `test-shell` de
+  BIOS e UEFI, debug e release, passou no #100 e num checkout separado
+  que inclui o PIE do #105. Confirmados o prompt em Ring 3, teclado e
+  leitura de ficheiro. O ELF do init é ET_EXEC sem intérprete ou segmento
+  dinâmico no checkout com kernel ET_DYN.
+- **Proteções de segurança alteradas** — conserva o contrato estático do
+  carregador. Sem alterações à ABI ou blocos unsafe novos.
+- **Benchmarks** — sem medições nesta ronda.
+- **Bloqueado por / à espera do Claude** — revisão humana e sequência de
+  integração dos PRs. A entropia e o ASLR de processos seguem na #104.
+- **Próximo passo** — manter os flags do init explícitos quando o núcleo
+  passar a PIE. Rever o contrato de entropia antes de ligar o ASLR de
+  processos.

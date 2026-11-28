@@ -60,3 +60,38 @@ cargo xtask test-initrd --bios --release # BIOS
 O teste verifica a leitura de `/etc/kitty.txt`, um arquivo com checksum
 inválido e um arranque sem módulo. Os logs e meios do teste ficam em
 `build/initrd-tests/<firmware>-<perfil>/`.
+
+## Experimentar a primeira shell
+
+O exemplo no host usa a entrada e saída padrão:
+
+```sh
+cargo run -p kitty-shell --example host_shell
+```
+
+Escreve `help` ou `echo "olá mundo"`. O teste seguinte envia teclas
+pelo monitor do QEMU, passa-as pelo driver PS/2 do núcleo e entrega à
+shell, executada no host, o texto que o driver produziu:
+
+```sh
+cargo xtask test-keyboard --release
+cargo xtask test-keyboard --release --bios
+```
+
+O teste verifica Ctrl+C, Backspace, setas, Enter e texto acentuado.
+Para usar a shell dentro do kitty-OS com a ABI dos PRs #101/#102:
+
+```sh
+cargo xtask shell-initrd
+cargo xtask run --release --initrd build/shell/shell.tar
+cargo xtask test-shell --release
+cargo xtask test-shell --release --bios
+```
+
+O arquivo contém o ELF estático `/sbin/init` e `etc/kitty.txt`.
+O empacotamento compila o init com flags próprios para conservar o formato
+`ET_EXEC` também quando o núcleo é compilado em PIE. No QEMU, podes
+executar `help`, `echo "olá mundo"` e `cat etc/kitty.txt`. A consola
+de arranque apresenta a linha editada ao premir Enter. A edição usa
+o layout PT-PT. A série preserva UTF-8 e identifica as linhas do
+utilizador com o prefixo `[u]`.

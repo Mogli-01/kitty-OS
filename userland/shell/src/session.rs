@@ -33,6 +33,15 @@ impl ShellSession {
         byte: u8,
         output: &mut impl fmt::Write,
     ) -> Result<SessionEvent, fmt::Error> {
+        self.push_with(byte, output, CommandLine::execute)
+    }
+
+    pub(crate) fn push_with<W: fmt::Write>(
+        &mut self,
+        byte: u8,
+        output: &mut W,
+        execute: impl FnOnce(&CommandLine, &mut W) -> Result<(), ExecuteError>,
+    ) -> Result<SessionEvent, fmt::Error> {
         let Some(key) = self.input.push(byte) else {
             return Ok(SessionEvent::Ignored);
         };
@@ -56,7 +65,7 @@ impl ShellSession {
                 let command = CommandLine::parse(self.line.as_bytes());
                 self.line.clear();
                 match command {
-                    Ok(command) => match command.execute(output) {
+                    Ok(command) => match execute(&command, output) {
                         Ok(()) => {}
                         Err(ExecuteError::Output(error)) => return Err(error),
                         Err(ExecuteError::UnknownCommand) => {
