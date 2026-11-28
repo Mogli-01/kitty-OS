@@ -267,3 +267,77 @@ fn console_keeps_the_line_editable_at_capacity() {
     assert_eq!(shell.line().as_bytes().last(), Some(&b'y'));
     assert!(output.is_empty());
 }
+
+struct TestConsole<'a> {
+    input: &'a [&'a [u8]],
+    output: Vec<u8>,
+    write_limit: usize,
+}
+
+impl Console for TestConsole<'_> {
+    type Error = &'static str;
+
+    fn read(&mut self, buffer: &mut [u8]) -> Result<usize, Self::Error> {
+        let Some((chunk, rest)) = self.input.split_first() else {
+            return Ok(0);
+        };
+        self.input = rest;
+        buffer[..chunk.len()].copy_from_slice(chunk);
+        Ok(chunk.len())
+    }
+
+    fn write(&mut self, bytes: &[u8]) -> Result<usize, Self::Error> {
+        let length = self.write_limit.min(bytes.len());
+        self.output.extend_from_slice(&bytes[..length]);
+        Ok(length)
+    }
+}
+
+#[test]
+fn runs_the_shell_with_split_reads_and_partial_writes() {
+    let mut console = TestConsole {
+        input: &[
+            b"echo old",
+            b"\x03echo cax\x1b[",
+            b"D\x1b[3~f\xc3",
+            b"\xa9\nnope\necho unfinished",
+        ],
+        output: Vec::new(),
+        write_limit: 1,
+    };
+    assert_eq!(run_console(&mut console), Ok(()));
+    assert_eq!(
+        console.output,
+        "kitty> ^C\nkitty> café\nkitty> unknown command\nkitty> ".as_bytes()
+    );
+}
+
+#[test]
+fn console_checks_reported_counts_and_stops_at_zero_write() {
+    struct Reported {
+        read: Result<usize, &'static str>,
+        write: Result<usize, &'static str>,
+    }
+
+    impl Console for Reported {
+        type Error = &'static str;
+
+        fn read(&mut self, _: &mut [u8]) -> Result<usize, Self::Error> {
+            self.read
+        }
+
+        fn write(&mut self, _: &[u8]) -> Result<usize, Self::Error> {
+            self.write
+        }
+    }
+
+    for (read, write, expected) in [
+        (Ok(129), Ok(1), ConsoleError::InvalidReadCount),
+        (Ok(0), Ok(8), ConsoleError::InvalidWriteCount),
+        (Ok(0), Ok(0), ConsoleError::WriteZero),
+        (Err("read"), Ok(1), ConsoleError::Read("read")),
+        (Ok(0), Err("write"), ConsoleError::Write("write")),
+    ] {
+        assert_eq!(run_console(&mut Reported { read, write }), Err(expected));
+    }
+}

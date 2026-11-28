@@ -83,7 +83,14 @@ fn exercise(input: &[u8]) {
                 } else {
                     format!("/{}", entry.path)
                 };
-                match (entry.kind, fs.lookup(&path)) {
+                let inode = fs.lookup(&path);
+                if !entry.path.is_root() {
+                    let (parent, name) = path.rsplit_once('/').expect("absolute archive path");
+                    let parent = if parent.is_empty() { "/" } else { parent };
+                    let directory = fs.directory(parent).expect("parent in mounted archive");
+                    assert_eq!(directory.lookup(name), inode);
+                }
+                match (entry.kind, inode) {
                     (EntryKind::Directory, Ok(Inode::Directory)) => {}
                     (EntryKind::File(data), Ok(Inode::File(file))) => {
                         let mut bytes = [0; 16];

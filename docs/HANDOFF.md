@@ -1636,3 +1636,55 @@ Formato:
   - empilhado sobre o #101 e o #91;
   - ainda não há `argv`, `wait` bloqueante nem escrita em ficheiros;
   - o ring de input da consola é global (D-063: a leitura exclusiva vem com o login).
+### [2026-11-27] — CODEX (diretórios do initrd)
+
+- **Feito** — vistas imutáveis de diretórios do initrd para pesquisas
+  relativas. O VFS reutiliza o índice ordenado e nunca procura fora da
+  vista selecionada. Atualizei o autoteste do núcleo para ler
+  `kitty.txt` a partir da vista de `/etc`.
+- **PRs abertos** — ramo `codex/vfs-directorios`.
+- **Testes/fuzzing** — 10 testes no host e em Miri. Seis arranques QEMU
+  release em BIOS e UEFI com initrd válido, checksum inválido e sem
+  initrd. O alvo existente compara a pesquisa relativa e absoluta
+  em arquivos montados.
+- **Benchmarks** — sem medições. A pesquisa não aloca nem copia caminhos.
+- **Proteções de segurança alteradas** — caminhos relativos canónicos
+  e pesquisa limitada ao subdiretório. Sem `unsafe` novo.
+- **Bloqueado por / à espera do Claude** — ligar a vista ao handle DIR,
+  validar direitos e copiar os argumentos de `open_at`.
+- **Avisos** — a raiz do initrd continua só de leitura.
+
+### [2026-11-27] — CODEX (transporte da shell)
+
+- **Feito** — sessão com prompt sobre um transporte de bytes. A sessão
+  mantém o editor entre leituras, completa escritas parciais e distingue
+  falhas de leitura, escrita e contagens inválidas.
+- **PRs abertos** — ramo `codex/shell-transporte`.
+- **Testes/fuzzing** — 14 testes no host e em Miri, incluindo UTF-8 e
+  teclas divididos entre leituras. A demonstração no host executou
+  `help` e `echo "olá mundo"`. A biblioteca compila para
+  `x86_64-unknown-none`.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — contagens limitadas ao tamanho
+  dos buffers. Escrita sem progresso termina com erro. Sem `unsafe` novo.
+- **Bloqueado por / à espera do Claude** — números das syscalls de
+  consola e carregamento de `/sbin/init` (issue #50).
+- **Avisos** — a demonstração usa a consola do host. O redesenho da
+  linha em edição pertence ao consumidor do transporte.
+
+### [2026-11-27] — CODEX (percurso teclado e shell)
+
+- **Feito** — o teste de teclado do QEMU envia uma sessão com Ctrl+C,
+  `help` e um `echo café` editado com setas e Backspace. O teste
+  entrega a saída traduzida pelo driver à shell no host, um byte
+  por leitura, e compara o prompt e a saída dos comandos.
+- **PRs abertos** — #95 sobre #96.
+- **Testes/fuzzing** — teclado QEMU em BIOS e UEFI, debug e release.
+  Testes da shell e VFS no host e em Miri, e fuzzing da shell.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — nenhuma. Sem `unsafe` novo.
+- **Bloqueado por / à espera do Claude** — #50. Falta o QEMU
+  demonstrar `/sbin/init` em Ring 3 a escrever o primeiro prompt
+  pela syscall de consola.
+- **Avisos** — este ensaio liga o driver do convidado à shell no host.
+  A transição de Ring 3 e as syscalls ficam para o ensaio integral.
