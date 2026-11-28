@@ -1312,4 +1312,11 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
   - Isto substitui o "recusa arrancar" que estava previsto no SECURITY.md.
   - **Porquê:** recusar o arranque numa VM sem RDRAND tornava o sistema inutilizável por uma propriedade do host. O aviso torna a fraqueza visível, e na Fase 16 as chaves de longo prazo podem exigir `!weak`.
 - **`random_fill` (syscall 8):** até 512 bytes por chamada e sem handle. Ler aleatoriedade não dá autoridade sobre nada (D-058). A cópia na pilha do kernel é apagada no fim.
-- **Limites:** ainda não há estimativa formal de entropia (NIST SP 800-90B); o teste de saúde é só o de repetição.
+- **Revisto depois do `security-reviewer`:**
+  - **Teste de saúde:** rejeita `0`, tudo-a-1 e qualquer palavra já vista no mesmo lote. Uma fonte que rejeite uma única palavra no arranque deixa de ser de confiança. Antes só se apanhavam repetições seguidas, e uma fonte a alternar dois valores passava.
+  - **Modo fraco:** o estado `weak` fica guardado (`rng::is_weak()`). Em modo fraco há um reseed a cada 16 pedidos. Para todos os modos há um reseed forçado depois de as interrupções terem corrido, antes do `/sbin/init`.
+  - **Contador do ChaCha20:** o `rng::fill` gera em pedaços de 4 KiB, um por chave, por isso o contador nunca dá a volta e o lock nunca fica preso muito tempo. O `xor_stream` recusa (`CounterOverflow`) em vez de repetir o keystream.
+  - **CPUID:** o leaf 7 só é lido se existir (antes, um max leaf < 7 podia ligar bits falsos); o suporte de RDRAND/RDSEED fica em cache; o reseed tenta o RDSEED só 4 vezes por palavra (o user pode esgotá-lo).
+  - **Higiene:** o `Sha256` apaga o seu estado no `Drop`, e o `compress` e o `collect` apagam as cópias intermédias. O `ct_eq` usa `black_box` em cada passo.
+  - **Testes:** vetores independentes do SHA-256 para 55, 56, 63, 64, 119 e 120 bytes.
+- **Limites:** ainda não há estimativa formal de entropia (NIST SP 800-90B). Sob emulação (QEMU TCG/`-icount`), o jitter vale cerca de 0 bits.

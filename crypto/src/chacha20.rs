@@ -60,17 +60,33 @@ pub fn block(key: &[u8; KEY_LEN], counter: u32, nonce: &[u8; NONCE_LEN]) -> [u8;
     out
 }
 
+/// The block counter would wrap (RFC 8439 forbids it: the keystream would
+/// repeat).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CounterOverflow;
+
 /// XORs `data` with the keystream starting at block `counter`
 /// (RFC 8439 §2.4; encryption and decryption are the same operation).
 /// The caller must never reuse a (key, nonce) pair for different data.
-pub fn xor_stream(key: &[u8; KEY_LEN], counter: u32, nonce: &[u8; NONCE_LEN], data: &mut [u8]) {
+/// Refuses (without touching `data`) if the counter would wrap.
+pub fn xor_stream(
+    key: &[u8; KEY_LEN],
+    counter: u32,
+    nonce: &[u8; NONCE_LEN],
+    data: &mut [u8],
+) -> Result<(), CounterOverflow> {
+    let blocks = data.len().div_ceil(BLOCK_LEN) as u64;
+    if u64::from(counter) + blocks > u64::from(u32::MAX) + 1 {
+        return Err(CounterOverflow);
+    }
     for (i, chunk) in data.chunks_mut(BLOCK_LEN).enumerate() {
-        let mut ks = block(key, counter.wrapping_add(i as u32), nonce);
+        let mut ks = block(key, counter + i as u32, nonce);
         for (d, k) in chunk.iter_mut().zip(ks.iter()) {
             *d ^= k;
         }
         crate::wipe(&mut ks);
     }
+    Ok(())
 }
 
 /// Known-answer tests from RFC 8439: the block function (§2.3.2) and the
@@ -95,7 +111,9 @@ pub fn self_test() -> bool {
     // §2.4.2: nonce 00:00:00:00:00:00:00:4a:00:00:00:00, counter 1.
     let nonce: [u8; 12] = [0, 0, 0, 0, 0, 0, 0, 0x4a, 0, 0, 0, 0];
     let mut text = *b"Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.";
-    xor_stream(&key, 1, &nonce, &mut text);
+    if xor_stream(&key, 1, &nonce, &mut text).is_err() {
+        return false;
+    }
     const CIPHER_START: [u8; 16] = [
         0x6e, 0x2e, 0x35, 0x9a, 0x25, 0x68, 0xf9, 0x80, 0x41, 0xba, 0x07, 0x28, 0xdd, 0x0d, 0x69,
         0x81,
@@ -105,6 +123,7 @@ pub fn self_test() -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -118,9 +137,20 @@ mod tests {
         let key = [7u8; 32];
         let nonce = [9u8; 12];
         let mut data = [0x42u8; 200];
-        xor_stream(&key, 5, &nonce, &mut data);
+        xor_stream(&key, 5, &nonce, &mut data).unwrap();
         assert_ne!(data, [0x42u8; 200]);
-        xor_stream(&key, 5, &nonce, &mut data);
+        xor_stream(&key, 5, &nonce, &mut data).unwrap();
         assert_eq!(data, [0x42u8; 200]);
+    }
+
+    #[test]
+    fn counter_never_wraps() {
+        let mut data = [0u8; 128];
+        assert_eq!(
+            xor_stream(&[0; 32], u32::MAX, &[0; 12], &mut data),
+            Err(CounterOverflow)
+        );
+        assert_eq!(data, [0u8; 128]);
+        assert!(xor_stream(&[0; 32], u32::MAX, &[0; 12], &mut data[..64]).is_ok());
     }
 }

@@ -77,9 +77,17 @@ impl Sha256 {
         for (chunk, word) in out.as_chunks_mut::<4>().0.iter_mut().zip(self.state) {
             *chunk = word.to_be_bytes();
         }
-        self.state = [0; 8];
-        crate::wipe(&mut self.block);
         out
+    }
+}
+
+impl Drop for Sha256 {
+    fn drop(&mut self) {
+        // The state and the buffered block are derived from the message
+        // (and, in the RNG, from secret keys): wipe them.
+        self.state = [0; 8];
+        core::hint::black_box(&self.state);
+        crate::wipe(&mut self.block);
     }
 }
 
@@ -120,6 +128,9 @@ fn compress(state: &mut [u32; 8], block: &[u8; 64]) {
     for (s, v) in state.iter_mut().zip([a, b, c, d, e, f, g, h]) {
         *s = s.wrapping_add(v);
     }
+    // The message schedule holds message-derived words: wipe it.
+    w = [0; 64];
+    core::hint::black_box(&w);
 }
 
 /// One-shot SHA-256 of `data`.
@@ -189,6 +200,42 @@ mod tests {
             h.finish(),
             hex32("cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0")
         );
+    }
+
+    #[test]
+    fn boundary_vectors() {
+        // Independent digests (Python hashlib) of "a" repeated n times, for
+        // the lengths where the padding changes shape.
+        let cases: [(usize, &str); 6] = [
+            (
+                55,
+                "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318",
+            ),
+            (
+                56,
+                "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a",
+            ),
+            (
+                63,
+                "7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34",
+            ),
+            (
+                64,
+                "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb",
+            ),
+            (
+                119,
+                "31eba51c313a5c08226adf18d4a359cfdfd8d2e816b13f4af952f7ea6584dcfb",
+            ),
+            (
+                120,
+                "2f3d335432c70b580af0e8e1b3674a7c020d683aa5f73aaaedfdc55af904c21c",
+            ),
+        ];
+        let data = [b'a'; 120];
+        for (n, hex) in cases {
+            assert_eq!(sha256(&data[..n]), hex32(hex), "len {n}");
+        }
     }
 
     #[test]

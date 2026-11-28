@@ -194,11 +194,11 @@ pub struct UserProtections {
 /// the kernel half has no user pages, and user memory is only touched by
 /// `usercopy`, which opens SMAP for one instruction).
 pub fn enable_user_protections() -> UserProtections {
-    let leaf7 = core::arch::x86_64::__cpuid_count(7, 0);
+    let (ebx, ecx) = cpuid_leaf7();
     let wanted = UserProtections {
-        smep: leaf7.ebx & (1 << 7) != 0,
-        smap: leaf7.ebx & (1 << 20) != 0,
-        umip: leaf7.ecx & (1 << 2) != 0,
+        smep: ebx & (1 << 7) != 0,
+        smap: ebx & (1 << 20) != 0,
+        umip: ecx & (1 << 2) != 0,
     };
     let mut cr4: u64;
     // SAFETY: reading CR4 has no side effects.
@@ -327,14 +327,46 @@ pub fn enable_user_sse() {
     );
 }
 
+/// Highest basic CPUID leaf. Reading a leaf above it returns the data of
+/// the highest leaf on Intel CPUs, i.e. garbage feature bits.
+pub fn max_cpuid_leaf() -> u32 {
+    core::arch::x86_64::__cpuid(0).eax
+}
+
+/// CPUID leaf 7.0 EBX/ECX, or zeros if the CPU does not have leaf 7.
+pub fn cpuid_leaf7() -> (u32, u32) {
+    if max_cpuid_leaf() < 7 {
+        return (0, 0);
+    }
+    let l = core::arch::x86_64::__cpuid_count(7, 0);
+    (l.ebx, l.ecx)
+}
+
+/// Cached RDRAND/RDSEED support: bit 0 = known, bit 1 = RDRAND, bit 2 =
+/// RDSEED (CPUID is serializing and a VM exit under KVM: not per word).
+static RNG_FEATURES: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
+
+fn rng_features() -> u8 {
+    use core::sync::atomic::Ordering::Relaxed;
+    let f = RNG_FEATURES.load(Relaxed);
+    if f & 1 != 0 {
+        return f;
+    }
+    let rdrand = core::arch::x86_64::__cpuid(1).ecx & (1 << 30) != 0;
+    let rdseed = cpuid_leaf7().0 & (1 << 18) != 0;
+    let f = 1 | (u8::from(rdrand) << 1) | (u8::from(rdseed) << 2);
+    RNG_FEATURES.store(f, Relaxed);
+    f
+}
+
 /// Whether the CPU has RDRAND (CPUID.1:ECX bit 30).
 pub fn has_rdrand() -> bool {
-    core::arch::x86_64::__cpuid(1).ecx & (1 << 30) != 0
+    rng_features() & 2 != 0
 }
 
 /// Whether the CPU has RDSEED (CPUID.7.0:EBX bit 18).
 pub fn has_rdseed() -> bool {
-    core::arch::x86_64::__cpuid_count(7, 0).ebx & (1 << 18) != 0
+    rng_features() & 4 != 0
 }
 
 /// One 64-bit value from RDRAND (the CPU's DRBG), or `None` if the CPU
@@ -359,12 +391,12 @@ pub fn rdrand64() -> Option<u64> {
 }
 
 /// One 64-bit value from RDSEED (the CPU's entropy source, meant for
-/// seeding), or `None` if absent or exhausted after 100 tries.
-pub fn rdseed64() -> Option<u64> {
+/// seeding), or `None` if absent or exhausted after `tries` tries.
+pub fn rdseed64(tries: u32) -> Option<u64> {
     if !has_rdseed() {
         return None;
     }
-    for _ in 0..100 {
+    for _ in 0..tries {
         let (value, ok): (u64, u8);
         // SAFETY: RDSEED exists (checked above); it only writes the
         // destination register and the flags.

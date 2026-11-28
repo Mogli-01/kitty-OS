@@ -300,6 +300,10 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     #[cfg(feature = "selftest-heap-overflow")]
     arch::x86_64::selftest::heap_overflow();
 
+    // Interrupts have been running for a while: their timing is in the
+    // pool. Mix it in before the first real process gets random bytes.
+    rng::reseed_now();
+
     match proc::start_init() {
         Ok(init) => {
             kprintln!("[init] /sbin/init started (pid {})", init.pid());
