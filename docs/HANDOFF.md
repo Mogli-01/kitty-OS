@@ -1607,3 +1607,32 @@ Formato:
   - a biblioteca de syscalls em `userland/`, contra a tabela do FASE6 §3;
   - o driver de teclado a chamar `console::input_push` com os bytes traduzidos.
 - **Avisos:** depende do #91 (6b). A seguir vem a 6d: ELF loader, `process_spawn` e `/sbin/init`.
+
+### [2026-11-28] — CLAUDE (Fase 6d)
+- **Feito:**
+  - ELF loader com validação completa;
+  - objetos DIR/FILE sobre o initrd (`open_at`, `file_read`);
+  - objetos PROCESS (`process_status`);
+  - `process_spawn` com `SPAWN_COPY`/`SPAWN_MOVE`, tudo ou nada com threads estacionadas;
+  - libertação dos handles na morte de um processo;
+  - arranque do `/sbin/init` a partir do initrd;
+  - D-064;
+  - branch `claude/fase6d-elf-init`, base `claude/fase6c-syscalls` (#101).
+- **Testes:**
+  - o ELF válido corre até `exit(7)`, com a `.bss` a zero e a pilha de 64 KiB usável;
+  - 14 ELFs malformados são recusados com o erro certo;
+  - as regras do spawn: COPY sem `DUP`, MOVE sem `TRANSFER`, direitos a mais, MOVE repetido, flags inválidas, falha da imagem com o pai intacto, e um MOVE real;
+  - à mão, com um initrd que tem `/sbin/init`, o init arranca e escreve.
+- **Proteções de segurança alteradas:** ATIVAS:
+  - validação do ELF;
+  - spawn tudo ou nada;
+  - `open_at` sem path traversal;
+  - handles libertados na morte.
+- **Próximo passo sugerido para o Codex:**
+  - construir o `/sbin/init` e a shell como ELF64 estáticos contra a ABI (FASE6 §3/§6) e pô-los no initrd do `xtask`;
+  - um caso na CI com `--initrd` que verifique `[init] /sbin/init started`;
+  - a biblioteca de syscalls (9–12).
+- **Avisos:**
+  - empilhado sobre o #101 e o #91;
+  - ainda não há `argv`, `wait` bloqueante nem escrita em ficheiros;
+  - o ring de input da consola é global (D-063: a leitura exclusiva vem com o login).

@@ -23,7 +23,10 @@ use crate::mm::uspace::{UserPerm, UserSpace};
 use crate::sched::{self, SpawnError};
 use crate::sync::SpinLock;
 
+pub mod elf;
+pub mod fs;
 pub mod handles;
+pub mod spawn;
 
 use handles::{HandleTable, Object, Rights};
 
@@ -74,7 +77,15 @@ pub struct Process {
     uid: u32,
     /// Group (Phase 15). 0 = "system" for now.
     gid: u32,
-    space: UserSpace,
+    /// Its address space. Freed as soon as its last thread is reaped
+    /// (a dead process kept by a parent's PROCESS handle holds only its
+    /// pid and status), except for self-test images, which tests inspect
+    /// after they end.
+    space: SpinLock<Option<UserSpace>>,
+    /// CR3 value (the PML4 of `space`), fixed for the process's life.
+    root: u64,
+    /// Keep `space` after death (self-test images only).
+    retain_space: bool,
     kill: AtomicBool,
     status: AtomicU32,
     exit_code: AtomicI32,
@@ -83,6 +94,22 @@ pub struct Process {
 }
 
 static NEXT_PID: AtomicU32 = AtomicU32::new(1);
+
+/// Most processes that may exist at once (alive or not yet released): a
+/// spawn storm fails with `E_NOMEM` instead of exhausting kernel memory.
+pub const MAX_PROCESSES: usize = 256;
+static LIVE_PROCESSES: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+
+/// Rights of the CONSOLE handle a process starts with.
+pub const CONSOLE_RIGHTS: Rights = Rights::READ
+    .union(Rights::WRITE)
+    .union(Rights::DUP)
+    .union(Rights::TRANSFER);
+/// Rights of the root DIR handle `/sbin/init` gets.
+pub const ROOT_RIGHTS: Rights = Rights::READ
+    .union(Rights::EXEC)
+    .union(Rights::DUP)
+    .union(Rights::TRANSFER);
 
 impl Process {
     /// Builds a process from a raw code image for the self-tests: code at
@@ -110,24 +137,56 @@ impl Process {
         // The `init` ABI (docs/FASE6.md §6): handle 0 = CONSOLE.
         let mut handles = HandleTable::new();
         handles
-            .insert(
-                Object::Console,
-                Rights::READ
-                    .union(Rights::WRITE)
-                    .union(Rights::DUP)
-                    .union(Rights::TRANSFER),
-            )
+            .insert(Object::Console, CONSOLE_RIGHTS)
             .map_err(|_| ProcError::Map(MapError::OutOfMemory))?;
-        Ok(Arc::new(Self {
+        Self::create(space, handles, true).ok_or(ProcError::Map(MapError::OutOfMemory))
+    }
+
+    /// A process with `space` and `handles` (nothing runs yet). `None` if
+    /// [`MAX_PROCESSES`] processes already exist.
+    pub fn new(space: UserSpace, handles: HandleTable) -> Option<Arc<Self>> {
+        Self::create(space, handles, false)
+    }
+
+    fn create(space: UserSpace, handles: HandleTable, retain_space: bool) -> Option<Arc<Self>> {
+        if LIVE_PROCESSES.fetch_add(1, Ordering::AcqRel) >= MAX_PROCESSES {
+            LIVE_PROCESSES.fetch_sub(1, Ordering::AcqRel);
+            return None;
+        }
+        Some(Arc::new(Self {
             pid: NEXT_PID.fetch_add(1, Ordering::Relaxed),
             uid: 0,
             gid: 0,
-            space,
+            root: space.root(),
+            space: SpinLock::new(Some(space)),
+            retain_space,
             kill: AtomicBool::new(false),
             status: AtomicU32::new(STATUS_RUNNING),
             exit_code: AtomicI32::new(0),
             handles: SpinLock::new(handles),
         }))
+    }
+
+    /// Called by the scheduler when the process's thread has been reaped
+    /// (it is dead and its CR3 is no longer loaded anywhere): frees the
+    /// whole address space at once, instead of when the last handle to the
+    /// process is closed (security review: zombies held up to 64 MiB).
+    pub fn thread_reaped(&self) {
+        if self.retain_space || self.status() == Status::Running {
+            return;
+        }
+        let space = self.space.lock().take();
+        // Freed after the lock.
+        drop(space);
+    }
+
+    /// Closes every handle of a process that has ended: its objects are
+    /// released at once (not when the last reference to the process goes
+    /// away), and handles between processes cannot keep each other alive.
+    fn release_handles(&self) {
+        let table = core::mem::take(&mut *self.handles.lock());
+        // Dropped after the lock: objects may hold other processes.
+        drop(table);
     }
 
     /// Process identifier.
@@ -142,12 +201,13 @@ impl Process {
 
     /// CR3 value for this process.
     pub fn root(&self) -> u64 {
-        self.space.root()
+        self.root
     }
 
-    /// Its address space (read-only access, for diagnostics and tests).
-    pub fn space(&self) -> &UserSpace {
-        &self.space
+    /// Reads a `u64` of the process's memory (diagnostics and tests);
+    /// `None` once its address space has been freed.
+    pub fn peek_u64(&self, virt: u64) -> Option<u64> {
+        self.space.lock().as_ref()?.peek_u64(virt)
     }
 
     /// Current status.
@@ -199,6 +259,7 @@ pub fn start(process: &Arc<Process>, name: &'static str) -> Result<sched::Thread
 pub fn exit_current_on_fault(vector: u8) -> ! {
     if let Some(process) = sched::current_process() {
         process.end(STATUS_FAULT | u32::from(vector));
+        process.release_handles();
         // Drop our reference *before* leaving: `exit` never returns.
         drop(process);
     }
@@ -210,6 +271,7 @@ pub fn exit_current(code: i32) -> ! {
     if let Some(process) = sched::current_process() {
         process.exit_code.store(code, Ordering::Release);
         process.end(STATUS_EXITED);
+        process.release_handles();
         drop(process);
     }
     sched::exit()
@@ -222,8 +284,61 @@ pub fn on_return_to_user() {
     };
     if process.kill.load(Ordering::Acquire) {
         process.end(STATUS_KILLED);
+        process.release_handles();
         drop(process);
         sched::exit();
+    }
+}
+
+/// Starts `/sbin/init` from the root (docs/FASE6.md §6). Handles: 0 =
+/// CONSOLE, 1 = root DIR. Returns a log line (no addresses).
+pub fn start_init() -> Result<u32, &'static str> {
+    let root = fs::root_dir().ok_or("no initrd root")?;
+    let file = match fs::open_at(&root, "sbin/init") {
+        Ok(fs::Opened::File(f)) => f,
+        Ok(fs::Opened::Dir(_)) => return Err("/sbin/init is a directory"),
+        Err(_) => return Err("/sbin/init not found"),
+    };
+    let image = read_file(file).ok_or("/sbin/init too big or out of memory")?;
+    let objects = alloc::vec![
+        (Object::Console, CONSOLE_RIGHTS),
+        (Object::Dir(root), ROOT_RIGHTS)
+    ];
+    spawn::spawn_from_kernel(&image, objects)
+        .map(|p| p.pid())
+        .map_err(|e| match e {
+            spawn::SpawnFailure::Elf(_) => "invalid ELF image",
+            _ => "could not create the process",
+        })
+}
+
+/// Largest executable image read into memory.
+pub const MAX_EXEC_FILE: usize = 16 * 1024 * 1024;
+
+/// Frames always left free for the kernel itself: a spawn that would dip
+/// below this fails with `E_NOMEM` (the kernel's own allocations — heap,
+/// stacks, page tables — must never run dry because of user requests).
+pub const RESERVE_FRAMES: u64 = 2048;
+
+/// Whether `pages` more frames can be given to user space.
+pub fn can_commit(pages: u64) -> bool {
+    crate::mm::pmm::stats().free_frames >= pages.saturating_add(RESERVE_FRAMES)
+}
+
+/// Reads a whole file of the root into a fresh buffer.
+pub fn read_file(file: kitty_vfs::File<'static>) -> Option<alloc::vec::Vec<u8>> {
+    if file.len() > MAX_EXEC_FILE || !can_commit((file.len() as u64).div_ceil(4096)) {
+        return None;
+    }
+    let mut buf = alloc::vec::Vec::new();
+    buf.try_reserve_exact(file.len()).ok()?;
+    buf.resize(file.len(), 0);
+    (file.read_at(0, &mut buf) == file.len()).then_some(buf)
+}
+
+impl Drop for Process {
+    fn drop(&mut self) {
+        LIVE_PROCESSES.fetch_sub(1, Ordering::AcqRel);
     }
 }
 

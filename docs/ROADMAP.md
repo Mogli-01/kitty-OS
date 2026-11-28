@@ -105,10 +105,10 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | `syscall` (saída por `iretq`), tabela de syscalls, validação de TODOS os argumentos (6c) | CLAUDE | FEITO |
 | `UserPtr<T>`, `copy_from_user` / `copy_to_user` (com recuperação de #PF) | CLAUDE | FEITO |
 | Espaços de endereçamento separados por processo; entrada em ring 3, `TSS.RSP0`, `swapgs`, exceções de user matam o processo, FPU/SSE por thread (6b) | CLAUDE | FEITO |
-| ELF loader | CLAUDE | TODO |
+| ELF loader (validação completa, cópia para frames novos) e arranque de `/sbin/init` (6d) | CLAUDE | FEITO |
 | GUI-PREP/CAPS: objetos do kernel + tabela de handles por processo, com direitos e geração (D-018, D-051, D-063) | CLAUDE | FEITO (objeto CONSOLE; os outros chegam com as suas fases) |
 | CAPS: ABI "capability-first": toda a syscall com efeito fora do próprio processo recebe um handle; sem nomes nem caminhos globais; bits de direitos 16–31 reservados por tipo de objeto; `E_BADSIG` reservado (D-058) | CLAUDE | TODO |
-| CAPS: `process_spawn(imagem, handles[])`, a única forma de dar autoridade a um processo novo (por defeito, nenhuma) | CLAUDE | TODO |
+| CAPS: `process_spawn(imagem, grants)` com `SPAWN_COPY`/`SPAWN_MOVE`, tudo ou nada (#79, D-064) | CLAUDE | FEITO |
 | PREP-15: campos `uid`/`gid` no processo e pontos de auditoria nas syscalls sensíveis (sem efeito até à Fase 15) | CLAUDE | TODO |
 | SEGURANÇA: SMEP, SMAP, UMIP ativos | CLAUDE | FEITO |
 | Biblioteca de syscalls para userland | CODEX | TODO |
@@ -132,7 +132,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | initrd (módulo do Limine) | CODEX | Parser (#23), empacotamento (#31), receção e validação do arquivo verificadas em BIOS e UEFI |
 | Shell em userland | CODEX | TODO |
 | Entrega do módulo initrd ao VFS (`Platform::initrd`, validado, só de leitura) (#22) | CLAUDE | FEITO |
-| Syscalls de ficheiros no núcleo: `open_at(dir_handle, caminho, direitos)`, read/write/close; sem caminhos absolutos globais (D-058) | CLAUDE | TODO |
+| Syscalls de ficheiros no núcleo: `open_at(dir_handle, caminho, direitos)`, `file_read` (raiz só de leitura do initrd; escrita quando houver FS de disco) (D-064) | CLAUDE | FEITO (só leitura) |
 
 ## Fase 8 — Aleatoriedade e permissões
 | Tarefa | Dono | Estado |

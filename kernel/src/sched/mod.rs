@@ -54,6 +54,9 @@ enum State {
     Ready,
     /// Waiting on a `WaitQueue`; not in the ready queue until woken.
     Blocked,
+    /// Created but never started (`spawn_user_parked`); only `unpark`
+    /// makes it ready, `wake` does not touch it.
+    Parked,
     Dead,
 }
 
@@ -81,6 +84,14 @@ struct Thread {
     kstack_top: u64,
     /// User side, for threads that run a process.
     user: Option<UserThread>,
+}
+
+impl Drop for UserThread {
+    fn drop(&mut self) {
+        // Runs when the thread is reaped (or a parked one discarded): its
+        // CR3 is not loaded any more, so the address space can go.
+        self.process.thread_reaped();
+    }
 }
 
 /// What a user thread has on top of a kernel thread.
@@ -203,7 +214,7 @@ fn idle_loop() {
 /// Creates a kernel thread that runs `entry` and is queued as ready.
 /// When `entry` returns, the thread exits.
 pub fn spawn(name: &'static str, entry: fn()) -> Result<ThreadId, SpawnError> {
-    spawn_inner(name, entry, None)
+    spawn_inner(name, entry, None, true)
 }
 
 /// Whether `rip`/`rsp` may start a user thread. Both must lie strictly
@@ -240,6 +251,65 @@ pub fn spawn_user(
     rip: u64,
     rsp: u64,
 ) -> Result<ThreadId, SpawnError> {
+    spawn_user_with(name, process, rip, rsp, true)
+}
+
+/// Like [`spawn_user`] but the thread is **parked**: it exists (stack,
+/// FPU state, everything allocated) but does not run until [`unpark`].
+/// `process_spawn` uses this to make spawning all-or-nothing: the only
+/// step that can fail (allocation) happens before any handle moves, and a
+/// parked thread that is never started is removed with [`discard_parked`].
+pub fn spawn_user_parked(
+    name: &'static str,
+    process: Arc<Process>,
+    rip: u64,
+    rsp: u64,
+) -> Result<ThreadId, SpawnError> {
+    spawn_user_with(name, process, rip, rsp, false)
+}
+
+/// Lets a parked thread run. Returns whether it was parked.
+pub fn unpark(id: ThreadId) -> bool {
+    let mut guard = SCHED.lock();
+    let Some(s) = guard.as_mut() else {
+        return false;
+    };
+    match s.threads.get_mut(&id) {
+        Some(t) if t.state == State::Parked => {
+            t.state = State::Ready;
+            s.ready.push_back(id);
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Removes a parked thread that never ran (its stack and process
+/// reference are freed). Returns whether it was parked.
+pub fn discard_parked(id: ThreadId) -> bool {
+    let thread = {
+        let mut guard = SCHED.lock();
+        let Some(s) = guard.as_mut() else {
+            return false;
+        };
+        if !s.threads.get(&id).is_some_and(|t| t.state == State::Parked) {
+            return false;
+        }
+        s.threads.remove(&id)
+    };
+    // Dropped outside the scheduler lock (frees stack frames and maybe a
+    // whole address space).
+    drop(thread);
+    true
+}
+
+fn spawn_user_with(
+    name: &'static str,
+    process: Arc<Process>,
+    rip: u64,
+    rsp: u64,
+    run: bool,
+) -> Result<ThreadId, SpawnError> {
     if !valid_user_entry(rip, rsp) {
         return Err(SpawnError::BadUserAddress);
     }
@@ -249,7 +319,7 @@ pub fn spawn_user(
         fpu: Box::new(FpuState::initial()),
         entry: (rip, rsp),
     };
-    spawn_inner(name, user_thread_main, Some(user))
+    spawn_inner(name, user_thread_main, Some(user), run)
 }
 
 /// Kernel-side start of every user thread: leave for ring 3.
@@ -275,13 +345,14 @@ fn spawn_inner(
     name: &'static str,
     entry: fn(),
     user: Option<UserThread>,
+    run: bool,
 ) -> Result<ThreadId, SpawnError> {
     let frame = context::initial_frame(entry as *const () as usize as u64);
     let stack = KernelStack::new(&frame)?;
     let rsp = stack.top() - (context::INITIAL_FRAME_WORDS as u64) * 8;
     let thread = Box::new(Thread {
         name,
-        state: State::Ready,
+        state: if run { State::Ready } else { State::Parked },
         rsp,
         kstack_top: stack.top(),
         stack: Some(stack),
@@ -303,7 +374,9 @@ fn spawn_inner(
     let id = ThreadId(s.next_id);
     s.next_id += 1;
     s.threads.insert(id, thread);
-    s.ready.push_back(id);
+    if run {
+        s.ready.push_back(id);
+    }
     Ok(id)
 }
 

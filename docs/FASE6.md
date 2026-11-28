@@ -72,6 +72,7 @@ Princípios:
 | -9 | `E_NOSYS` | syscall desconhecida |
 | -10 | `E_TOOBIG` | tamanho acima do limite |
 | -11 | `E_BADSIG` | reservado (Fase 16): imagem sem assinatura válida |
+| -12 | `E_BADIMAGE` | a imagem não é um ELF executável válido (6d) |
 
 - **Todos** os argumentos são validados antes de qualquer efeito. Números
   de syscall fora da tabela → `E_NOSYS` (nunca indexar uma tabela sem
@@ -100,6 +101,13 @@ Princípios:
 | 6 | `console_read(h, buf, len)` | `READ` | bytes lidos (bloqueia) |
 | 7 | `clock_now()` | — | reservado (`E_NOSYS` até haver relógio) |
 | 8 | `random_fill(buf, len)` | — | reservado (`E_NOSYS` até à Fase 8/16) |
+| 9 | `open_at(dir, path, path_len, rights)` | `READ` no `dir`; `rights` ⊆ direitos do `dir`, nunca `WRITE`/`MAP` | handle FILE ou DIR |
+| 10 | `file_read(h, buf, len, offset)` | `READ` | bytes lidos (máx. 512 por chamada; 0 no fim) |
+| 11 | `process_spawn(image, grants, n)` | `EXEC` no ficheiro | handle PROCESS (`READ`) |
+| 12 | `process_status(h)` | `READ` | 0 a correr; `1<<32 \| código` terminou; `2<<32 \| vetor` falha; `3<<32` morto |
+
+- **Grants do `process_spawn`:** `n` (≤ 64) registos de 16 bytes `{handle: u32, rights: u32, flags: u32, 0: u32}`, com `flags = 1` (`SPAWN_COPY`) ou `2` (`SPAWN_MOVE`). A lista é copiada **uma vez** para o kernel. O handle `i` do filho é o grant `i`.
+- **Caminhos do `open_at`:** sempre relativos ao diretório do handle, só com componentes simples (sem vazio, `.`, `..` nem NUL) e com no máximo 255 bytes. Um processo não consegue sair do diretório que lhe deram.
 
 ## 4. Memória de user: `UserPtr` e `copy_*_user` (D-050)
 
@@ -247,7 +255,7 @@ pub struct InputEvent {
    handles e direitos (com `handle_info` e o formato de direitos da D-058),
    objeto CONSOLE. Os pontos de auditoria entram com as primeiras syscalls
    sensíveis (Fases 7 e 15).
-4. **6d** carregador ELF, `process_spawn` e arranque de `/sbin/init` a
+4. **6d** (FEITO, D-064) carregador ELF, `process_spawn` e arranque de `/sbin/init` a
    partir do initrd.
 5. **6e** objeto INPUT e `input_read` (com a Fase 11 do Codex).
 

@@ -192,6 +192,12 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         initrd,
     };
     devices::init(&platform);
+    // The processes' read-only root (their own view of the initrd).
+    if let Some(bytes) = platform.initrd
+        && let Err(e) = proc::fs::mount(bytes)
+    {
+        kprintln!("[init] initrd not usable as the process root ({:?})", e);
+    }
     arch::enable_interrupts();
     assert!(
         sync::irq_spinlock::selftest(),
@@ -235,6 +241,9 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
                 "[syscall] self-test passed: every call and error path, handles with generations, blocked process killed (~{} cycles per null syscall)",
                 r.syscall_cycles
             );
+            kprintln!(
+                "[proc] ELF loader and process_spawn self-test passed: valid image ran, 14 malformed images refused, COPY/MOVE rules held"
+            );
         }
         Err(why) => panic!("user-mode self-test failed: {}", why),
     }
@@ -273,6 +282,11 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     arch::x86_64::selftest::write_idt();
     #[cfg(feature = "selftest-heap-overflow")]
     arch::x86_64::selftest::heap_overflow();
+
+    match proc::start_init() {
+        Ok(pid) => kprintln!("[init] /sbin/init started (pid {})", pid),
+        Err(why) => kprintln!("[init] /sbin/init missing or invalid ({})", why),
+    }
 
     kprintln!("[boot] boot complete, idling with interrupts enabled");
 
