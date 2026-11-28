@@ -100,8 +100,16 @@ fn rsdp_phys() -> Option<u64> {
 /// Second half of boot, running on the guarded kernel stack.
 extern "C" fn kmain_on_kernel_stack() -> ! {
     kprintln!("[mm] running on the kernel stack (guard page below it)");
-    mm::heap::init();
+    let heap_entropy = mm::heap::init();
     mm::heap::selftest();
+    kprintln!(
+        "[mm] heap link mask: {}",
+        if heap_entropy {
+            "hardware random word"
+        } else {
+            "legacy fallback, hardware entropy unavailable"
+        }
+    );
     sched::init();
     kprintln!(
         "[mm] kernel heap ready ({} pages mapped); heap self-test passed",
@@ -236,9 +244,7 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
                 "[syscall] self-test passed: every call and error path, handles with generations, blocked process killed (~{} cycles per null syscall)",
                 r.syscall_cycles
             );
-            kprintln!(
-                "[proc] ELF loader and process_spawn self-test passed: image, stack window and COPY/MOVE verified"
-            );
+            kprintln!("[proc] ELF loader and process_spawn self-test passed");
         }
         Err(why) => panic!("user-mode self-test failed: {}", why),
     }

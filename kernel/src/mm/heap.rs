@@ -18,8 +18,8 @@
 //!   linking"): `next ^ (chunk >> 12) ^ secret`. A use-after-free write that
 //!   overwrites it decodes to garbage, which is detected (range/alignment
 //!   check) and stops the kernel instead of handing out an attacker-chosen
-//!   address. The secret comes from the TSC for now; Phase 8 replaces it
-//!   with the kernel RNG.
+//!   address. The kernel RNG supplies the secret when hardware entropy is
+//!   available. The legacy TSC fallback is weak and carries no entropy claim.
 //! - Freeing the chunk that is already at the head of its list (the most
 //!   common double free) is detected.
 //!
@@ -32,6 +32,7 @@ use super::addr::{PAGE_SIZE, VirtAddr};
 use super::paging::MapFlags;
 use super::pmm::{self, PhysFrame};
 use super::vmm;
+use crate::security::rng;
 use crate::sync::IrqSpinLock;
 
 const HEAP_BASE: u64 = 0xFFFF_C000_0000_0000;
@@ -75,13 +76,23 @@ pub struct HeapStats {
 }
 
 /// Enables the heap. Must run after the VMM switched to the kernel tables.
-pub fn init() {
+/// Returns whether the free-list mask is backed by a hardware random word.
+pub fn init() -> bool {
+    let entropy = rng::hardware_word();
+    let mask = match entropy {
+        Ok(word) => word,
+        Err(_) => {
+            // Retain the legacy fallback when hardware entropy is absent.
+            // SAFETY: `rdtsc` only reads the time-stamp counter.
+            let tsc = unsafe { core::arch::x86_64::_rdtsc() };
+            tsc.wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        }
+    };
     let mut heap = HEAP.inner.lock();
-    // Weak but non-constant secret until Phase 8 brings a real RNG.
-    // SAFETY: `rdtsc` only reads the time-stamp counter.
-    let tsc = unsafe { core::arch::x86_64::_rdtsc() };
-    heap.secret = tsc.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+    // An aligned address XOR an odd mask cannot equal the empty-list sentinel.
+    heap.secret = mask | 1;
     heap.ready = true;
+    entropy.is_ok()
 }
 
 /// Current statistics.

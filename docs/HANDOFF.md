@@ -1656,3 +1656,99 @@ Formato:
   falha do consumidor. A leitura do hardware está no #106 (#104).
 - **Próximo passo** — usar entropia aprovada para selecionar a posição
   da pilha no caminho normal de criação de processos.
+
+### [2026-11-28] — CODEX (fontes de entropia x86)
+
+- **Feito** — leitura de uma palavra por RDSEED ou RDRAND, com
+  verificação CPUID e até dez tentativas. A API distingue instrução
+  ausente e fonte temporariamente indisponível.
+- **PRs abertos** — ramo `codex/fase8-entropia-x86`, independente
+  dos PRs #100 e #105. Coordenação na #104.
+- **Testes/fuzzing** — seis arranques QEMU 10.0.13 em release.
+  BIOS e UEFI com as duas instruções, só RDRAND ou ambas desativadas.
+  O autoteste imprime somente o estado de cada fonte. A CI repete
+  os dois cenários com instruções desativadas em BIOS release.
+  Passaram também dois arranques normais sem o autoteste, fmt,
+  Clippy e 12 testes de xtask no host e em Miri.
+- **Proteções de segurança alteradas** — duas chamadas a intrínsecas
+  no módulo de arquitetura, com SAFETY e inventário. Sem mistura de
+  fontes, estado de gerador ou publicação de amostras.
+- **Benchmarks** — sem medições.
+- **Bloqueado por / à espera do Claude** — política de fontes e
+  requisitos de entropia para o ASLR e o futuro CSPRNG (#104).
+- **Próximo passo** — decidir o comportamento do consumidor quando
+  nenhuma fonte estiver disponível. O estado `Unavailable` ainda
+  não foi forçado em QEMU.
+
+### [2026-11-28] — CODEX (limite de tentativas da entropia)
+
+- **Feito** — o autoteste do #106 usa a mesma lógica de repetição
+  das intrínsecas para simular dez recusas e um sucesso a zero na
+  última tentativa. Distingue o código de retorno do valor escrito.
+- **PRs abertos** — atualização do #106.
+- **Testes/fuzzing** — fmt, Clippy, actionlint e sete arranques QEMU.
+  BIOS e UEFI release com ambas as instruções, só RDRAND e ambas
+  desativadas. UEFI debug também passou com ambas desativadas.
+- **Proteções de segurança alteradas** — o caminho de repetição
+  devolve apenas valores aceites pelo código de sucesso.
+  O autoteste não imprime amostras. Sem blocos unsafe novos.
+- **Benchmark** — sem medições nesta ronda.
+- **Bloqueado por / à espera do Claude** — política de fontes e
+  integração do gerador com o ASLR dos processos (#104).
+
+### [2026-11-28] — CODEX (ASLR da pilha de processos)
+
+- **Feito** — a criação de um processo ELF escolhe uma das 4096
+  posições da pilha do #107. Tenta RDSEED e depois RDRAND do #106.
+  Sem acesso a entropia devolve `E_AGAIN`, sem transferir handles.
+  O kernel continua a arrancar se não puder criar `/sbin/init`.
+- **PRs abertos** — ramo `codex/fase8-aslr-pilha` sobre o #107,
+  com a dependência #106 integrada para validar os dois caminhos.
+- **Testes/fuzzing** — oito arranques QEMU do loader em BIOS e UEFI,
+  incluindo fallback para RDRAND e recusa sem as duas instruções.
+  Num checkout com o #100 a shell passou nos dois firmwares release
+  e o mesmo initrd foi recusado sem entropia. Uma sondagem local
+  observou três posições diferentes em três arranques por firmware.
+  Fmt, Clippy, 12 testes de xtask e actionlint passaram.
+- **Proteções de segurança alteradas** — aleatoriza a pilha com guarda
+  e mantém os segmentos ET_EXEC nas bases do ELF. Sem unsafe novo.
+- **Benchmarks** — sem medições.
+- **Bloqueado por / à espera do Claude** — revisão da política de
+  entropia da #104 e integração dos PRs do loader e das fontes.
+- **Próximo passo** — validar a política sem hardware e fechar
+  o plano do gerador do núcleo separado da seleção da pilha.
+
+### [2026-11-28] — CODEX (aleatoriedade para o heap)
+
+- **Feito** — a API `security::rng::hardware_word` centraliza a
+  escolha RDSEED/RDRAND. O heap usa uma palavra para mascarar os
+  links de pedaços livres. Sem dados mantém o recurso antigo do
+  TSC e comunica esse modo no arranque.
+- **PRs abertos** — ramo `codex/fase8-aleatoriedade-heap` sobre o #106.
+- **Testes/fuzzing** — oito arranques QEMU em BIOS/UEFI. Debug e release
+  com hardware, release com só RDRAND e sem ambas as fontes. Os testes
+  de memória passaram em release nos dois firmwares. UEFI release com
+  #100/#108 confirmou a shell com entropia e a recusa do init sem ela.
+  Fmt, Clippy, actionlint e 12 testes de xtask no host e em Miri.
+- **Proteções de segurança alteradas** — máscara ímpar com entropia
+  de hardware se disponível. O recurso fraco nunca sai pela API RNG.
+  Sem unsafe novo.
+- **Benchmarks** — sem medições nesta ronda.
+- **Bloqueado por / à espera do Claude** — integração e revisão da
+  política na #104. O CSPRNG com estado continua na Fase 16.
+- **Próximo passo** — usar a API comum no caminho de ASLR do #108
+  quando os dois PRs forem integrados.
+
+### [2026-11-28] — CODEX (API de entropia comum)
+
+- **Feito** — o #108 integra o #109 e chama a mesma API que o heap
+  para obter a palavra de hardware. A CI verifica os dois consumidores
+  com só RDRAND e com ambas as fontes indisponíveis.
+- **Testes/fuzzing** — oito arranques QEMU em BIOS e UEFI, fmt, Clippy,
+  actionlint e 12 testes de xtask. A shell do #100 arrancou em ambos
+  os firmwares release num checkout de integração. O mesmo initrd foi
+  recusado sem entropia e o heap manteve o modo de recurso.
+- **Proteções de segurança alteradas** — política de seleção partilhada.
+  Sem novos blocos unsafe.
+- **Bloqueado por / à espera do Claude** — revisão humana e integração
+  do carregador, da janela de pilha e da cadeia de entropia.
