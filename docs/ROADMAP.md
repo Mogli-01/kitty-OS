@@ -149,7 +149,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | SMP (vários núcleos), locks por CPU | CLAUDE | TODO |
 | Descoberta de dispositivos PCI | CODEX | Enumeração só de leitura em revisão sobre o #92. QEMU cobre o barramento principal e uma placa atrás de uma ponte. Validação em hardware real pendente |
 | Sistema de ficheiros em disco | CODEX | TODO |
-| Mais drivers (virtio-blk, AHCI/NVMe, rede) | CODEX | Descoberta PCI moderna de virtio-blk em revisão em `codex/fase9-virtio-blk-pci`. Acesso aos registos, filas e leitura de sectores pendentes |
+| Mais drivers (virtio-blk, AHCI/NVMe, rede) | CODEX | Descoberta PCI moderna e validação de intervalos BAR e notificações em revisão no #113. Concessões do núcleo, filas e leitura de sectores pendentes |
 
 ## Fase 10 — Gráficos base
 | Tarefa | Dono | Estado |

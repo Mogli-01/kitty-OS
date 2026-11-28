@@ -429,3 +429,72 @@ fn rejects_incomplete_ambiguous_and_out_of_bounds_virtio_regions() {
         assert_eq!(decode(&image), Err(error));
     }
 }
+
+#[test]
+fn bounds_all_virtio_regions_against_granted_memory_bars() {
+    let bytes = virtio_block_snapshot();
+    let mut layout = ConfigSpace::parse(&bytes)
+        .unwrap()
+        .virtio_block_layout()
+        .unwrap()
+        .unwrap();
+    let mut lengths = [None; 6];
+    lengths[4] = Some(0x4008);
+    assert_eq!(layout.validate_bar_lengths(&lengths), Ok(()));
+    lengths[4] = Some(0x4007);
+    assert_eq!(
+        layout.validate_bar_lengths(&lengths),
+        Err(VirtioBoundsError::RegionOutsideBar(4))
+    );
+    layout.isr.bar = 5;
+    lengths[4] = Some(0x4008);
+    assert_eq!(
+        layout.validate_bar_lengths(&lengths),
+        Err(VirtioBoundsError::MissingBar(5))
+    );
+    layout.isr.bar = 4;
+    layout.device.length = 7;
+    assert_eq!(
+        layout.validate_bar_lengths(&lengths),
+        Err(VirtioBoundsError::RegionTooShort(4))
+    );
+
+    layout.device.offset = u32::MAX - 3;
+    layout.device.length = 8;
+    lengths[4] = Some(1 << 32);
+    assert_eq!(
+        layout.validate_bar_lengths(&lengths),
+        Err(VirtioBoundsError::RegionOutsideBar(4))
+    );
+}
+
+#[test]
+fn bounds_the_16_bit_queue_notification_with_a_checked_offset() {
+    let bytes = virtio_block_snapshot();
+    let mut layout = ConfigSpace::parse(&bytes)
+        .unwrap()
+        .virtio_block_layout()
+        .unwrap()
+        .unwrap();
+    layout.notify.length = 6;
+    assert_eq!(layout.queue_notify_bar_offset(1), Ok(0x2004));
+    layout.notify.length = 5;
+    assert_eq!(
+        layout.queue_notify_bar_offset(1),
+        Err(VirtioBoundsError::InvalidNotificationOffset)
+    );
+    layout.notify_multiplier = 0;
+    assert_eq!(layout.queue_notify_bar_offset(u16::MAX), Ok(0x2000));
+    layout.notify.offset += 1;
+    assert_eq!(
+        layout.queue_notify_bar_offset(0),
+        Err(VirtioBoundsError::InvalidNotificationOffset)
+    );
+    layout.notify.offset -= 1;
+    layout.notify.length = u32::MAX;
+    layout.notify_multiplier = u32::MAX;
+    assert_eq!(
+        layout.queue_notify_bar_offset(u16::MAX),
+        Err(VirtioBoundsError::InvalidNotificationOffset)
+    );
+}

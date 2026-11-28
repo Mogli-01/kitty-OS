@@ -31,6 +31,63 @@ pub enum VirtioLayoutError {
     MissingKind(u8),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VirtioBoundsError {
+    MissingBar(u8),
+    RegionTooShort(u8),
+    RegionOutsideBar(u8),
+    InvalidNotificationOffset,
+}
+
+impl VirtioBlockLayout {
+    /// Check every region against lengths supplied by the memory BAR grants
+    /// for this function. Use `None` for unavailable or non-memory slots,
+    /// including the upper half of a 64-bit BAR.
+    pub fn validate_bar_lengths(
+        &self,
+        lengths: &[Option<u64>; 6],
+    ) -> Result<(), VirtioBoundsError> {
+        for (region, minimum) in [
+            (self.common, COMMON_MIN),
+            (self.notify, NOTIFY_MIN),
+            (self.isr, ISR_MIN),
+            (self.device, DEVICE_MIN),
+        ] {
+            let bar_length = lengths
+                .get(usize::from(region.bar))
+                .copied()
+                .flatten()
+                .ok_or(VirtioBoundsError::MissingBar(region.bar))?;
+            if region.length < minimum {
+                return Err(VirtioBoundsError::RegionTooShort(region.bar));
+            }
+            if u64::from(region.offset) + u64::from(region.length) > bar_length {
+                return Err(VirtioBoundsError::RegionOutsideBar(region.bar));
+            }
+        }
+        Ok(())
+    }
+
+    /// BAR-relative offset of the 16-bit notification register for a queue
+    /// when VIRTIO_F_NOTIFICATION_DATA has not been negotiated. Validate
+    /// the layout against BAR grants before using the resulting offset.
+    pub fn queue_notify_bar_offset(&self, queue_notify_off: u16) -> Result<u64, VirtioBoundsError> {
+        let offset = u64::from(queue_notify_off) * u64::from(self.notify_multiplier);
+        let bar_offset = u64::from(self.notify.offset) + offset;
+        if offset + u64::from(NOTIFY_MIN) > u64::from(self.notify.length)
+            || !bar_offset.is_multiple_of(u64::from(NOTIFY_MIN))
+        {
+            return Err(VirtioBoundsError::InvalidNotificationOffset);
+        }
+        Ok(bar_offset)
+    }
+}
+
+const COMMON_MIN: u32 = 56;
+const NOTIFY_MIN: u32 = 2;
+const ISR_MIN: u32 = 1;
+const DEVICE_MIN: u32 = 8;
+
 impl Header {
     pub fn is_virtio_block(&self) -> bool {
         self.vendor_id == VIRTIO_VENDOR
@@ -62,10 +119,10 @@ impl ConfigSpace<'_> {
             let tail = self.bytes.get(usize::from(entry.offset)..).ok_or(invalid)?;
             let &[_, _, length, kind] = tail.first_chunk::<4>().ok_or(invalid)?;
             let (header_len, minimum_region) = match kind {
-                1 => (16, 56), // Common configuration through queue_device.
-                2 => (20, 2),  // Queue notify and offset multiplier.
-                3 => (16, 1),  // ISR status.
-                4 => (16, 8),  // Block capacity.
+                1 => (16, COMMON_MIN),
+                2 => (20, NOTIFY_MIN),
+                3 => (16, ISR_MIN),
+                4 => (16, DEVICE_MIN),
                 _ => continue,
             };
             let cap = tail.get(..usize::from(length)).ok_or(invalid)?;

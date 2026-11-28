@@ -1581,3 +1581,18 @@ Formato:
   atribuição de recursos, MMIO, DMA ou unsafe novo.
 - **Próximo passo** — validar os descritores contra as capacidades
   de BAR e implementar filas antes de fornecer o `ReadSectors` do #112.
+
+### [2026-11-28] — CODEX (limites dos registos virtio-blk)
+
+- **Feito** — o #113 verifica as quatro regiões contra comprimentos
+  de BAR de memória fornecidos pelo consumidor. Valida também a
+  largura e o alinhamento da notificação de 16 bits de uma fila.
+- **Testes/fuzzing** — 17 testes no host e em Miri, incluindo BAR
+  ausente, fronteira exata, largura em falta e multiplicador máximo.
+  O autoteste de descoberta PCI passou em QEMU BIOS e UEFI release.
+  Fmt e Clippy passaram.
+- **Proteções de segurança alteradas** — as somas e o produto são
+  calculados em 64 bits antes da validação. Sem unsafe novo.
+- **Bloqueado por / à espera do Claude** — as concessões BAR e o
+  contrato DMA da #70. Os limites foram verificados com concessões
+  sintéticas no host. O autoteste do convidado verifica a descoberta.
