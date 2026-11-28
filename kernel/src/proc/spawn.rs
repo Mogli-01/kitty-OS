@@ -194,6 +194,11 @@ pub fn spawn(
             }
         }
     };
+    // A moved INPUT changes reader: the new one must not see events
+    // queued for the old one (D-053).
+    if moved.iter().any(|(o, _)| matches!(o, Object::Input(_))) {
+        crate::input::flush();
+    }
     // Released after the lock (objects may hold processes, whose drop
     // frees memory).
     drop(moved);

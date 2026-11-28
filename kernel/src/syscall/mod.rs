@@ -81,6 +81,9 @@ pub mod nr {
     /// `process_status(h) -> status` (needs READ): 0 running,
     /// `1 << 32 | code` exited, `2 << 32 | vector` fault, `3 << 32` killed
     pub const PROCESS_STATUS: u64 = 12;
+    /// `input_read(h, buf, max) -> events` (needs READ on INPUT): blocks
+    /// until >= 1 event; `buf` holds `max` (<= 32) events of 24 bytes
+    pub const INPUT_READ: u64 = 13;
 }
 
 /// Largest buffer for one console call (docs/FASE6.md §6).
@@ -143,6 +146,7 @@ pub fn dispatch(number: u64, args: [u64; 6]) -> i64 {
         nr::FILE_READ => file_read(&process, a0, a1, a2, args[3]).unwrap_or_else(|e| e),
         nr::PROCESS_SPAWN => process_spawn(&process, a0, a1, a2).unwrap_or_else(|e| e),
         nr::PROCESS_STATUS => process_status(&process, a0).unwrap_or_else(|e| e),
+        nr::INPUT_READ => input_read(&process, a0, a1, a2).unwrap_or_else(|e| e),
         nr::CLOCK_NOW | nr::RANDOM_FILL => E_NOSYS,
         _ => E_NOSYS,
     }
@@ -366,4 +370,35 @@ fn process_status(process: &Process, handle: u64) -> Result<i64, i64> {
         proc::Status::Fault(v) => (2 << 32) | i64::from(v),
         proc::Status::Killed => 3 << 32,
     })
+}
+
+/// Most events per `input_read`.
+pub const INPUT_MAX: usize = 32;
+
+fn input_read(process: &Process, handle: u64, buf: u64, max: u64) -> Result<i64, i64> {
+    use crate::input::InputEvent;
+    let (object, _) = object(process, handle, Rights::READ)?;
+    let Object::Input(_grant) = object else {
+        return Err(E_INVAL);
+    };
+    let max = usize::try_from(max).map_err(|_| E_TOOBIG)?.min(INPUT_MAX);
+    if max == 0 {
+        return Ok(0);
+    }
+    UserSlice::new(buf, max * 24).map_err(user_err)?;
+    let mut events = [InputEvent::default(); INPUT_MAX];
+    let dst = events.get_mut(..max).ok_or(E_TOOBIG)?;
+    let n = crate::input::read(dst, || process.is_killed());
+    if n == 0 {
+        return Err(E_AGAIN);
+    }
+    let mut bytes = [0u8; INPUT_MAX * 24];
+    for (i, event) in dst.iter().take(n).enumerate() {
+        if let Some(out) = bytes.get_mut(i * 24..i * 24 + 24) {
+            out.copy_from_slice(&event.to_bytes());
+        }
+    }
+    let data = bytes.get(..n * 24).ok_or(E_INVAL)?;
+    copy_to_user(UserSlice::new(buf, n * 24).map_err(user_err)?, data).map_err(user_err)?;
+    Ok(n as i64)
 }

@@ -1278,3 +1278,15 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
   - **Commit:** o commit compara também a identidade do objeto movido (`Object::same`), e não só o número, a pensar em quando houver várias threads por processo.
   - **Erros:** uma falta de memória ao ler a imagem dá `E_NOMEM`, e não `E_TOOBIG`.
   - **Limite que fica:** a libertação de um processo grande acontece no `schedule` seguinte, com as interrupções desligadas (D-060). Vai para uma thread "reaper" quando houver processos grandes.
+
+### D-065 — Implementação da 6e: objeto INPUT (2026-11-28, CLAUDE)
+- **Um único objeto INPUT:** o kernel dá no máximo **uma** `InputGrant` de cada vez (`input::grant()`). O handle que a guarda tem `READ|TRANSFER` e **nunca `DUP`**: pode passar de dono, mas não pode ser copiado, por isso em cada instante há um só leitor.
+  - **Porquê:** um "keylogger" é exatamente um segundo leitor do teclado. Com um só handle e sem `DUP`, isso deixa de ser possível por construção.
+- **Libertação:** quando a última referência à concessão desaparece (handle fechado, ou dono morto), a fila é esvaziada e a concessão volta a estar disponível.
+- **Troca de dono:** a fila é esvaziada também quando o handle é movido (`SPAWN_MOVE`). Um processo novo nunca vê eventos destinados ao anterior.
+- **Fila no kernel:** 256 eventos, um `IrqSpinLock` curto e nenhum heap, por isso o `push` é seguro em IRQ.
+  - Quando está cheia, os eventos novos são descartados e o leitor recebe primeiro um `KIND_LOST`, para repor o estado das teclas e dos botões.
+  - O `input_read` bloqueia numa `WaitQueue`, e um `kill` acorda o leitor, que desiste.
+- **`/sbin/init`:** recebe o INPUT como handle 2 (a ordem fixa é 0 CONSOLE, 1 raiz, 2 INPUT; o 3, DISPLAY, virá depois).
+- **Testes (modo `qemu-exit`):** o kernel espera, com limite, que o init termine antes de sair do QEMU, para que o output do init seja determinístico.
+- **Limite:** o `time_ns` fica a 0 até o relógio (#94) entrar.

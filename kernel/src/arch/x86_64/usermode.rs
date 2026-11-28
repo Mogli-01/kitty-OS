@@ -437,6 +437,36 @@ kitty_ut_elf_start:
 .global kitty_ut_elf_end
 kitty_ut_elf_end:
 
+// Phase 6e: reads input events through handle 1 (INPUT), twice, tries to
+// duplicate it, then exit(5). Results at DATA (+0 n1, +8 n2, +16 dup);
+// events at DATA + 0x100 and DATA + 0x400.
+.global kitty_ut_input_start
+kitty_ut_input_start:
+    mov r12, 0x401000
+    mov eax, 13
+    mov edi, 1
+    lea rsi, [r12 + 0x100]
+    mov edx, 8
+    syscall
+    mov [r12 + 0], rax
+    mov eax, 13
+    mov edi, 1
+    lea rsi, [r12 + 0x400]
+    mov edx, 8
+    syscall
+    mov [r12 + 8], rax
+    mov eax, 3
+    mov edi, 1
+    mov esi, 1
+    syscall
+    mov [r12 + 16], rax
+    mov eax, 0
+    mov edi, 5
+    syscall
+    ud2
+.global kitty_ut_input_end
+kitty_ut_input_end:
+
 // Blocks forever in console_read (to test killing a blocked process).
 .global kitty_ut_reader_start
 kitty_ut_reader_start:
@@ -476,6 +506,8 @@ unsafe extern "C" {
     static kitty_ut_reader_end: u8;
     static kitty_ut_elf_start: u8;
     static kitty_ut_elf_end: u8;
+    static kitty_ut_input_start: u8;
+    static kitty_ut_input_end: u8;
 }
 
 /// The user test programs.
@@ -504,6 +536,8 @@ pub enum TestProgram {
     /// Code of the ELF loader test image (6d): writes, uses its stack and
     /// .bss, `exit(7)`.
     ElfMain,
+    /// Reads INPUT events twice through handle 1, tries `dup`, `exit(5)`.
+    InputReader,
 }
 
 /// Machine code of `program`.
@@ -531,6 +565,10 @@ pub fn test_program(program: TestProgram) -> &'static [u8] {
             &raw const kitty_ut_reader_end,
         ),
         TestProgram::ElfMain => (&raw const kitty_ut_elf_start, &raw const kitty_ut_elf_end),
+        TestProgram::InputReader => (
+            &raw const kitty_ut_input_start,
+            &raw const kitty_ut_input_end,
+        ),
         TestProgram::Secret => (
             &raw const kitty_ut_secret_start,
             &raw const kitty_ut_secret_end,

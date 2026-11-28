@@ -96,6 +96,7 @@ pub fn run() -> Result<Report, &'static str> {
     blocked_then_killed()?;
     elf()?;
     spawn_rules()?;
+    input()?;
     if !super::fs::selftest_paths() {
         return Err("open_at accepted a path that leaves its directory");
     }
@@ -459,5 +460,78 @@ pub fn spawn_rules() -> Result<(), &'static str> {
         return Err("the spawned child did not run with the moved CONSOLE");
     }
     drop((parent, child));
+    Ok(())
+}
+
+// ---------------------------------------------------------------- 6e ---
+
+/// INPUT: one grant at a time, events reach the holder in order, a full
+/// ring is reported as "lost" first, the handle cannot be duplicated, and
+/// when the holder dies the ring is emptied and the grant comes back.
+pub fn input() -> Result<(), &'static str> {
+    use crate::input::{self, InputEvent, KIND_KEY, KIND_LOST};
+    let code = test_program(TestProgram::InputReader);
+    let image = build_test_elf(
+        &[(0x40_0000, RX, code, 0x1000), (0x40_1000, RW, &[], 0x1000)],
+        0x40_0000,
+    );
+    let grant = input::grant().ok_or("the INPUT grant was not available")?;
+    if input::grant().is_some() {
+        return Err("a second INPUT grant was handed out");
+    }
+    // Overfill the ring: 300 key events, 256 fit, the rest are lost.
+    for i in 0..300u16 {
+        input::push(InputEvent {
+            kind: KIND_KEY,
+            code: i,
+            value: 1,
+            ..InputEvent::default()
+        });
+    }
+    let process = super::spawn::spawn_from_kernel(
+        &image,
+        alloc::vec![
+            (Object::Console, super::CONSOLE_RIGHTS),
+            (Object::Input(grant), super::INPUT_RIGHTS)
+        ],
+    )
+    .map_err(|_| "could not start the INPUT reader")?;
+    wait_until(|| process.status() != Status::Running, 1_000_000);
+    if process.status() != Status::Exited(5) {
+        return Err("the INPUT reader did not exit(5)");
+    }
+    let word = |at: u64| process.peek_u64(DATA_BASE + at).unwrap_or(u64::MAX);
+    // Event i of a read at `base`: kind is the u16 at offset 8, code at 10.
+    let kind_code = |base: u64, i: u64| {
+        let w = word(base + i * 24 + 8);
+        ((w & 0xFFFF) as u16, ((w >> 16) & 0xFFFF) as u16)
+    };
+    if word(0) != 8 || word(8) != 8 {
+        return Err("input_read did not return 8 events twice");
+    }
+    if kind_code(0x100, 0).0 != KIND_LOST || kind_code(0x100, 1) != (KIND_KEY, 0) {
+        return Err("a full INPUT ring was not reported as lost first");
+    }
+    if kind_code(0x400, 0) != (KIND_KEY, 7) {
+        return Err("INPUT events were not delivered in order");
+    }
+    if word(16) as i64 != crate::syscall::errno::E_PERM {
+        return Err("the INPUT handle could be duplicated");
+    }
+    // The holder is dead: its handles were released, so the grant is free
+    // again and the 241 unread events are gone.
+    let again = input::grant().ok_or("the INPUT grant did not come back")?;
+    input::push(InputEvent {
+        kind: KIND_KEY,
+        code: 999,
+        ..InputEvent::default()
+    });
+    let mut probe = [InputEvent::default(); 4];
+    let n = input::read(&mut probe, || false);
+    drop(again);
+    if n != 1 || probe[0].code != 999 {
+        return Err("events of the previous INPUT owner leaked to the next");
+    }
+    drop(process);
     Ok(())
 }

@@ -105,6 +105,9 @@ pub const CONSOLE_RIGHTS: Rights = Rights::READ
     .union(Rights::WRITE)
     .union(Rights::DUP)
     .union(Rights::TRANSFER);
+/// Rights of the INPUT handle: read and move, **never** duplicate (one
+/// reader at a time, D-053/D-065).
+pub const INPUT_RIGHTS: Rights = Rights::READ.union(Rights::TRANSFER);
 /// Rights of the root DIR handle `/sbin/init` gets.
 pub const ROOT_RIGHTS: Rights = Rights::READ
     .union(Rights::EXEC)
@@ -226,6 +229,7 @@ impl Process {
     pub fn kill(&self) {
         self.kill.store(true, Ordering::Release);
         crate::console::wake_input_readers();
+        crate::input::wake_readers();
     }
 
     /// Whether [`Process::kill`] was called (blocking calls give up).
@@ -292,7 +296,7 @@ pub fn on_return_to_user() {
 
 /// Starts `/sbin/init` from the root (docs/FASE6.md §6). Handles: 0 =
 /// CONSOLE, 1 = root DIR. Returns a log line (no addresses).
-pub fn start_init() -> Result<u32, &'static str> {
+pub fn start_init() -> Result<Arc<Process>, &'static str> {
     let root = fs::root_dir().ok_or("no initrd root")?;
     let file = match fs::open_at(&root, "sbin/init") {
         Ok(fs::Opened::File(f)) => f,
@@ -300,16 +304,17 @@ pub fn start_init() -> Result<u32, &'static str> {
         Err(_) => return Err("/sbin/init not found"),
     };
     let image = read_file(file).ok_or("/sbin/init too big or out of memory")?;
+    // Fixed order (init ABI): 0 CONSOLE, 1 root DIR, 2 INPUT.
+    let input = crate::input::grant().ok_or("the INPUT grant is already taken")?;
     let objects = alloc::vec![
         (Object::Console, CONSOLE_RIGHTS),
-        (Object::Dir(root), ROOT_RIGHTS)
+        (Object::Dir(root), ROOT_RIGHTS),
+        (Object::Input(input), INPUT_RIGHTS),
     ];
-    spawn::spawn_from_kernel(&image, objects)
-        .map(|p| p.pid())
-        .map_err(|e| match e {
-            spawn::SpawnFailure::Elf(_) => "invalid ELF image",
-            _ => "could not create the process",
-        })
+    spawn::spawn_from_kernel(&image, objects).map_err(|e| match e {
+        spawn::SpawnFailure::Elf(_) => "invalid ELF image",
+        _ => "could not create the process",
+    })
 }
 
 /// Largest executable image read into memory.
