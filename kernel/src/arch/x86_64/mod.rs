@@ -4,6 +4,7 @@ pub mod apic;
 pub mod boot;
 pub mod context;
 pub mod cpu;
+pub mod entropy;
 mod exceptions;
 pub mod gdt;
 pub mod idt;
@@ -39,4 +40,6 @@ pub fn init() {
     gdt::init();
     idt::init();
     irq::init();
+    #[cfg(feature = "selftest-entropy")]
+    entropy::selftest();
 }

@@ -193,6 +193,16 @@ jobs:
           grep -F -- '[cpu] breakpoint at rip=' build/serial-logs/boot.log
           grep -F -- '[cpu] breakpoint exception handled, execution resumed' build/serial-logs/boot.log
 
+          if [[ "$FIRMWARE" == bios && "$PROFILE" == release ]]; then
+            KITTY_QEMU_CPU=max,rdseed=off run_case entropy-rdrand --features selftest-entropy \
+              --expect '[entropy] retry self-test passed' \
+              --expect '[entropy] RDSEED: unsupported' \
+              --expect '[entropy] RDRAND: ready'
+            KITTY_QEMU_CPU=max,rdseed=off,rdrand=off run_case entropy-unsupported --features selftest-entropy \
+              --expect '[entropy] RDSEED: unsupported' \
+              --expect '[entropy] RDRAND: unsupported'
+          fi
+
           run_case xapic-pit --features selftest-xapic \
             --expect 'controller: I/O APIC + xAPIC' \
             --expect '[apic] two IRQ0 deliveries acknowledged' \
