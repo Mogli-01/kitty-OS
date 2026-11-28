@@ -139,6 +139,10 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         Ok(None) => kprintln!("[pci] no configuration mechanism #1 on this machine"),
         Err(why) => panic!("PCI configuration self-test failed: {}", why),
     }
+    match devices::pci::enumerate() {
+        Ok(count) => kprintln!("[pci] enumerated {} function(s)", count),
+        Err(error) => kprintln!("[pci] enumeration unavailable ({:?})", error),
+    }
 
     // ACPI: find and validate the MADT. Without it, stay on the 8259 PIC.
     let acpi = firmware::acpi::discover(rsdp_phys());

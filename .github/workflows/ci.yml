@@ -189,9 +189,22 @@ jobs:
 
           run_case boot \
             --expect '[sched] cooperative self-test passed' \
-            --expect '[sched] wait queue self-test passed'
+            --expect '[sched] wait queue self-test passed' \
+            --expect '[pci] enumerated '
           grep -F -- '[cpu] breakpoint at rip=' build/serial-logs/boot.log
           grep -F -- '[cpu] breakpoint exception handled, execution resumed' build/serial-logs/boot.log
+
+          if [[ "$PROFILE" == release ]]; then
+            bridge_qemu="$RUNNER_TEMP/kitty-qemu-pci-bridge"
+            cat > "$bridge_qemu" <<'EOF'
+          #!/usr/bin/env bash
+          exec qemu-system-x86_64 "$@" -device pcie-root-port,id=rp1,chassis=1,slot=1 -device e1000e,bus=rp1,addr=0
+          EOF
+            chmod +x "$bridge_qemu"
+            KITTY_QEMU="$bridge_qemu" run_case pci-bridge --features selftest-pci-enumeration \
+              --expect '[pci] 00:00.0 class 06:00' \
+              --expect '[pci] 01:00.0 class 02:00'
+          fi
 
           run_case xapic-pit --features selftest-xapic \
             --expect 'controller: I/O APIC + xAPIC' \

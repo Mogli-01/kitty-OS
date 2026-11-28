@@ -290,3 +290,66 @@ fn reserved_encodings_report_their_slots_and_preserve_later_bars() {
         }))
     );
 }
+
+#[test]
+fn enumeration_follows_bridges_once_and_respects_multifunction_and_retry_status() {
+    let addr = |bus, device, function| Address {
+        bus,
+        device,
+        function,
+    };
+    let mut visits = [None; 6];
+    let mut count = 0;
+    enumerate(
+        |address, bytes| {
+            *bytes = [0; 64];
+            bytes[0] = 0x34;
+            match (address.bus, address.device, address.function) {
+                (0, 0, 0) => bytes[0x0e] = 0x82, // Unsupported type, but multifunction.
+                (0, 0, 1) | (3, 2, 0) => {}
+                (0, 1, 0) | (0, 2, 0) => bridge_header(bytes, 0, 3, 3),
+                (0, 3, 0) => bridge_header(bytes, 0, 4, 2), // Invalid bus range.
+                (0, 4, 0) => {
+                    bytes[0] = 1; // Configuration Request Retry Status.
+                    bytes[0x0e] = 0x80;
+                }
+                (3, 0, 0) => bridge_header(bytes, 3, 0, 3), // Cycle back to root.
+                (4, _, _) | (0, 4, 1..=7) | (3, 2, 1..=7) => {
+                    panic!("enumeration probed an unreachable function")
+                }
+                _ => return Ok::<_, ()>(false),
+            }
+            Ok(true)
+        },
+        |address, _| {
+            visits[count] = Some(address);
+            count += 1;
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        visits,
+        [
+            Some(addr(0, 0, 1)),
+            Some(addr(0, 1, 0)),
+            Some(addr(0, 2, 0)),
+            Some(addr(0, 3, 0)),
+            Some(addr(3, 0, 0)),
+            Some(addr(3, 2, 0)),
+        ]
+    );
+}
+
+fn bridge_header(bytes: &mut [u8; 64], primary: u8, secondary: u8, subordinate: u8) {
+    bytes[0x0a..0x0c].copy_from_slice(&[4, 6]);
+    bytes[0x0e] = 1;
+    bytes[0x18..0x1b].copy_from_slice(&[primary, secondary, subordinate]);
+}
+
+#[test]
+fn pci_enumeration_reports_an_unavailable_reader() {
+    assert_eq!(
+        enumerate(|_, _| Err("unavailable"), |_, _| panic!("visitor called")),
+        Err("unavailable")
+    );
+}

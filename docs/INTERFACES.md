@@ -367,6 +367,12 @@ pub const CONVENTIONAL_LEN: usize = 256;   // cabeçalho + listas de capacidades
   - Com o CRS Software Visibility de PCIe ligado (não está por omissão), o vendor pode aparecer como 0x0001; nesse caso a função está a arrancar e não deve ser usada.
 - **Custo:** um `read_config` de 256 B faz ~130 acessos a portas com as interrupções desligadas (~100–200 µs em hardware real). Serve para a enumeração; não é para leituras frequentes.
 - Marcador de arranque: `[pci] read-only configuration access ready (host bridge vendor 0x....)`.
+- **Descoberta:** `kitty_pci::enumerate(read, visit)` lê cabeçalhos de 64 B,
+  começando no barramento 0 do segmento 0. Segue pontes PCI-PCI com
+  numeração coerente, visita cada barramento uma vez e ignora CRS.
+  O visitante recebe o endereço PCI e o cabeçalho descodificado.
+  O núcleo reporta o número de funções. Com `selftest-pci-enumeration`
+  reporta também os endereços PCI e as classes.
 
 ### UART para drivers: COM2 (`LegacyDevice::Com2`) — INSTÁVEL
 Fornece: CLAUDE (issue #72, D-061). Usa: CODEX (`kitty-uart`).

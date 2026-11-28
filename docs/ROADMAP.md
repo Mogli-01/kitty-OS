@@ -147,7 +147,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Tarefa | Dono | Estado |
 |---|---|---|
 | SMP (vários núcleos), locks por CPU | CLAUDE | TODO |
-| Descoberta de dispositivos PCI | CODEX | Descodificação de cabeçalhos e capacidades (#61) e interpretação de BARs em revisão. Enumeração no hardware pendente |
+| Descoberta de dispositivos PCI | CODEX | Enumeração só de leitura em revisão sobre o #92. QEMU cobre o barramento principal e uma placa atrás de uma ponte. Validação em hardware real pendente |
 | Sistema de ficheiros em disco | CODEX | TODO |
 | Mais drivers (AHCI/NVMe, rede) | CODEX | TODO |
 

@@ -56,6 +56,7 @@ selftest-ps2-input = []
 selftest-ps2-keyboard = ["selftest-ps2-input"]
 # Checks the known file and directory in the xtask initrd fixture.
 selftest-initrd = []
+selftest-pci-enumeration = []
 
 [dependencies]
 limine = "0.6.5"
@@ -63,6 +64,7 @@ kitty-hal = { path = "../hal" }
 kitty-acpi = { path = "../drivers/acpi", optional = true }
 kitty-apic = { path = "../drivers/apic", optional = true }
 
+kitty-pci = { path = "../drivers/pci" }
 kitty-pit = { path = "../drivers/pit" }
 kitty-ps2 = { path = "../drivers/ps2" }
 kitty-vfs = { path = "../fs/vfs" }
