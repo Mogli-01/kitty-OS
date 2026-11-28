@@ -193,6 +193,17 @@ jobs:
           grep -F -- '[cpu] breakpoint at rip=' build/serial-logs/boot.log
           grep -F -- '[cpu] breakpoint exception handled, execution resumed' build/serial-logs/boot.log
 
+          if [[ "$PROFILE" == release ]]; then
+            smp_qemu="$RUNNER_TEMP/kitty-qemu-smp-topology"
+            cat > "$smp_qemu" <<'EOF'
+          #!/usr/bin/env bash
+          exec qemu-system-x86_64 "$@" -smp 4
+          EOF
+            chmod +x "$smp_qemu"
+            KITTY_QEMU="$smp_qemu" run_case smp-topology --features smp-discovery \
+              --expect '[smp] MADT reports 4 enabled xAPIC processor(s)'
+          fi
+
           run_case xapic-pit --features selftest-xapic \
             --expect 'controller: I/O APIC + xAPIC' \
             --expect '[apic] two IRQ0 deliveries acknowledged' \

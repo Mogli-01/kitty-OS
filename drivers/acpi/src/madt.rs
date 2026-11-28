@@ -72,7 +72,14 @@ pub struct LocalNmi {
     pub trigger: TriggerMode,
 }
 
-/// A validated view of the MADT records used for xAPIC device discovery.
+/// An enabled processor from a Local APIC record.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LocalProcessor {
+    pub apic_id: u8,
+    pub acpi_uid: u8,
+}
+
+/// A validated view of the MADT records used for xAPIC discovery.
 #[derive(Debug)]
 pub struct Madt<'a> {
     records: &'a [u8],
@@ -172,6 +179,21 @@ impl<'a> Madt<'a> {
         self.pc_at_compat
     }
 
+    /// Enabled Local APIC (type 0) records in firmware order.
+    pub fn local_processors(&self) -> impl Iterator<Item = LocalProcessor> + '_ {
+        records(self.records).filter_map(|record| match record {
+            Ok(Record::LocalApic {
+                id,
+                uid,
+                enabled: true,
+            }) => Some(LocalProcessor {
+                apic_id: id,
+                acpi_uid: uid,
+            }),
+            _ => None,
+        })
+    }
+
     /// I/O APIC records in firmware order. The controller must probe the
     /// number of inputs before it can validate GSI ranges.
     pub fn io_apics(&self) -> impl Iterator<Item = IoApic> + '_ {
@@ -191,15 +213,10 @@ impl<'a> Madt<'a> {
     /// order. An I/O APIC or x2APIC NMI needs a platform policy before the
     /// interrupt controller can be replaced.
     pub fn local_nmis(&self, apic_id: u8) -> Result<[Option<LocalNmi>; 2], Error> {
-        let uid = records(self.records)
-            .find_map(|entry| match entry {
-                Ok(Record::LocalApic {
-                    id,
-                    uid,
-                    enabled: true,
-                }) if id == apic_id => Some(uid),
-                _ => None,
-            })
+        let uid = self
+            .local_processors()
+            .find(|processor| processor.apic_id == apic_id)
+            .map(|processor| processor.acpi_uid)
             .ok_or(Error::MissingLocalProcessor)?;
 
         let mut pins = [None; 2];

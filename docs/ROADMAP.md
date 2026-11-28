@@ -145,7 +145,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 ## Fase 9 — Escala
 | Tarefa | Dono | Estado |
 |---|---|---|
-| SMP (vários núcleos), locks por CPU | CLAUDE | TODO |
+| SMP (vários núcleos), locks por CPU | CLAUDE | Descoberta xAPIC na MADT em revisão em `codex/fase9-topologia-xapic`. Arranque dos processadores secundários e locks por CPU pendentes |
 | Descoberta de dispositivos PCI | CODEX | Descodificação de cabeçalhos e capacidades (#61) e interpretação de BARs em revisão. Enumeração no hardware pendente |
 | Sistema de ficheiros em disco | CODEX | TODO |
 | Mais drivers (AHCI/NVMe, rede) | CODEX | TODO |
