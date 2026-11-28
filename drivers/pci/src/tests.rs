@@ -353,3 +353,79 @@ fn pci_enumeration_reports_an_unavailable_reader() {
         Err("unavailable")
     );
 }
+
+fn virtio_block_snapshot() -> [u8; 256] {
+    let mut bytes = snapshot(0);
+    bytes[..4].copy_from_slice(&[0xf4, 0x1a, 0x42, 0x10]);
+    enable_list(&mut bytes, 64);
+    for (pos, next, len, kind, region_size) in [
+        (64, 80, 16, 1, 56u32),
+        (80, 100, 20, 2, 4),
+        (100, 116, 16, 3, 1),
+        (116, 0, 16, 4, 8),
+    ] {
+        bytes[pos..pos + 5].copy_from_slice(&[0x09, next, len, kind, 4]);
+        bytes[pos + 8..pos + 12].copy_from_slice(&(u32::from(kind) * 0x1000).to_le_bytes());
+        bytes[pos + 12..pos + 16].copy_from_slice(&region_size.to_le_bytes());
+    }
+    bytes[96..100].copy_from_slice(&4u32.to_le_bytes());
+    bytes
+}
+
+#[test]
+fn discovers_virtio_block_regions_and_the_notify_multiplier() {
+    let bytes = virtio_block_snapshot();
+    let layout = ConfigSpace::parse(&bytes)
+        .unwrap()
+        .virtio_block_layout()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        layout.common,
+        VirtioRegion {
+            bar: 4,
+            offset: 0x1000,
+            length: 56
+        }
+    );
+    assert_eq!(layout.notify.offset, 0x2000);
+    assert_eq!(layout.notify_multiplier, 4);
+    assert_eq!(layout.isr.offset, 0x3000);
+    assert_eq!(layout.device.length, 8);
+    assert_eq!(
+        ConfigSpace::parse(&snapshot(0))
+            .unwrap()
+            .virtio_block_layout(),
+        Ok(None)
+    );
+}
+
+#[test]
+fn rejects_incomplete_ambiguous_and_out_of_bounds_virtio_regions() {
+    let decode = |bytes: &[u8]| ConfigSpace::parse(bytes).unwrap().virtio_block_layout();
+    let valid = virtio_block_snapshot();
+    let mut duplicate = valid;
+    duplicate[103] = 1;
+    duplicate[112] = 56;
+    assert_eq!(decode(&duplicate), Err(VirtioLayoutError::DuplicateKind(1)));
+    assert_eq!(
+        decode(&valid[..131]),
+        Err(VirtioLayoutError::InvalidCapability(116))
+    );
+
+    for (offset, byte, error) in [
+        (64 + 4, 6, VirtioLayoutError::InvalidCapability(64)),
+        (64 + 12, 55, VirtioLayoutError::InvalidCapability(64)),
+        (80 + 2, 16, VirtioLayoutError::InvalidCapability(80)),
+        (100 + 1, 0, VirtioLayoutError::MissingKind(4)),
+        (
+            116 + 1,
+            64,
+            VirtioLayoutError::List(CapabilityError::Cycle(64)),
+        ),
+    ] {
+        let mut image = valid;
+        image[offset] = byte;
+        assert_eq!(decode(&image), Err(error));
+    }
+}

@@ -373,6 +373,12 @@ pub const CONVENTIONAL_LEN: usize = 256;   // cabeçalho + listas de capacidades
   O visitante recebe o endereço PCI e o cabeçalho descodificado.
   O núcleo reporta o número de funções. Com `selftest-pci-enumeration`
   reporta também os endereços PCI e as classes.
+- **Virtio-blk:** `Header::is_virtio_block()` identifica o dispositivo.
+  `ConfigSpace::virtio_block_layout()` usa a cópia de 256 B para
+  localizar as regiões comuns, de notificação, ISR e de configuração
+  do dispositivo. Exige uma capacidade válida de cada tipo e fornece
+  o multiplicador de notificações. O controlador terá de validar os
+  intervalos contra capacidades BAR antes de aceder aos registos.
 
 ### UART para drivers: COM2 (`LegacyDevice::Com2`) — INSTÁVEL
 Fornece: CLAUDE (issue #72, D-061). Usa: CODEX (`kitty-uart`).
