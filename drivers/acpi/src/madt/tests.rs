@@ -29,6 +29,31 @@ const CPU0: [u8; 8] = [0, 8, 42, 5, 1, 0, 0, 0];
 const ALL_LINT1: [u8; 6] = [4, 6, 0xff, 0, 0, 1];
 
 #[test]
+fn discovers_enabled_processors_in_firmware_order() {
+    let records = [
+        CPU0,
+        [0, 8, 99, 7, 0, 0, 0, 0],
+        [0, 8, 88, 9, 2, 0, 0, 0],
+        [0, 8, 1, 3, 1, 0, 0, 0],
+    ];
+    let bytes = table(&records.concat());
+    let madt = Madt::parse(&bytes).unwrap();
+    assert_eq!(
+        madt.local_processors().collect::<Vec<_>>(),
+        [
+            LocalProcessor {
+                apic_id: 5,
+                acpi_uid: 42
+            },
+            LocalProcessor {
+                apic_id: 3,
+                acpi_uid: 1
+            },
+        ]
+    );
+}
+
+#[test]
 fn reads_multiple_io_apics_and_isa_overrides() {
     let mut records = IO_APIC0.to_vec();
     records.extend_from_slice(&TIMER_OVERRIDE);

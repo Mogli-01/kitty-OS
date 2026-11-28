@@ -1536,3 +1536,18 @@ Formato:
   ficheiros para os processos quando o user mode estiver disponível.
 - **Avisos** — o autoteste usa arquivos e meios de arranque próprios
   em `build/initrd-tests/`.
+
+### [2026-11-28] — CODEX (topologia xAPIC)
+
+- **Feito** — o parser MADT expõe os processadores xAPIC ativos.
+  A opção `smp-discovery` reporta a contagem anunciada pelo firmware.
+- **PRs abertos** — ramo `codex/fase9-topologia-xapic` sobre main.
+- **Testes/fuzzing** — 12 testes no host e em Miri. Sete arranques
+  QEMU. BIOS e UEFI confirmaram 1 e 4 processadores, e 2 ativos
+  com 4 lugares. BIOS sem ACPI continuou a arrancar. CI verifica
+  o caso de quatro CPUs nos dois firmwares. Fmt, Clippy e actionlint.
+  O alvo MADT completou 4096 iterações com AddressSanitizer.
+- **Proteções de segurança alteradas** — descoberta em Rust seguro,
+  sobre a cópia validada. Sem unsafe novo.
+- **Próximo passo** — arrancar processadores secundários, definir
+  estruturas por CPU e alargar a descoberta a x2APIC.

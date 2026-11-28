@@ -134,6 +134,18 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
 
     // ACPI: find and validate the MADT. Without it, stay on the 8259 PIC.
     let acpi = firmware::acpi::discover(rsdp_phys());
+    #[cfg(feature = "smp-discovery")]
+    match acpi
+        .as_ref()
+        .ok()
+        .and_then(|tables| kitty_acpi::madt::Madt::parse(&tables.madt).ok())
+    {
+        Some(madt) => kprintln!(
+            "[smp] MADT reports {} enabled xAPIC processor(s)",
+            madt.local_processors().count()
+        ),
+        None => kprintln!("[smp] xAPIC processor topology unavailable"),
+    }
     match &acpi {
         Ok(tables) => {
             arch::apic::set_declared_io_apics(&tables.io_apics);

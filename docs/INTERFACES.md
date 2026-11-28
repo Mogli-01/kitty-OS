@@ -251,6 +251,14 @@ i8042 (offset 4) só passam `0x20, 0x60, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAD,
 pede-o numa issue `para-claude`.
 
 **ACPI e APIC (issue #18):**
+
+`kitty_acpi::madt::Madt::local_processors()` devolve os registos Local APIC
+xAPIC ativos, pela ordem do firmware. Cada registo tem `apic_id` e
+`acpi_uid`. O parser rejeita identificadores ativos duplicados, e o
+iterador ignora processadores desativados ou que só podem ser ativados
+mais tarde. A opção de compilação `smp-discovery` usa a cópia validada
+da MADT e indica a contagem no arranque. Essa contagem representa
+o que o firmware anuncia.
 ```rust
 pub struct devices::Platform<'a> {
     pub madt: Option<&'a [u8]>,   // cópia da MADT, validada sobre a própria cópia
