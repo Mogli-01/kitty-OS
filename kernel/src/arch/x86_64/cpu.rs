@@ -327,6 +327,59 @@ pub fn enable_user_sse() {
     );
 }
 
+/// Whether the CPU has RDRAND (CPUID.1:ECX bit 30).
+pub fn has_rdrand() -> bool {
+    core::arch::x86_64::__cpuid(1).ecx & (1 << 30) != 0
+}
+
+/// Whether the CPU has RDSEED (CPUID.7.0:EBX bit 18).
+pub fn has_rdseed() -> bool {
+    core::arch::x86_64::__cpuid_count(7, 0).ebx & (1 << 18) != 0
+}
+
+/// One 64-bit value from RDRAND (the CPU's DRBG), or `None` if the CPU
+/// has none or it kept failing (carry clear) for 10 tries.
+pub fn rdrand64() -> Option<u64> {
+    if !has_rdrand() {
+        return None;
+    }
+    for _ in 0..10 {
+        let (value, ok): (u64, u8);
+        // SAFETY: RDRAND exists (checked above); it only writes the
+        // destination register and the flags, read back through `setc`.
+        unsafe {
+            asm!("rdrand {v}", "setc {ok}", v = out(reg) value, ok = out(reg_byte) ok,
+                 options(nomem, nostack));
+        }
+        if ok != 0 {
+            return Some(value);
+        }
+    }
+    None
+}
+
+/// One 64-bit value from RDSEED (the CPU's entropy source, meant for
+/// seeding), or `None` if absent or exhausted after 100 tries.
+pub fn rdseed64() -> Option<u64> {
+    if !has_rdseed() {
+        return None;
+    }
+    for _ in 0..100 {
+        let (value, ok): (u64, u8);
+        // SAFETY: RDSEED exists (checked above); it only writes the
+        // destination register and the flags.
+        unsafe {
+            asm!("rdseed {v}", "setc {ok}", v = out(reg) value, ok = out(reg_byte) ok,
+                 options(nomem, nostack));
+        }
+        if ok != 0 {
+            return Some(value);
+        }
+        core::hint::spin_loop();
+    }
+    None
+}
+
 /// Whether CR4.UMIP is set (`sgdt` & co. fault in ring 3).
 pub fn umip_enabled() -> bool {
     let cr4: u64;

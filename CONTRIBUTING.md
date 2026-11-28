@@ -47,8 +47,8 @@ revisões).
 ## Áreas e pastas
 - **Claude (núcleo):** `kernel/src/` — `arch/`, `mm/`, `sync/`, `sched/`,
   syscalls e processos, e o `hal/` (`kitty-hal`); a partir das Fases 15–17 também `caps/`
-  (capacidades), `audit/` (registo de auditoria), `crypto/` (criptografia
-  educativa, não auditada) e `firewall/`.
+  (capacidades), `audit/` (registo de auditoria), `crypto/` (crate `kitty-crypto` na raiz:
+  criptografia educativa, não auditada) e `firewall/`.
 - **Codex:** `drivers/`, `fs/`, `userland/`, `tests/`, a CI, os
   benchmarks, a futura stack de rede e a GUI, e o `AGENTS.md`.
 - **Partilhadas:** `docs/` (coordenação) e `tests/security/redteam/` (só

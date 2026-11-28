@@ -10,7 +10,8 @@ GDT/TSS/IDT, exceções e interrupções, PMM, VMM e paginação, heap do kernel
 sincronização (spinlock, mutex), scheduler, processos/threads, syscalls,
 user mode, ELF loader e todas as proteções de segurança do núcleo.
 A partir das Fases 15–17 também: capacidades (`kernel/src/caps`),
-auditoria (`kernel/src/audit`), criptografia (`kernel/src/crypto`,
+auditoria (`kernel/src/audit`), criptografia (crate `crypto/` =
+`kitty-crypto`, D-066; em vez de `kernel/src/crypto`, para se testar no host,
 educativa e não auditada, D-056) e firewall (`kernel/src/firewall`).
 
 O Codex é dono de: drivers, VFS/initrd, shell e userland, testes, fuzzing,

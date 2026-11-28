@@ -60,6 +60,7 @@ selftest-initrd = []
 [dependencies]
 limine = "0.6.5"
 kitty-hal = { path = "../hal" }
+kitty-crypto = { path = "../crypto" }
 kitty-acpi = { path = "../drivers/acpi", optional = true }
 kitty-apic = { path = "../drivers/apic", optional = true }
 

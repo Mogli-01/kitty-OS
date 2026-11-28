@@ -119,7 +119,7 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | Um processo bloqueado numa syscall pode ser morto | processo imortal preso numa leitura | ATIVA | 6 |
 | `swapgs` só com CS de ring 3 + `lfence` (CVE-2019-1125); `TSS.RSP0` = pilha de kernel da thread atual | o kernel correr com o GS de user; trap de ring 3 numa pilha errada | ATIVA (verificação do GS base nas falhas de user) | 6 |
 | Primeiro 1 MiB de user nunca mapeado (`USER_MIN`) | null deref explorável | ATIVA (`map_user_frame` recusa; teste de leitura de 0) | 6 |
-| RNG do kernel (RDRAND/RDSEED + entropia) | aleatoriedade previsível | PLANEADA | 8 |
+| RNG do kernel: RDSEED/RDRAND com teste de saúde (valores repetidos rejeitados), jitter do TSC e tempo das IRQs, condensados com SHA-256; ChaCha20 com fast key erasure e reseed periódico (D-066) | aleatoriedade previsível; um RDRAND avariado a devolver sempre o mesmo valor; ler o estado do gerador revelar saídas antigas | ATIVA | 8 |
 | KASLR | saber onde está o kernel | PLANEADA | 8 |
 | ASLR em user space | ROP com endereços fixos | PLANEADA | 8 |
 | Objetos do kernel só por handle com direitos (D-018, D-051) | acesso a buffers/canais que ninguém nos deu | PLANEADA | 6/12 |
@@ -131,8 +131,8 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | UIDs/GIDs e permissões em ficheiros e processos; sem "root" que salte as verificações (o admin é um conjunto de handles, D-055) | um utilizador ler ou alterar dados de outro; utilizador → admin | PLANEADA | 15 |
 | Registo de auditoria no kernel: só acrescentar, lido só com o handle `AUDIT`, limite por processo, contador de eventos perdidos, sem endereços do kernel | apagar rastos; encher o registo para esconder um ataque | PLANEADA | 15 |
 | Login: passwords guardadas só como Argon2id com sal; tentativas limitadas e auditadas | roubo de passwords; força bruta | PLANEADA | 15 |
-| Crypto própria com vetores oficiais (RFC 8439, RFC 8032, FIPS 180-4, RFC 9106) e tempo constante para segredos (D-056) | erros de implementação; ataques de timing | PLANEADA (educativa, não auditada) | 16 |
-| CSPRNG (ChaCha20) semeado por RDSEED/RDRAND + entropia; recusa arrancar sem entropia mínima | chaves, nonces e ASLR previsíveis | PLANEADA | 16 |
+| Crypto própria (crate `kitty-crypto`, `forbid(unsafe)`) com vetores oficiais (FIPS 180-4 e RFC 8439 já; RFC 8032 e RFC 9106 na Fase 16) e tempo constante para segredos (D-056, D-066) | erros de implementação; ataques de timing | PARCIAL (SHA-256 e ChaCha20; educativa, não auditada) | 16 |
+| CSPRNG (ChaCha20) semeado por RDSEED/RDRAND + entropia; sem fonte de hardware de confiança arranca só com jitter e avisa (`weak`) (D-066) | chaves, nonces e ASLR previsíveis | ATIVA (8a) | 16 |
 | ELF loader só aceita programas com assinatura Ed25519 válida; o modo de desenvolvimento é explícito e anunciado no arranque | executar programas alterados ou não confiáveis | PLANEADA | 16 |
 | Disco encriptado (ChaCha20-Poly1305, nonce único por bloco, chave por Argon2id) | ler ou alterar o disco com a máquina desligada | PLANEADA | 16 |
 | Firewall no kernel, entrada nega tudo por defeito, regras por processo/porta/endereço (D-057) | serviços expostos sem querer; apps a falar com a rede sem a capacidade | PLANEADA | 17 |

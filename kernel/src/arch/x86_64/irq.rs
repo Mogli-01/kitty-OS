@@ -237,6 +237,8 @@ pub fn unexpected_count() -> u64 {
 
 /// Called by the trap stub for vectors ≥ 0x20, with interrupts disabled.
 pub(super) fn dispatch(vector: u8) {
+    // Interrupt arrival times are a little entropy for the RNG reseeds.
+    crate::rng::add_interrupt_timing(super::cpu::rdtsc() ^ u64::from(vector));
     let v = Vector(vector);
     // Copy what we need and drop the lock before calling the handler, so a
     // handler may itself use this API (e.g. unregister its own line).

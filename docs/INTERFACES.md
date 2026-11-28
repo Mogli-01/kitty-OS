@@ -488,6 +488,20 @@ continua o arranque sem a raiz. `selftest-initrd` verifica a listagem e
 os bytes de `/etc/kitty.txt` no arquivo de teste e emite
 `[vfs] initrd read verified (/etc/kitty.txt)` quando ambos coincidem.
 
+### Aleatoriedade: `rng` e `kitty-crypto` (Fase 8a) — INSTÁVEL
+Fornece: CLAUDE (`kernel/src/rng.rs`, crate `crypto/` = `kitty-crypto`, D-066). Usa: núcleo (ASLR, KASLR, chaves) e user space (`random_fill`).
+```rust
+pub fn rng::fill(out: &mut [u8]);     // seguro em qualquer contexto
+pub fn rng::u64() -> u64;
+pub fn rng::below(bound: u64) -> u64; // sem enviesamento
+pub fn kitty_crypto::sha256::sha256(data: &[u8]) -> [u8; 32];
+pub fn kitty_crypto::chacha20::{block, xor_stream};
+pub fn kitty_crypto::{wipe, ct_eq};   // apagar segredos; comparar em tempo constante
+```
+- **Syscall 8, `random_fill(buf, len)`:** até 512 bytes por chamada, sem handle (não dá autoridade nenhuma).
+- **Arranque:** `[rng] seeded (RDSEED n words, RDRAND n words, r rejected, j jitter samples)`, com `-- WARNING ... weak entropy` se não houver fonte de hardware de confiança.
+- **Testes no host:** `cargo test -p kitty-crypto` corre os vetores oficiais (FIPS 180-4, RFC 8439), o "um milhão de a" e as fronteiras do padding. Isto responde ao ponto 4 da revisão do #80: o adaptador de host deixa de ser preciso, porque o crate já é testável no host.
+
 ### Syscalls (Fase 6c) — INSTÁVEL (ABI de user)
 Fornece: CLAUDE (`kernel/src/syscall`, D-063). Usa: CODEX (biblioteca de syscalls em `userland/`, shell).
 - **Entrada:** `syscall`. O número vai em `rax`, os argumentos em `rdi, rsi, rdx, r10, r8, r9` e o resultado em `rax` (`< 0` = erro, D-049). O `rcx`/`r11` são destruídos; todos os outros registos são preservados.

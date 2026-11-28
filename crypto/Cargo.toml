@@ -1,0 +1,8 @@
+[package]
+name = "kitty-crypto"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+description = "kitty-OS cryptography (educational, NOT audited): SHA-256, ChaCha20"
+
+[dependencies]

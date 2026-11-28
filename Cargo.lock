@@ -14,6 +14,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "kitty-crypto"
+version = "0.1.0"
+
+[[package]]
 name = "kitty-gfx"
 version = "0.1.0"
 
@@ -38,6 +42,7 @@ version = "0.1.0"
 dependencies = [
  "kitty-acpi",
  "kitty-apic",
+ "kitty-crypto",
  "kitty-hal",
  "kitty-pit",
  "kitty-ps2",
