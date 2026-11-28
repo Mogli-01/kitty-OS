@@ -1650,5 +1650,5 @@ Formato:
   - O `dup` do handle dá `E_PERM`.
   - Quando o leitor morre, a concessão volta e a fila está vazia.
 - **Proteções de segurança alteradas:** ATIVA: INPUT com um só leitor e fila esvaziada a cada troca de dono.
-- **Próximo passo sugerido para o Codex:** em `kernel/src/devices/ps2.rs`, converter cada `kitty_ps2::InputEvent` e chamar `crate::input::push` (ver INTERFACES.md, secção INPUT).
+- **Próximo passo sugerido para o Codex:** em `kernel/src/devices/ps2.rs`, converter cada `kitty_ps2::InputEvent` e chamar `crate::input::push_key(evento, texto do layout)` para as teclas e `crate::input::push` para o rato, **em vez de** `console::input_push` (ver INTERFACES.md, secção INPUT).
 - **Avisos:** a parte do núcleo na Fase 6 fica completa (6a–6e). O que falta é do Codex: o `/sbin/init`, a shell e o push do PS/2. Depois disso vem a ronda 1 de red team.

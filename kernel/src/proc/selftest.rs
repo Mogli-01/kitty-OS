@@ -509,18 +509,27 @@ pub fn input() -> Result<(), &'static str> {
     if word(0) != 8 || word(8) != 8 {
         return Err("input_read did not return 8 events twice");
     }
-    if kind_code(0x100, 0).0 != KIND_LOST || kind_code(0x100, 1) != (KIND_KEY, 0) {
-        return Err("a full INPUT ring was not reported as lost first");
-    }
-    if kind_code(0x400, 0) != (KIND_KEY, 7) {
+    if kind_code(0x100, 0) != (KIND_KEY, 0)
+        || kind_code(0x100, 7) != (KIND_KEY, 7)
+        || kind_code(0x400, 0) != (KIND_KEY, 8)
+    {
         return Err("INPUT events were not delivered in order");
     }
     if word(16) as i64 != crate::syscall::errno::E_PERM {
         return Err("the INPUT handle could be duplicated");
     }
     // The holder is dead: its handles were released, so the grant is free
-    // again and the 241 unread events are gone.
-    let again = input::grant().ok_or("the INPUT grant did not come back")?;
+    // again and the 240 unread events are gone. (Its handles are released
+    // just after its status changes: wait for that, with a bound.)
+    let mut again = None;
+    wait_until(
+        || {
+            again = input::grant();
+            again.is_some()
+        },
+        1_000_000,
+    );
+    let again = again.ok_or("the INPUT grant did not come back")?;
     input::push(InputEvent {
         kind: KIND_KEY,
         code: 999,
@@ -528,9 +537,66 @@ pub fn input() -> Result<(), &'static str> {
     });
     let mut probe = [InputEvent::default(); 4];
     let n = input::read(&mut probe, || false);
-    drop(again);
     if n != 1 || probe[0].code != 999 {
         return Err("events of the previous INPUT owner leaked to the next");
+    }
+    // Overflow: the 256 queued events come first, then the lost marker.
+    for i in 0..300u16 {
+        input::push(InputEvent {
+            kind: KIND_KEY,
+            code: i,
+            ..InputEvent::default()
+        });
+    }
+    let mut seen = 0usize;
+    let mut chunk = [InputEvent::default(); 32];
+    loop {
+        let n = input::read(&mut chunk, || false);
+        let lost_at = chunk[..n].iter().position(|e| e.kind == KIND_LOST);
+        match lost_at {
+            Some(i) => {
+                seen += i;
+                break;
+            }
+            None => seen += n,
+        }
+        if seen > input::CAPACITY {
+            return Err("no lost marker after a full INPUT ring");
+        }
+    }
+    if seen != input::CAPACITY {
+        return Err("the lost marker did not come after the queued events");
+    }
+    // Keyboard routing: text reaches the console only while nobody reads
+    // INPUT (anti-keylogger).
+    let before = crate::console::input_pending();
+    input::push_key(
+        InputEvent {
+            kind: KIND_KEY,
+            code: 1,
+            value: 1,
+            ..InputEvent::default()
+        },
+        b"k",
+    );
+    let to_console = crate::console::input_pending() == before + 1;
+    input::mark_active();
+    input::push_key(
+        InputEvent {
+            kind: KIND_KEY,
+            code: 2,
+            value: 1,
+            ..InputEvent::default()
+        },
+        b"x",
+    );
+    let kept_from_console = crate::console::input_pending() == before + 1;
+    let mut drain = [0u8; 8];
+    let _ = crate::console::input_read(&mut drain, || false);
+    drop(again);
+    input::flush();
+    if !to_console || !kept_from_console || input::active() {
+        return Err("keyboard text reached the console while INPUT was being read");
     }
     drop(process);
     Ok(())

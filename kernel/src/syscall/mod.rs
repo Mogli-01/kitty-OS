@@ -386,6 +386,8 @@ fn input_read(process: &Process, handle: u64, buf: u64, max: u64) -> Result<i64,
         return Ok(0);
     }
     UserSlice::new(buf, max * 24).map_err(user_err)?;
+    // From the first read on, keyboard text stops reaching the console.
+    crate::input::mark_active();
     let mut events = [InputEvent::default(); INPUT_MAX];
     let dst = events.get_mut(..max).ok_or(E_TOOBIG)?;
     let n = crate::input::read(dst, || process.is_killed());

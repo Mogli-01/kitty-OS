@@ -8,9 +8,16 @@
 //!   (anti-keylogger).
 //! - Drivers publish with [`push`] from interrupt handlers: fixed ring of
 //!   256 events, one short lock, no heap; then the reader is woken.
-//! - If the ring is full the **new** event is dropped and the next read
-//!   starts with a `kind = 3` ("lost") event, so the reader resets its key
-//!   and button state.
+//! - If the ring is full the **new** event is dropped; once the reader has
+//!   drained the events that were queued, it gets a `kind = 3` ("lost")
+//!   event, so it resets its key and button state *after* applying the
+//!   old ones (whose releases may be among the dropped).
+//! - **Keyboard routing (anti-keylogger):** drivers hand every key to
+//!   [`push_key`] together with its text. While nobody reads INPUT, the
+//!   text goes to the kernel console (the shell reads it with
+//!   `console_read`); once the INPUT holder has started reading, the text
+//!   is **not** given to the console any more, so no other process with a
+//!   CONSOLE handle can read keys typed for the compositor.
 //! - Whenever the grant changes owner (handle closed, owner dead, handle
 //!   moved), the ring is **emptied**: the next reader never sees keys typed
 //!   for the previous one (a password, say).
@@ -100,6 +107,8 @@ static RING: IrqSpinLock<Ring> = IrqSpinLock::new(Ring {
 });
 static WAIT: WaitQueue = WaitQueue::new();
 static GRANTED: AtomicBool = AtomicBool::new(false);
+/// The grant holder has called `input_read` at least once.
+static ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// Publishes one event (called by input drivers, safe in IRQ handlers).
 pub fn push(event: InputEvent) {
@@ -116,6 +125,27 @@ pub fn push(event: InputEvent) {
     }
     // Publish first, then wake (D-046).
     WAIT.wake_all();
+}
+
+/// A key event and the text it produces with the current layout (empty
+/// for keys without text, or for releases). Safe in IRQ handlers. The
+/// kernel decides where the text goes (see the module docs).
+pub fn push_key(event: InputEvent, text: &[u8]) {
+    push(event);
+    if !ACTIVE.load(Ordering::Acquire) && !text.is_empty() {
+        crate::console::input_push(text);
+    }
+}
+
+/// Marks the grant holder as reading (first `input_read`): from now on
+/// keyboard text no longer reaches the console.
+pub fn mark_active() {
+    ACTIVE.store(true, Ordering::Release);
+}
+
+/// Whether an INPUT reader is active (keys are not given to the console).
+pub fn active() -> bool {
+    ACTIVE.load(Ordering::Acquire)
 }
 
 /// Events dropped so far because the reader was too slow.
@@ -139,6 +169,8 @@ pub struct InputGrant {
 impl Drop for InputGrant {
     fn drop(&mut self) {
         flush();
+        // Keys go back to the console until a new holder reads.
+        ACTIVE.store(false, Ordering::Release);
         GRANTED.store(false, Ordering::Release);
     }
 }
@@ -179,20 +211,24 @@ pub fn read(dst: &mut [InputEvent], mut cancel: impl FnMut() -> bool) -> usize {
         }
         let mut ring = RING.lock();
         let mut n = 0;
-        if ring.lost
-            && let Some(slot) = dst.first_mut()
+        while n < dst.len() && ring.len > 0 {
+            dst[n] = ring.events[ring.head];
+            ring.head = (ring.head + 1) % CAPACITY;
+            ring.len -= 1;
+            n += 1;
+        }
+        // The "lost" marker comes after everything that was queued before
+        // the loss (security review: before them, a reset would be undone
+        // by old presses whose releases were dropped).
+        if ring.len == 0
+            && ring.lost
+            && let Some(slot) = dst.get_mut(n)
         {
             *slot = InputEvent {
                 kind: KIND_LOST,
                 ..InputEvent::default()
             };
             ring.lost = false;
-            n = 1;
-        }
-        while n < dst.len() && ring.len > 0 {
-            dst[n] = ring.events[ring.head];
-            ring.head = (ring.head + 1) % CAPACITY;
-            ring.len -= 1;
             n += 1;
         }
         drop(ring);

@@ -233,9 +233,12 @@ pub struct InputEvent {
 - **Leitura:** `input_read(h, buf, max) -> n` bloqueia até haver ≥ 1 evento
   e copia até `max` eventos inteiros (`buf` com `max * 24` bytes válidos).
 - **Perda:** fila circular de 256 eventos por objeto INPUT. Se encher, o
-  evento novo é descartado e o próximo `input_read` começa por um evento
-  `kind = 3` (perdidos); o compositor deve repor o estado dos botões e
-  teclas (assumir tudo solto).
+  evento novo é descartado. Depois dos eventos que estavam na fila, o leitor
+  recebe um evento `kind = 3` (perdidos) e deve repor o estado dos botões e
+  das teclas, assumindo tudo solto (D-065).
+- **Encaminhamento do teclado:** o driver chama `input::push_key(evento,
+  texto)`. O texto só vai para a consola enquanto o dono do INPUT não lê;
+  depois disso, só o dono vê as teclas.
 - **Troca de consumidor:** ao fechar ou transferir o handle, a fila é
   **esvaziada**. O
   consumidor seguinte nunca vê teclas destinadas ao anterior (por exemplo,

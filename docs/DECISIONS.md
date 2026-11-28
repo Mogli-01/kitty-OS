@@ -1290,3 +1290,8 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
 - **`/sbin/init`:** recebe o INPUT como handle 2 (a ordem fixa é 0 CONSOLE, 1 raiz, 2 INPUT; o 3, DISPLAY, virá depois).
 - **Testes (modo `qemu-exit`):** o kernel espera, com limite, que o init termine antes de sair do QEMU, para que o output do init seja determinístico.
 - **Limite:** o `time_ns` fica a 0 até o relógio (#94) entrar.
+- **Revisto depois do `security-reviewer`:**
+  - **Anti-keylogger de ponta a ponta:** o driver passa as teclas ao kernel com `input::push_key(evento, texto)`, e é o kernel que decide para onde vai o texto. Vai para a consola enquanto o dono do INPUT ainda não leu nada, e deixa de ir depois da primeira `input_read`. Antes, a consola recebia sempre as teclas, e qualquer processo com CONSOLE as podia ler.
+  - **Marcador `KIND_LOST`:** passa a vir **depois** dos eventos que estavam na fila, para que o reset do leitor não seja desfeito por teclas antigas que ficaram "premidas".
+  - **Espera pelo init em `qemu-exit`:** passa a ter também um limite de tempo (cerca de 1 s de ticks).
+  - **Teste:** a corrida do autoteste (esperar que a concessão volte) foi corrigida.
