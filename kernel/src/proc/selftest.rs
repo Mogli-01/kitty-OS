@@ -98,6 +98,7 @@ pub fn run() -> Result<Report, &'static str> {
     spawn_rules()?;
     input()?;
     random()?;
+    aslr()?;
     if !super::fs::selftest_paths() {
         return Err("open_at accepted a path that leaves its directory");
     }
@@ -318,9 +319,9 @@ pub fn elf() -> Result<(), &'static str> {
             "non-x86_64 ELF accepted",
         ),
         (
-            mutate(16, &3u16.to_le_bytes()),
+            mutate(16, &1u16.to_le_bytes()),
             ElfError::NotExecutable,
-            "ET_DYN accepted",
+            "ET_REL accepted",
         ),
         (
             mutate(56, &65u16.to_le_bytes()),
@@ -635,5 +636,171 @@ pub fn random() -> Result<(), &'static str> {
         return Err("random_fill returned repeated or zero bytes");
     }
     drop(process);
+    Ok(())
+}
+
+// ---------------------------------------------------------------- 8b ---
+
+/// A static PIE: code at 0 (RX), a data page at 0x1000 (RW) whose first
+/// u64 is relocated (R_X86_64_RELATIVE) to `target`, and a read-only page
+/// at 0x2000 with the dynamic section and the relocation table.
+/// `tweak(&mut bytes)` lets tests break one field.
+fn build_test_pie(code: &[u8], target: u64, tweak: impl FnOnce(&mut [u8])) -> alloc::vec::Vec<u8> {
+    let mut out = alloc::vec![0u8; 0x4000];
+    let mut put = |at: usize, v: &[u8]| {
+        if let Some(d) = out.get_mut(at..at + v.len()) {
+            d.copy_from_slice(v);
+        }
+    };
+    put(0, b"\x7fELF");
+    put(4, &[2, 1, 1]);
+    put(16, &3u16.to_le_bytes()); // ET_DYN
+    put(18, &62u16.to_le_bytes());
+    put(20, &1u32.to_le_bytes());
+    put(24, &0u64.to_le_bytes()); // entry = image start
+    put(32, &64u64.to_le_bytes());
+    put(52, &64u16.to_le_bytes());
+    put(54, &56u16.to_le_bytes());
+    put(56, &4u16.to_le_bytes());
+    // (type, flags, offset, vaddr, filesz, memsz)
+    let phdrs: [(u32, u32, u64, u64, u64, u64); 4] = [
+        (1, RX, 0x1000, 0x0000, code.len() as u64, 0x1000),
+        (1, RW, 0x2000, 0x1000, 8, 0x1000),
+        (1, R_ONLY, 0x3000, 0x2000, 0x200, 0x1000),
+        (2, R_ONLY, 0x3000, 0x2000, 64, 64), // PT_DYNAMIC
+    ];
+    for (i, (ty, fl, off, va, fsz, msz)) in phdrs.iter().enumerate() {
+        let ph = 64 + i * 56;
+        put(ph, &ty.to_le_bytes());
+        put(ph + 4, &fl.to_le_bytes());
+        put(ph + 8, &off.to_le_bytes());
+        put(ph + 16, &va.to_le_bytes());
+        put(ph + 32, &fsz.to_le_bytes());
+        put(ph + 40, &msz.to_le_bytes());
+        put(ph + 48, &4096u64.to_le_bytes());
+    }
+    put(0x1000, code);
+    // Dynamic section: DT_RELA = 0x2100, DT_RELASZ = 24, DT_RELAENT = 24.
+    let dynamic: [(u64, u64); 4] = [(7, 0x2100), (8, 24), (9, 24), (0, 0)];
+    for (i, (tag, val)) in dynamic.iter().enumerate() {
+        put(0x3000 + i * 16, &tag.to_le_bytes());
+        put(0x3000 + i * 16 + 8, &val.to_le_bytes());
+    }
+    // One RELATIVE relocation: *(base + 0x1000) = base + target.
+    put(0x3100, &0x1000u64.to_le_bytes());
+    put(0x3108, &8u64.to_le_bytes());
+    put(0x3110, &target.to_le_bytes());
+    tweak(&mut out);
+    out
+}
+
+const R_ONLY: u32 = 4;
+
+/// ASLR: a static PIE runs at a random base with its relocation applied
+/// (checked by the program itself in ring 3); two runs get different
+/// bases and stacks; malformed or unsupported relocations are refused.
+pub fn aslr() -> Result<(), &'static str> {
+    use crate::arch::x86_64::usermode::pie_target_offset;
+    let code = test_program(TestProgram::Pie);
+    let target = pie_target_offset();
+    let good = build_test_pie(code, target, |_| {});
+    let image = Image::parse(&good).map_err(|_| "a valid static PIE was refused")?;
+    if !image.is_pie() {
+        return Err("an ET_DYN image was not treated as a PIE");
+    }
+    let run = || {
+        super::spawn::spawn_test_from_kernel(
+            &good,
+            alloc::vec![(Object::Console, super::CONSOLE_RIGHTS)],
+        )
+        .map_err(|_| "could not start the PIE")
+    };
+    let a = run()?;
+    let b = run()?;
+    wait_until(
+        || a.status() != Status::Running && b.status() != Status::Running,
+        1_000_000,
+    );
+    if a.status() != Status::Exited(1) || b.status() != Status::Exited(1) {
+        return Err("the PIE's relocation was not applied at its load base");
+    }
+    let (base_a, stack_a) = a.layout();
+    let (base_b, stack_b) = b.layout();
+    let in_window = |base: u64| {
+        (super::elf::PIE_BASE_MIN..super::elf::PIE_BASE_MIN + super::elf::PIE_BASE_PAGES * 4096)
+            .contains(&base)
+            && base % 4096 == 0
+    };
+    if !in_window(base_a) || !in_window(base_b) {
+        return Err("a PIE base outside the ASLR window");
+    }
+    // 2^24 bases and 2^16 stack slides: both equal means ASLR is off (one
+    // equal pair alone happens by chance, ~1 in 65 536 for the stack).
+    if base_a == base_b && stack_a == stack_b {
+        return Err("two processes got the same base or stack (no ASLR)");
+    }
+    drop((a, b));
+
+    let refused = |img: &[u8], why| match Image::parse(img) {
+        Err(ElfError::BadRelocation) => Ok(()),
+        _ => Err(why),
+    };
+    refused(
+        &build_test_pie(code, target, |b| b[0x3108] = 1),
+        "a non-RELATIVE relocation (R_X86_64_64) was accepted",
+    )?;
+    refused(
+        &build_test_pie(code, target, |b| {
+            b[0x3100..0x3108].copy_from_slice(&0x10u64.to_le_bytes())
+        }),
+        "a relocation into code (text relocation) was accepted",
+    )?;
+    refused(
+        &build_test_pie(code, target, |b| b[0x3000] = 1),
+        "a PIE needing a shared library (DT_NEEDED) was accepted",
+    )?;
+    refused(
+        &build_test_pie(code, target, |b| b[0x3028] = 16),
+        "a bad DT_RELAENT was accepted",
+    )?;
+    for (tweak, why) in [
+        (
+            |b: &mut [u8]| b[0x3018] = 25,
+            "a DT_RELASZ not a multiple of 24 was accepted",
+        ),
+        (
+            |b: &mut [u8]| b[0x3100] = 1,
+            "a misaligned relocation was accepted",
+        ),
+        (
+            |b: &mut [u8]| b[0x3101] = 0x20,
+            "a relocation into read-only data was accepted",
+        ),
+        (
+            |b: &mut [u8]| b[0x3000] = 23,
+            "a PLT relocation table (DT_JMPREL) was accepted",
+        ),
+        (
+            |b: &mut [u8]| b[0x3000] = 36,
+            "packed RELR relocations were accepted unapplied",
+        ),
+        (
+            |b: &mut [u8]| b[0x3000] = 17,
+            "REL relocations were accepted unapplied",
+        ),
+    ] as [(fn(&mut [u8]), &str); 6]
+    {
+        refused(&build_test_pie(code, target, tweak), why)?;
+    }
+    // PT_DYNAMIC in a fixed-address executable stays refused: make it the
+    // first program header so nothing else is checked before it.
+    let exec_dyn = build_test_pie(code, target, |b| {
+        b[16] = 2;
+        let (first, rest) = b.split_at_mut(64 + 56);
+        first[64..].swap_with_slice(&mut rest[2 * 56..3 * 56]);
+    });
+    if Image::parse(&exec_dyn).err() != Some(ElfError::Dynamic) {
+        return Err("PT_DYNAMIC in an ET_EXEC image was accepted");
+    }
     Ok(())
 }

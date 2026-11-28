@@ -3,9 +3,12 @@
 //! The file is **untrusted input** (it comes from the initrd, later from
 //! disk or the network). Everything is validated before a single page is
 //! mapped, with checked arithmetic and no `unwrap`:
-//! - ELF64, little-endian, version 1, `ET_EXEC`, `EM_X86_64`;
-//! - program headers inside the file, 1–16 `PT_LOAD`, no `PT_INTERP` /
-//!   `PT_DYNAMIC` / `PT_TLS` (static executables only);
+//! - ELF64, little-endian, version 1, `EM_X86_64`, and either `ET_EXEC`
+//!   (fixed addresses) or `ET_DYN` = **static PIE** (Phase 8b, D-067):
+//!   loaded at a random base, with only `R_X86_64_RELATIVE` relocations;
+//! - program headers inside the file, 1–16 `PT_LOAD`, no `PT_INTERP`
+//!   or `PT_TLS`; `PT_DYNAMIC` only in a PIE, and then without shared
+//!   libraries (`DT_NEEDED`), PLT relocations or text relocations;
 //! - each segment: `filesz <= memsz`, file bytes inside the file,
 //!   `vaddr % 4096 == offset % 4096`, whole page range inside
 //!   `[USER_MIN, USER_MAP_END)`, **never writable and executable**;
@@ -47,8 +50,12 @@ pub enum ElfError {
     BadMagic,
     /// Not 64-bit, little-endian, version 1, x86_64.
     Unsupported,
-    /// Not `ET_EXEC` (no shared objects or relocatable files).
+    /// Not `ET_EXEC` or `ET_DYN` (no relocatable files or core dumps).
     NotExecutable,
+    /// A PIE's dynamic section or relocations are malformed or need
+    /// something unsupported (shared libraries, PLT, non-RELATIVE types,
+    /// a relocation outside a writable segment).
+    BadRelocation,
     /// Program headers malformed or too many.
     BadProgramHeaders,
     /// Interpreter, dynamic section or TLS: not supported.
@@ -71,11 +78,51 @@ pub enum ElfError {
     Map(MapError),
 }
 
-/// Whether `[start, end)` touches the main stack or its guard page
-/// (security review: a segment there would silently replace the guard).
+/// Whether `[start, end)` touches the window where the main stack (and its
+/// guard page) may be placed (security review of 6d: a segment there would
+/// silently replace the guard; 8b: the stack position is random).
 fn overlaps_stack(start: u64, end: u64) -> bool {
-    let guard_bottom = super::STACK_TOP - (super::spawn::STACK_PAGES + 1) * PAGE;
-    start < super::STACK_TOP && end > guard_bottom
+    start < super::STACK_TOP && end > super::spawn::stack_window_bottom()
+}
+
+/// Largest span (lowest to highest byte) of a PIE image.
+pub const PIE_MAX_SPAN: u64 = MAX_IMAGE;
+/// Lowest base a PIE may be loaded at (4 GiB: far from fixed-address
+/// `ET_EXEC` images, which usually sit at 4 MiB).
+pub const PIE_BASE_MIN: u64 = 0x0000_0001_0000_0000;
+/// Number of possible PIE base pages (2^24: 24 bits of ASLR, a 64 GiB
+/// window).
+pub const PIE_BASE_PAGES: u64 = 1 << 24;
+/// Most relocations accepted.
+pub const MAX_RELOCS: usize = 1 << 20;
+
+const DT_NULL: u64 = 0;
+const DT_NEEDED: u64 = 1;
+const DT_PLTRELSZ: u64 = 2;
+const DT_RELA: u64 = 7;
+const DT_RELASZ: u64 = 8;
+const DT_RELAENT: u64 = 9;
+const DT_TEXTREL: u64 = 22;
+const DT_JMPREL: u64 = 23;
+const DT_FLAGS: u64 = 30;
+const DT_REL: u64 = 17;
+const DT_RELSZ: u64 = 18;
+const DT_RELENT: u64 = 19;
+const DT_RELRSZ: u64 = 35;
+const DT_RELR: u64 = 36;
+const DT_RELRENT: u64 = 37;
+const DF_TEXTREL: u64 = 0x4;
+const R_X86_64_NONE: u32 = 0;
+const R_X86_64_RELATIVE: u32 = 8;
+
+/// Where a PIE's validated relocation table is in the file: `count`
+/// entries of 24 bytes from `start`. The entries are not copied into the
+/// kernel heap (security review: up to ~11 MiB per spawn); `load` reads
+/// them again from the immutable image bytes.
+#[derive(Clone, Copy, Debug, Default)]
+struct RelaTable {
+    start: usize,
+    count: usize,
 }
 
 /// One validated loadable segment.
@@ -105,6 +152,9 @@ pub struct Image<'a> {
     bytes: &'a [u8],
     entry: u64,
     segments: Vec<Segment>,
+    /// Static PIE: addresses are offsets from a base chosen at load time.
+    pie: bool,
+    relocs: RelaTable,
 }
 
 fn u16_at(b: &[u8], at: usize) -> Result<u16, ElfError> {
@@ -142,9 +192,11 @@ impl<'a> Image<'a> {
         if u16_at(bytes, 18)? != 62 || u32_at(bytes, 20)? != 1 {
             return Err(ElfError::Unsupported);
         }
-        if u16_at(bytes, 16)? != 2 {
-            return Err(ElfError::NotExecutable);
-        }
+        let pie = match u16_at(bytes, 16)? {
+            2 => false,
+            3 => true,
+            _ => return Err(ElfError::NotExecutable),
+        };
         let entry = u64_at(bytes, 24)?;
         let phoff = usize::try_from(u64_at(bytes, 32)?).map_err(|_| ElfError::BadProgramHeaders)?;
         let phentsize = usize::from(u16_at(bytes, 54)?);
@@ -162,10 +214,15 @@ impl<'a> Image<'a> {
 
         let mut segments = Vec::new();
         let mut total: u64 = 0;
+        let mut dynamic: Option<(u64, u64)> = None;
         for i in 0..phnum {
             let ph = phoff + i * 56;
             match u32_at(bytes, ph)? {
                 PT_LOAD => {}
+                PT_DYNAMIC if pie && dynamic.is_none() => {
+                    dynamic = Some((u64_at(bytes, ph + 8)?, u64_at(bytes, ph + 32)?));
+                    continue;
+                }
                 PT_INTERP | PT_DYNAMIC | PT_TLS => return Err(ElfError::Dynamic),
                 _ => continue,
             }
@@ -198,8 +255,14 @@ impl<'a> Image<'a> {
                 .ok_or(ElfError::OutOfRange)?;
             // USER_MAP_END is page-aligned: `mem_end <= USER_MAP_END` keeps
             // the rounded-up last page inside too (and cannot overflow).
-            if seg.vaddr < USER_MIN || mem_end > USER_MAP_END || overlaps_stack(seg.vaddr, mem_end)
-            {
+            // A PIE's addresses are offsets: they only need to fit the span
+            // (the base keeps the whole image inside the PIE window).
+            let out_of_range = if pie {
+                mem_end > PIE_MAX_SPAN
+            } else {
+                seg.vaddr < USER_MIN || mem_end > USER_MAP_END || overlaps_stack(seg.vaddr, mem_end)
+            };
+            if out_of_range {
                 return Err(ElfError::OutOfRange);
             }
             total = total.saturating_add(seg.end_page() - seg.first_page());
@@ -229,11 +292,31 @@ impl<'a> Image<'a> {
         if !entry_ok {
             return Err(ElfError::BadEntry);
         }
+        let relocs = match dynamic {
+            Some((offset, size)) => parse_relocs(bytes, &segments, offset, size)?,
+            None => RelaTable::default(),
+        };
         Ok(Self {
             bytes,
             entry,
             segments,
+            pie,
+            relocs,
         })
+    }
+
+    /// Whether this is a static PIE (loaded at a random base).
+    pub fn is_pie(&self) -> bool {
+        self.pie
+    }
+
+    /// Picks a random, page-aligned load base for a PIE (0 for `ET_EXEC`).
+    pub fn choose_base(&self) -> u64 {
+        if self.pie {
+            PIE_BASE_MIN + crate::rng::below(PIE_BASE_PAGES) * PAGE
+        } else {
+            0
+        }
     }
 
     /// Pages the image will occupy.
@@ -244,13 +327,25 @@ impl<'a> Image<'a> {
             .sum()
     }
 
-    /// Entry point (validated to be in an executable segment).
-    pub fn entry(&self) -> u64 {
-        self.entry
+    /// Entry point (validated to be in an executable segment), relative to
+    /// `base` for a PIE.
+    pub fn entry(&self, base: u64) -> u64 {
+        base + self.entry
     }
 
-    /// Copies every segment into fresh pages of `space`.
-    pub fn load(&self, space: &mut UserSpace) -> Result<(), ElfError> {
+    /// Copies every segment into fresh pages of `space`, at `base` (0 for
+    /// `ET_EXEC`; [`Image::choose_base`] for a PIE), then applies the PIE's
+    /// relocations. Nothing runs before this returns.
+    pub fn load(&self, space: &mut UserSpace, base: u64) -> Result<(), ElfError> {
+        if base != 0 && (!self.pie || !base.is_multiple_of(PAGE)) {
+            return Err(ElfError::OutOfRange);
+        }
+        if self.pie {
+            let end = base.checked_add(PIE_MAX_SPAN).ok_or(ElfError::OutOfRange)?;
+            if base < USER_MIN || end > super::spawn::stack_window_bottom() {
+                return Err(ElfError::OutOfRange);
+            }
+        }
         let mut page = Box::new([0u8; PAGE as usize]);
         for seg in &self.segments {
             let file = self
@@ -273,13 +368,114 @@ impl<'a> Image<'a> {
                         .copy_from_slice(src);
                 }
                 space
-                    .map_page(p, seg.perm, &page[..])
+                    .map_page(base + p, seg.perm, &page[..])
                     .map_err(ElfError::Map)?;
                 p += PAGE;
             }
         }
+        let table = self
+            .bytes
+            .get(self.relocs.start..self.relocs.start + self.relocs.count * 24)
+            .ok_or(ElfError::BadRelocation)?;
+        for r in table.as_chunks::<24>().0 {
+            // Validated by `parse` (same immutable bytes); checked again
+            // here because it costs nothing.
+            let Some((offset, addend)) = relocation(r, &self.segments)? else {
+                continue;
+            };
+            space
+                .poke_u64(base + offset, base.wrapping_add(addend))
+                .ok_or(ElfError::BadRelocation)?;
+        }
         Ok(())
     }
+}
+
+/// Validates one relocation entry: `Ok(None)` for `R_X86_64_NONE`,
+/// `Ok(Some((offset, addend)))` for a valid `R_X86_64_RELATIVE` into a
+/// writable segment, 8-aligned; anything else is `BadRelocation`.
+fn relocation(r: &[u8; 24], segments: &[Segment]) -> Result<Option<(u64, u64)>, ElfError> {
+    let r_offset = u64_at(r, 0)?;
+    let info = u64_at(r, 8)?;
+    let addend = u64_at(r, 16)?;
+    match (info & 0xFFFF_FFFF) as u32 {
+        R_X86_64_NONE => return Ok(None),
+        R_X86_64_RELATIVE if info >> 32 == 0 => {}
+        _ => return Err(ElfError::BadRelocation),
+    }
+    // Only into writable memory of the image, 8-aligned (never into code
+    // or read-only data, never across pages).
+    let in_rw = segments.iter().any(|s| {
+        s.perm == UserPerm::ReadWrite
+            && r_offset >= s.vaddr
+            && r_offset.saturating_add(8) <= s.vaddr + s.memsz
+    });
+    if !in_rw || !r_offset.is_multiple_of(8) {
+        return Err(ElfError::BadRelocation);
+    }
+    Ok(Some((r_offset, addend)))
+}
+
+/// Reads and validates a PIE's relocation table from its dynamic section
+/// (`offset`/`size` in the file).
+fn parse_relocs(
+    bytes: &[u8],
+    segments: &[Segment],
+    offset: u64,
+    size: u64,
+) -> Result<RelaTable, ElfError> {
+    let start = usize::try_from(offset).map_err(|_| ElfError::BadRelocation)?;
+    let len = usize::try_from(size).map_err(|_| ElfError::BadRelocation)?;
+    let dynamic = bytes
+        .get(start..start.checked_add(len).ok_or(ElfError::BadRelocation)?)
+        .ok_or(ElfError::BadRelocation)?;
+    let (mut rela, mut relasz, mut relaent) = (None, 0u64, 24u64);
+    for entry in dynamic.as_chunks::<16>().0 {
+        let tag = u64_at(entry, 0)?;
+        let val = u64_at(entry, 8)?;
+        match tag {
+            DT_NULL => break,
+            // Shared libraries, PLT, text relocations, and the REL / RELR
+            // formats we do not apply: refuse rather than run unrelocated.
+            DT_NEEDED | DT_TEXTREL | DT_JMPREL | DT_REL | DT_RELSZ | DT_RELENT | DT_RELR
+            | DT_RELRSZ | DT_RELRENT => return Err(ElfError::BadRelocation),
+            DT_PLTRELSZ if val != 0 => return Err(ElfError::BadRelocation),
+            DT_FLAGS if val & DF_TEXTREL != 0 => return Err(ElfError::BadRelocation),
+            DT_RELA => rela = Some(val),
+            DT_RELASZ => relasz = val,
+            DT_RELAENT => relaent = val,
+            _ => {}
+        }
+    }
+    let Some(rela) = rela else {
+        return if relasz == 0 {
+            Ok(RelaTable::default())
+        } else {
+            Err(ElfError::BadRelocation)
+        };
+    };
+    if relaent != 24 || relasz % 24 != 0 || relasz / 24 > MAX_RELOCS as u64 {
+        return Err(ElfError::BadRelocation);
+    }
+    // DT_RELA is an address in the image: find its bytes through the
+    // segment that contains it (in the file part).
+    let end = rela.checked_add(relasz).ok_or(ElfError::BadRelocation)?;
+    let seg = segments
+        .iter()
+        .find(|s| rela >= s.vaddr && end <= s.vaddr + s.filesz)
+        .ok_or(ElfError::BadRelocation)?;
+    let file_start =
+        usize::try_from(seg.offset + (rela - seg.vaddr)).map_err(|_| ElfError::BadRelocation)?;
+    let table = bytes
+        .get(file_start..file_start + relasz as usize)
+        .ok_or(ElfError::BadRelocation)?;
+    for r in table.as_chunks::<24>().0 {
+        relocation(r, segments)?;
+    }
+    Ok(RelaTable {
+        start: file_start,
+        count: table.len() / 24,
+    })
 }
 
 /// Builds a minimal valid ELF64 image (for self-tests): one `PT_LOAD` per

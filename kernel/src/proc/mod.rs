@@ -86,6 +86,10 @@ pub struct Process {
     root: u64,
     /// Keep `space` after death (self-test images only).
     retain_space: bool,
+    /// Where the image and the stack were placed (ASLR; diagnostics and
+    /// tests only — never shown to other processes).
+    layout: core::sync::atomic::AtomicU64,
+    stack_top: core::sync::atomic::AtomicU64,
     kill: AtomicBool,
     status: AtomicU32,
     exit_code: AtomicI32,
@@ -169,6 +173,8 @@ impl Process {
             root: space.root(),
             space: SpinLock::new(Some(space)),
             retain_space,
+            layout: core::sync::atomic::AtomicU64::new(0),
+            stack_top: core::sync::atomic::AtomicU64::new(0),
             kill: AtomicBool::new(false),
             status: AtomicU32::new(STATUS_RUNNING),
             exit_code: AtomicI32::new(0),
@@ -206,6 +212,21 @@ impl Process {
     /// `(uid, gid)`; both 0 until Phase 15.
     pub fn identity(&self) -> (u32, u32) {
         (self.uid, self.gid)
+    }
+
+    /// Records where the loader put the image (`base`, 0 for fixed
+    /// addresses) and the stack top.
+    pub fn record_layout(&self, base: u64, stack_top: u64) {
+        self.layout.store(base, Ordering::Relaxed);
+        self.stack_top.store(stack_top, Ordering::Relaxed);
+    }
+
+    /// `(image base, stack top)` chosen by ASLR.
+    pub fn layout(&self) -> (u64, u64) {
+        (
+            self.layout.load(Ordering::Relaxed),
+            self.stack_top.load(Ordering::Relaxed),
+        )
     }
 
     /// CR3 value for this process.

@@ -34,6 +34,24 @@ pub const MAX_GRANTS: usize = 64;
 /// Pages of the main thread's stack (64 KiB, docs/FASE6.md §1); the page
 /// below them is never mapped (guard).
 pub const STACK_PAGES: u64 = 16;
+/// Possible stack tops (Phase 8b, D-067): the top is `STACK_TOP` minus a
+/// random number of pages below this (2^16: 16 bits, a 256 MiB window).
+pub const STACK_SLIDE_PAGES: u64 = 1 << 16;
+/// Possible 16-byte offsets of the initial RSP below the top (8 bits).
+pub const STACK_SUBPAGE_SLOTS: u64 = 256;
+
+/// Lowest address the stack (or its guard page) may ever occupy.
+pub const fn stack_window_bottom() -> u64 {
+    STACK_TOP - (STACK_SLIDE_PAGES + STACK_PAGES + 1) * 4096
+}
+
+/// A random stack top and the initial RSP below it (16-byte aligned, as
+/// the ABI wants at process entry).
+fn random_stack() -> (u64, u64) {
+    let top = STACK_TOP - crate::rng::below(STACK_SLIDE_PAGES) * 4096;
+    let rsp = top - crate::rng::below(STACK_SUBPAGE_SLOTS) * 16;
+    (top, rsp)
+}
 
 /// One handle given to the child.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,10 +101,13 @@ fn build(
         return Err(SpawnFailure::NoMemory);
     }
     let mut space = UserSpace::new().map_err(|_| SpawnFailure::NoMemory)?;
-    elf.load(&mut space).map_err(SpawnFailure::Elf)?;
+    // ASLR (Phase 8b): a random base for a PIE, a random stack for all.
+    let base = elf.choose_base();
+    elf.load(&mut space, base).map_err(SpawnFailure::Elf)?;
+    let (stack_top, rsp) = random_stack();
     for i in 1..=STACK_PAGES {
         space
-            .map_page(STACK_TOP - i * 4096, UserPerm::ReadWrite, &[])
+            .map_page(stack_top - i * 4096, UserPerm::ReadWrite, &[])
             .map_err(|_| SpawnFailure::NoMemory)?;
     }
     if !space.audit().is_clean() {
@@ -102,7 +123,8 @@ fn build(
         Process::new(space, handles)
     }
     .ok_or(SpawnFailure::NoMemory)?;
-    let thread = sched::spawn_user_parked("user", Arc::clone(&process), elf.entry(), STACK_TOP)
+    process.record_layout(base, stack_top);
+    let thread = sched::spawn_user_parked("user", Arc::clone(&process), elf.entry(base), rsp)
         .map_err(|_| SpawnFailure::NoMemory)?;
     Ok((process, thread))
 }

@@ -107,6 +107,31 @@ impl UserSpace {
         // Volatile: user code may be writing it concurrently.
         Some(unsafe { ptr.read_volatile() })
     }
+
+    /// Writes a `u64` into a **user-writable** page of this address space
+    /// through the kernel's view of the frame (the loader applies PIE
+    /// relocations this way, before the process runs). `None` if `virt` is
+    /// not mapped, not writable for the process, not 8-aligned or not user:
+    /// this can never bypass W^X.
+    pub(crate) fn poke_u64(&mut self, virt: u64, value: u64) -> Option<()> {
+        if !virt.is_multiple_of(8) || virt >= super::paging::USER_END {
+            return None;
+        }
+        let space = self.space.as_ref()?;
+        let (phys, writable) = super::paging::translate_in(space.root(), VirtAddr::new(virt)?)?;
+        if !writable {
+            return None;
+        }
+        let ptr = hhdm::phys_to_virt(phys).as_u64() as *mut u64;
+        // SAFETY: `phys` is the frame of a present, user-writable page of
+        // this space (owned by its tables, kept alive by `&mut self`),
+        // mapped writable in the HHDM; `virt` is 8-aligned, so the u64 stays
+        // inside the page. It is ordinary user memory: a concurrent user
+        // access (if any) is the same situation as `copy_to_user`, and the
+        // write is volatile.
+        unsafe { ptr.write_volatile(value) };
+        Some(())
+    }
 }
 
 impl Drop for UserSpace {

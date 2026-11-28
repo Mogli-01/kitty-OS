@@ -120,7 +120,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 |---|---|---|
 | Gerador de números aleatórios do kernel (RDRAND/RDSEED + entropia, ChaCha20 com fast key erasure, `random_fill`) (8a, D-066) | CLAUDE | FEITO |
 | KASLR (kernel PIE + deslocamento do Limine) | CLAUDE | TODO |
-| ASLR em user space | CLAUDE | TODO |
+| ASLR em user space: pilha aleatória (16 + 8 bits) e PIE estáticos numa base aleatória (24 bits) (8b, D-067) | CLAUDE | FEITO |
 | Modelo de capacidades/permissões por processo | CLAUDE | MOVIDA (base na Fase 6, D-058; utilizadores e permissões na Fase 15) |
 
 ## Fase 9 — Escala
