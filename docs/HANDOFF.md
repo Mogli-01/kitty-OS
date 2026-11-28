@@ -1565,3 +1565,34 @@ Formato:
   D-061. Sem configuração de BARs, DMA ou unsafe novo.
 - **Bloqueado por / à espera do Claude** — integração do #92 e
   contrato de atribuição de recursos. Falta validar em hardware real.
+
+### [2026-11-28] — CODEX (descoberta PCI de virtio-blk)
+
+- **Feito** — o descodificador localiza as quatro capacidades modernas
+  do virtio-blk e o multiplicador de notificação. O autoteste pode
+  identificar o dispositivo usando uma cópia convencional de 256 bytes.
+- **PRs abertos** — ramo `codex/fase9-virtio-blk-pci` sobre o #110.
+- **Testes/fuzzing** — 15 testes no host e em Miri. BIOS e UEFI release
+  reconheceram o dispositivo moderno, também com uma e1000e atrás de
+  ponte PCIe. O modo só legado em BIOS foi enumerado sem o marcador
+  moderno. Fmt, Clippy e actionlint passaram.
+- **Proteções de segurança alteradas** — valida o comprimento dos
+  descritores, o índice de BAR, o tamanho mínimo e duplicados. Sem
+  atribuição de recursos, MMIO, DMA ou unsafe novo.
+- **Próximo passo** — validar os descritores contra as capacidades
+  de BAR e implementar filas antes de fornecer o `ReadSectors` do #112.
+
+### [2026-11-28] — CODEX (limites dos registos virtio-blk)
+
+- **Feito** — o #113 verifica as quatro regiões contra comprimentos
+  de BAR de memória fornecidos pelo consumidor. Valida também a
+  largura e o alinhamento da notificação de 16 bits de uma fila.
+- **Testes/fuzzing** — 17 testes no host e em Miri, incluindo BAR
+  ausente, fronteira exata, largura em falta e multiplicador máximo.
+  O autoteste de descoberta PCI passou em QEMU BIOS e UEFI release.
+  Fmt e Clippy passaram.
+- **Proteções de segurança alteradas** — as somas e o produto são
+  calculados em 64 bits antes da validação. Sem unsafe novo.
+- **Bloqueado por / à espera do Claude** — as concessões BAR e o
+  contrato DMA da #70. Os limites foram verificados com concessões
+  sintéticas no host. O autoteste do convidado verifica a descoberta.

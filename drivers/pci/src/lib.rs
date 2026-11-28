@@ -11,6 +11,9 @@ pub use enumeration::{Address, enumerate};
 mod bars;
 pub use bars::{Bar, BarError, BarResource, Bars};
 
+mod virtio;
+pub use virtio::{VirtioBlockLayout, VirtioBoundsError, VirtioLayoutError, VirtioRegion};
+
 const HEADER_BYTES: usize = 64;
 const CONVENTIONAL_BYTES: usize = 256;
 const FIRST_CAPABILITY: u8 = 0x40;

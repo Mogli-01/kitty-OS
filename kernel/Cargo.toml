@@ -57,6 +57,7 @@ selftest-ps2-keyboard = ["selftest-ps2-input"]
 # Checks the known file and directory in the xtask initrd fixture.
 selftest-initrd = []
 selftest-pci-enumeration = []
+selftest-virtio-blk-pci = ["selftest-pci-enumeration"]
 
 [dependencies]
 limine = "0.6.5"

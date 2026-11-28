@@ -196,14 +196,20 @@ jobs:
 
           if [[ "$PROFILE" == release ]]; then
             bridge_qemu="$RUNNER_TEMP/kitty-qemu-pci-bridge"
+            export KITTY_TEST_DISK="$RUNNER_TEMP/kitty-virtio-blk.img"
+            truncate -s 2M "$KITTY_TEST_DISK"
             cat > "$bridge_qemu" <<'EOF'
           #!/usr/bin/env bash
-          exec qemu-system-x86_64 "$@" -device pcie-root-port,id=rp1,chassis=1,slot=1 -device e1000e,bus=rp1,addr=0
+          exec qemu-system-x86_64 "$@" \
+            -device pcie-root-port,id=rp1,chassis=1,slot=1 -device e1000e,bus=rp1,addr=0 \
+            -drive "if=none,format=raw,id=kittyblk,file=$KITTY_TEST_DISK,readonly=on" \
+            -device virtio-blk-pci,drive=kittyblk,disable-legacy=on
           EOF
             chmod +x "$bridge_qemu"
-            KITTY_QEMU="$bridge_qemu" run_case pci-bridge --features selftest-pci-enumeration \
+            KITTY_QEMU="$bridge_qemu" run_case pci-bridge --features selftest-virtio-blk-pci \
               --expect '[pci] 00:00.0 class 06:00' \
-              --expect '[pci] 01:00.0 class 02:00'
+              --expect '[pci] 01:00.0 class 02:00' \
+              --expect '[pci] virtio-blk modern configuration discovered'
           fi
 
           run_case xapic-pit --features selftest-xapic \

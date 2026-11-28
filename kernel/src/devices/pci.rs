@@ -26,7 +26,25 @@ pub fn enumerate() -> Result<usize, ConfigError> {
                 header.class,
                 header.subclass
             );
+            #[cfg(feature = "selftest-virtio-blk-pci")]
+            if header.is_virtio_block() {
+                probe_virtio_block(address);
+            }
         },
     )?;
     Ok(count)
+}
+
+#[cfg(feature = "selftest-virtio-blk-pci")]
+fn probe_virtio_block(address: kitty_pci::Address) {
+    let mut snapshot = [0; crate::arch::x86_64::pci::CONVENTIONAL_LEN];
+    let config = PciAddress::new(address.bus, address.device, address.function)
+        .and_then(|address| read_config(address, &mut snapshot))
+        .ok()
+        .and_then(|()| kitty_pci::ConfigSpace::parse(&snapshot).ok());
+    if let Some(config) = config
+        && let Ok(Some(_)) = config.virtio_block_layout()
+    {
+        crate::kprintln!("[pci] virtio-blk modern configuration discovered");
+    }
 }
