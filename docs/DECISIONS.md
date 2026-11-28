@@ -315,8 +315,8 @@ alocação já vem a zeros); o link da lista livre guardado no pedaço é
 validado ao tirar da lista — um use-after-free que o reescreva é detetado
 em vez de devolver um endereço escolhido pelo atacante; libertar o pedaço
 que já está à cabeça da lista (double free comum) é detetado.
-**Limitações conhecidas:** o segredo vem do TSC (fraco) até haver RNG na
-Fase 8; o espaço virtual das alocações grandes não é reutilizado (1 TiB
+**Limitações conhecidas:** o segredo vinha do TSC (fraco); desde a Fase 8
+vem do RNG do kernel, semeado antes do heap (ver D-068); o espaço virtual das alocações grandes não é reutilizado (1 TiB
 chega por agora); o heap usa `SpinLock` sem desligar interrupções, por isso
 **não se pode alocar em handlers de interrupção** até à Fase 4.
 Ordem de locks: heap → espaço de endereçamento do kernel → PMM.
@@ -1360,3 +1360,4 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
   - **sem UMIP**, `sgdt`/`sidt` em ring 3 devolvem os endereços do GDT e do IDT, que estão na imagem do kernel e revelam a base. O arranque avisa (`[kaslr] WARNING: no UMIP ...`);
   - sem KPTI (D-060), uma fuga por canal lateral revela a base.
 - **Correções da revisão de segurança:** a verificação da base, o HHDM aleatório, o aviso sem UMIP, a `.got` só de leitura e o `ASSERT` sem PLT vêm da revisão do `security-reviewer` a esta fase.
+- **Heap (depois da revisão dos PRs do Codex):** o segredo do "safe linking" da lista livre do heap (D-035) ainda vinha do TSC. O #109 do Codex apontou isto. Agora o `rng::init` corre **antes** do `heap::init` (o RNG não usa o heap) e o segredo é `rng::u64()`. Num arranque `weak`, é tão fraco como a semente do RNG, mas nunca pior do que o TSC sozinho.

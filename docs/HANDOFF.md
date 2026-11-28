@@ -1708,3 +1708,6 @@ Formato:
 - **Avisos:**
   - a Fase 8 da minha parte fica completa (RNG, ASLR, KASLR);
   - a seguir viria a Fase 9 (SMP) ou o resto da crypto (Fase 16).
+- **Adenda (revisão dos PRs #103 e #105–#109 do Codex):**
+  - o segredo da lista livre do heap passa a vir do RNG do kernel (`rng::init` antes de `heap::init`); era TSC. O #109 apontou isto;
+  - o `cargo xtask test-kernel-elf --expect-pie` do #103 passa com este kernel PIE, em debug e release.

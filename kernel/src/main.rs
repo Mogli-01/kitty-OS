@@ -124,6 +124,9 @@ fn rsdp_phys() -> Option<u64> {
 /// Second half of boot, running on the guarded kernel stack.
 extern "C" fn kmain_on_kernel_stack() -> ! {
     kprintln!("[mm] running on the kernel stack (guard page below it)");
+    // The RNG needs no heap; seeding it first gives the heap's free-list
+    // secret real entropy (it used to come from the TSC).
+    let seed = rng::init();
     mm::heap::init();
     mm::heap::selftest();
     sched::init();
@@ -135,7 +138,6 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     let prot = arch::x86_64::cpu::enable_user_protections();
     arch::x86_64::cpu::enable_user_sse();
     arch::x86_64::syscall_entry::init();
-    let seed = rng::init();
     if let Err(why) = rng::selftest() {
         panic!("RNG self-test failed: {}", why);
     }
