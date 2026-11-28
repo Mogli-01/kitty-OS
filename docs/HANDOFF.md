@@ -1536,3 +1536,41 @@ Formato:
   ficheiros para os processos quando o user mode estiver disponível.
 - **Avisos** — o autoteste usa arquivos e meios de arranque próprios
   em `build/initrd-tests/`.
+
+### [2026-11-27] — CODEX (início da Fase 8)
+
+- **Feito** — verificação do ELF do kernel no xtask e na CI. Confere
+  W^X, intervalos e separação de páginas dos segmentos carregáveis
+  e exige um ponto de entrada em código executável presente na imagem.
+- **PRs abertos** — ramo `codex/fase8-layout-elf`.
+- **Testes/fuzzing** — o layout do kernel atual passou em debug e
+  release. A opção `--expect-pie` exige `ET_DYN`.
+- **Benchmarks** — sem medições.
+- **Proteções de segurança alteradas** — nenhuma no kernel.
+  O teste verifica as permissões emitidas pelo linker.
+- **Bloqueado por / à espera do Claude** — política de entropia e
+  mudança do kernel para PIE, seguida da ativação de KASLR e ASLR.
+- **Próximo passo sugerido para o Claude** — definir o comportamento
+  quando o CPU não disponibiliza as fontes de entropia e como testar
+  o deslocamento no arranque sem publicar endereços.
+- **Avisos** — o tipo ELF estático atual é `ET_EXEC`.
+
+### [2026-11-28] — CODEX (ABI do ELF do kernel)
+
+- **Feito** — o verificador do #103 valida o alinhamento declarado nos
+  segmentos carregáveis e recusa um interpretador externo ou uma declaração
+  de pilha executável.
+- **PRs abertos** — #103. O #100 continua em revisão sobre o carregador do #102.
+- **Testes/fuzzing** — 16 testes de xtask no host, quatro testes do
+  verificador em Miri, fmt e Clippy. Os ELF do kernel em debug e release
+  passaram, e `--expect-pie` recusou o ET_EXEC atual. O arranque release
+  passou em BIOS e UEFI no QEMU 10.0.13.
+- **Proteções de segurança alteradas** — validação adicional no host.
+  O ensaio da declaração da pilha não verifica as permissões da pilha
+  durante o arranque.
+- **Benchmarks** — sem medições nesta ronda.
+- **Bloqueado por / à espera do Claude** — contratos da Fase 8 na #104.
+  A validação do deslocamento requer um kernel PIE.
+- **Próximo passo sugerido para o Claude** — fechar o contrato de
+  relocação e definir o sinal de teste que permita verificar o
+  deslocamento sem publicar endereços.

@@ -6,6 +6,7 @@
 //!   iso   [--release]            build a hybrid BIOS/UEFI ISO (needs xorriso)
 //!   run   [--release] [--bios]   boot in QEMU (UEFI from build/esp, or BIOS from the ISO)
 //!   test  [--release] [--bios]   boot headless, check serial output and exit code
+//!   test-kernel-elf [--release] [--expect-pie]   check the kernel ELF layout
 //!   test-memory [--release] [--bios]   check the Phase 3 memory protections in QEMU
 //!   test-visual [--release] [--bios]   check the framebuffer banner against a reference
 //!   bench-boot [--release] [--bios]    sample time to the boot-complete serial line
@@ -35,6 +36,7 @@ use std::time::Duration;
 
 mod boot_bench;
 mod boot_trace;
+mod elf_layout;
 mod initrd;
 mod initrd_tests;
 mod input_tests;
@@ -81,10 +83,12 @@ fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     let cmd = args.next().unwrap_or_default();
     let mut opts = Opts::default();
+    let mut expect_pie = false;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--release" => opts.release = true,
             "--bios" => opts.bios = true,
+            "--expect-pie" if cmd == "test-kernel-elf" => expect_pie = true,
             "--expect-panic" => opts.expect_panic = true,
             "--initrd" => match args.next() {
                 Some(path) if opts.initrd.is_none() => opts.initrd = Some(PathBuf::from(path)),
@@ -130,6 +134,7 @@ fn main() -> ExitCode {
             .map(|_| ()),
         "run" => run(&opts),
         "test" => test(&opts),
+        "test-kernel-elf" => elf_layout::run(&opts, expect_pie),
         "test-memory" => memory_tests::run(&opts),
         "test-visual" => visual_test::run(&opts),
         "bench-boot" => boot_bench::run(&opts),
@@ -141,6 +146,7 @@ fn main() -> ExitCode {
             eprintln!(
                 "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--initrd path] [--expect-panic] [--expect text]"
             );
+            eprintln!("       cargo xtask test-kernel-elf [--release] [--expect-pie]");
             eprintln!("       cargo xtask test-memory [--release] [--bios]");
             eprintln!("       cargo xtask test-visual [--release] [--bios]");
             eprintln!("       cargo xtask bench-boot [--release] [--bios]");
