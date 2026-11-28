@@ -44,6 +44,12 @@ pub const USER_CS: u16 = 0x20 | 3;
 /// TSS selector.
 pub const TSS_SEL: u16 = 0x28;
 
+/// Most CPUs the kernel brings up (Phase 9a). Each one gets its own GDT
+/// page, TSS and per-CPU block in `.bss`; further CPUs stay parked by the
+/// bootloader. 16 keeps the static cost small: 8 KiB per CPU (GDT page +
+/// TSS page), 128 KiB in all.
+pub const MAX_CPUS: usize = 16;
+
 /// IST slot (1-based, as the IDT encodes it) used by each critical vector.
 pub const IST_DOUBLE_FAULT: u8 = 1;
 /// IST slot for NMI: an NMI can arrive at *any* instruction, including the
@@ -97,24 +103,33 @@ struct CpuTables {
     tss: UnsafeCell<Tss>,
 }
 
-// SAFETY: the GDT is written exactly once, by the single caller that wins
-// the `INITIALIZED` flag in `init`, before the CPU is told about it. The
-// TSS is written by `init` and afterwards only its RSP0 field, by
-// `set_kernel_stack`, on one CPU with interrupts disabled.
+// SAFETY: every CPU's GDT is written exactly once, by the boot CPU in the
+// single call of `init` that wins `INITIALIZED`, before any CPU is told
+// about it (and before the VMM maps the pages read-only). A TSS is written
+// by the boot CPU before its CPU starts (`set_ist`, Phase 9a) and
+// afterwards only its RSP0 field, by `set_kernel_stack` on the boot CPU
+// with interrupts disabled. The CPU itself writes the busy bit once (`ltr`).
 unsafe impl Sync for CpuTables {}
 
-static TABLES: CpuTables = CpuTables {
-    gdt: UnsafeCell::new(GdtPage([0; 7])),
-    tss: UnsafeCell::new(Tss {
-        _reserved0: 0,
-        rsp: [0; 3],
-        _reserved1: 0,
-        ist: [0; 7],
-        _reserved2: 0,
-        _reserved3: 0,
-        iomap_base: TSS_SIZE as u16,
-    }),
-};
+impl CpuTables {
+    const fn empty() -> Self {
+        Self {
+            gdt: UnsafeCell::new(GdtPage([0; 7])),
+            tss: UnsafeCell::new(Tss {
+                _reserved0: 0,
+                rsp: [0; 3],
+                _reserved1: 0,
+                ist: [0; 7],
+                _reserved2: 0,
+                _reserved3: 0,
+                iomap_base: TSS_SIZE as u16,
+            }),
+        }
+    }
+}
+
+/// Index 0 is the boot CPU; 1.. are the APs in the order they started.
+static TABLES: [CpuTables; MAX_CPUS] = [const { CpuTables::empty() }; MAX_CPUS];
 
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
@@ -140,17 +155,31 @@ pub const PERCPU_KERNEL_RSP: usize = 8;
 /// `syscall` entry (IF=0, before the stack switch).
 struct PerCpuCell(UnsafeCell<PerCpu>);
 
-// SAFETY: one CPU; every access happens with interrupts disabled (the
-// scheduler's `set_kernel_stack`, and the `syscall` entry, which runs with
-// IF cleared by FMASK), so there are never two concurrent accesses.
+// SAFETY: each block belongs to one CPU (its GS base points only at its
+// own block). Every access happens on that CPU with interrupts disabled
+// (the scheduler's `set_kernel_stack`, and the `syscall` entry, which runs
+// with IF cleared by FMASK), so there are never two concurrent accesses.
 unsafe impl Sync for PerCpuCell {}
 
-/// The boot CPU's block (Phase 9 / SMP: one per CPU).
-static PERCPU: PerCpuCell = PerCpuCell(UnsafeCell::new(PerCpu { slots: [0; 8] }));
+impl PerCpuCell {
+    const fn empty() -> Self {
+        Self(UnsafeCell::new(PerCpu { slots: [0; 8] }))
+    }
+}
 
-/// Address the kernel GS base must hold while the kernel runs.
+/// One block per CPU, same indices as `TABLES`.
+static PERCPU: [PerCpuCell; MAX_CPUS] = [const { PerCpuCell::empty() }; MAX_CPUS];
+
+/// Address the kernel GS base of CPU `cpu` must hold while the kernel runs.
+/// `None` for an index past [`MAX_CPUS`].
+pub fn percpu_address_of(cpu: usize) -> Option<u64> {
+    PERCPU.get(cpu).map(|b| b.0.get().addr() as u64)
+}
+
+/// The boot CPU's block. Only the boot CPU runs threads in Phase 9a, so the
+/// scheduler and the user-mode entry use this one.
 pub fn percpu_address() -> u64 {
-    PERCPU.0.get().addr() as u64
+    PERCPU[0].0.get().addr() as u64
 }
 
 /// Operand of `lgdt`/`lidt`: 16-bit limit followed by a 64-bit base.
@@ -160,9 +189,11 @@ pub(super) struct DescriptorTablePointer {
     pub base: u64,
 }
 
-/// Address of the (page-aligned) GDT page, to be mapped read-only.
-pub fn table_page() -> u64 {
-    TABLES.gdt.get().addr() as u64
+/// Addresses of every CPU's (page-aligned) GDT page, to be mapped
+/// read-only. The APs load theirs while still on the bootloader's tables,
+/// where the page is writable for the busy bit `ltr` sets (Phase 9a).
+pub fn table_pages() -> [u64; MAX_CPUS] {
+    core::array::from_fn(|i| TABLES[i].gdt.get().addr() as u64)
 }
 
 /// Builds the 16-byte TSS system descriptor (type 0x9 = available 64-bit TSS).
@@ -177,47 +208,101 @@ fn tss_descriptor(base: u64) -> (u64, u64) {
     (low, high)
 }
 
-/// Installs the kernel GDT and TSS on the current CPU and reloads all
-/// segment registers. Only the first call does anything.
-///
-/// Phase 9 (SMP) will need one GDT/TSS per CPU.
+/// Installs the kernel GDT and TSS on the boot CPU and reloads all
+/// segment registers. Only the first call does anything. It also fills in
+/// the GDT of every other CPU (each pointing at that CPU's TSS), so the
+/// VMM can map all GDT pages read-only from the start (Phase 9a).
 pub fn init() {
     if INITIALIZED.swap(true, Ordering::AcqRel) {
         return;
     }
 
-    let tss_ptr = TABLES.tss.get();
-    let gdt_ptr = TABLES.gdt.get().cast::<[u64; 7]>();
-
-    // IST stacks live in `stacks.rs`, each with an unmapped guard page.
+    // IST stacks of the boot CPU live in `stacks.rs`, each with an
+    // unmapped guard page. The APs get theirs from `set_ist`.
     let mut ist = [0u64; 7];
     for (slot, top) in ist.iter_mut().take(stacks::IST_COUNT).enumerate() {
         *top = stacks::ist_top(slot).unwrap_or(0);
     }
-
     // SAFETY: we won the INITIALIZED flag, so no other code accesses the TSS
-    // and the CPU does not know about it yet (no `ltr` executed). The
-    // pointer comes from a live static, so it is valid and aligned.
+    // and no CPU knows about it yet (no `ltr` executed). The pointer comes
+    // from a live static, so it is valid and aligned.
     unsafe {
-        (*tss_ptr).ist = ist;
+        (*TABLES[0].tss.get()).ist = ist;
     }
 
-    let (tss_low, tss_high) = tss_descriptor(tss_ptr.addr() as u64);
-    let gdt = [
-        0,
-        KERNEL_CODE,
-        KERNEL_DATA,
-        USER_DATA,
-        USER_CODE,
-        tss_low,
-        tss_high,
-    ];
-    // SAFETY: same exclusivity argument as for the TSS: the GDT is not
-    // loaded yet and only this call can reach this line.
-    unsafe {
-        gdt_ptr.write(gdt);
+    for tables in &TABLES {
+        let (tss_low, tss_high) = tss_descriptor(tables.tss.get().addr() as u64);
+        let gdt = [
+            0,
+            KERNEL_CODE,
+            KERNEL_DATA,
+            USER_DATA,
+            USER_CODE,
+            tss_low,
+            tss_high,
+        ];
+        // SAFETY: same exclusivity argument as for the TSS: no GDT is
+        // loaded yet and only this call can reach this line.
+        unsafe {
+            tables.gdt.get().cast::<[u64; 7]>().write(gdt);
+        }
     }
 
+    // SAFETY: TABLES[0] was filled in above and is a 'static GDT/TSS.
+    unsafe { load(0) };
+    // SAFETY: `PERCPU[0]` is a 'static block; loading GS in `load` reset
+    // the GS base to 0, and nothing in the kernel uses GS before this.
+    unsafe { super::cpu::set_gs_bases(percpu_address()) };
+}
+
+/// Sets the IST stack tops of CPU `cpu`'s TSS (Phase 9a). Called by the
+/// boot CPU before it starts that CPU; returns `false` for CPU 0 or an
+/// index past [`MAX_CPUS`].
+///
+/// # Safety
+/// CPU `cpu` must not be running yet, and each `tops` entry must be the top
+/// of a kernel stack (guard page below it) that lives forever.
+pub(crate) unsafe fn set_ist(cpu: usize, tops: [u64; stacks::IST_COUNT]) -> bool {
+    let Some(tables) = TABLES.get(cpu).filter(|_| cpu != 0) else {
+        return false;
+    };
+    let mut ist = [0u64; 7];
+    ist[..stacks::IST_COUNT].copy_from_slice(&tops);
+    // SAFETY: CPU `cpu` is not running (caller), so nothing reads this TSS;
+    // the boot CPU is the only writer. The pointer is to a live static.
+    unsafe { (*tables.tss.get()).ist = ist };
+    true
+}
+
+/// Loads CPU `cpu`'s GDT and TSS on the **current** CPU (an AP, Phase 9a).
+/// Must run while the AP is still on the bootloader's page tables: there
+/// the GDT page is writable, and `ltr` writes the TSS busy bit into it.
+///
+/// # Safety
+/// The current CPU must be the one `cpu` was assigned to, running with
+/// interrupts disabled, after [`init`] and [`set_ist`] for that index, on
+/// page tables that map its GDT page **writable** (the bootloader's; in
+/// the kernel's tables it is read-only and `ltr` would fault).
+pub(crate) unsafe fn load_on_ap(cpu: usize) {
+    // SAFETY: forwarded from the caller.
+    unsafe { load(cpu) };
+    if let Some(gs) = percpu_address_of(cpu) {
+        // SAFETY: the block is 'static and belongs to this CPU only.
+        unsafe { super::cpu::set_gs_bases(gs) };
+    }
+}
+
+/// `lgdt` + segment reload + `ltr` for `TABLES[cpu]` (out of range: no-op).
+///
+/// # Safety
+/// `TABLES[cpu]` must have been filled in by [`init`], no other CPU may
+/// have loaded that TSS (`ltr` faults on a busy TSS), and the current page
+/// tables must map its GDT page writable (`ltr` sets the busy bit there).
+unsafe fn load(cpu: usize) {
+    let Some(tables) = TABLES.get(cpu) else {
+        return;
+    };
+    let gdt_ptr = tables.gdt.get().cast::<[u64; 7]>();
     let pointer = DescriptorTablePointer {
         limit: (size_of::<[u64; 7]>() - 1) as u16,
         base: gdt_ptr.addr() as u64,
@@ -251,10 +336,6 @@ pub fn init() {
             options(preserves_flags),
         );
     }
-
-    // SAFETY: `PERCPU` is a 'static block; loading GS above reset the GS
-    // base to 0, and nothing in the kernel uses GS before this.
-    unsafe { super::cpu::set_gs_bases(percpu_address()) };
 }
 
 /// Sets `TSS.RSP0`, the stack the CPU switches to when an interrupt or
@@ -275,7 +356,8 @@ pub(crate) unsafe fn set_kernel_stack(top: u64) {
     if !INITIALIZED.load(Ordering::Acquire) {
         return;
     }
-    let tss = TABLES.tss.get();
+    // Only the boot CPU runs threads in Phase 9a.
+    let tss = TABLES[0].tss.get();
     // SAFETY: `tss` points to the live, initialised TSS static; taking a raw
     // pointer to one of its fields creates no reference.
     let rsp0 = unsafe { &raw mut (*tss).rsp[0] };
@@ -284,7 +366,7 @@ pub(crate) unsafe fn set_kernel_stack(top: u64) {
     // delivered, which cannot happen with IF=0). The field is only 4-byte
     // aligned in the packed struct, hence the unaligned write.
     unsafe { rsp0.write_unaligned(top) };
-    let slot = PERCPU
+    let slot = PERCPU[0]
         .0
         .get()
         .cast::<u64>()

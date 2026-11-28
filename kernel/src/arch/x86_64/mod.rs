@@ -27,6 +27,7 @@ pub mod qemu;
 ))]
 pub mod selftest;
 pub mod serial;
+pub mod smp;
 pub mod stacks;
 pub mod syscall_entry;
 mod trap;

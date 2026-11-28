@@ -31,6 +31,9 @@ selftest-heap-overflow = []
 # Fires a real hardware interrupt (PIT IRQ0 through the 8259 PIC) and
 # checks it reaches its handler. Does not panic: expect exit code 33.
 selftest-irq-pit = []
+# Phase 9a: the first AP is given a wrong expected APIC ID and must refuse
+# to go online (run with several CPUs; expect "1 refused").
+selftest-smp-refuse = []
 # Opt in to the boot-CPU xAPIC controller while validating the handover.
 xapic = ["dep:kitty-acpi", "dep:kitty-apic"]
 selftest-xapic = ["xapic", "selftest-irq-pit"]

@@ -174,7 +174,7 @@ const CR4_SMEP: u64 = 1 << 20;
 const CR4_SMAP: u64 = 1 << 21;
 
 /// CPU protections enabled by [`enable_user_protections`].
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct UserProtections {
     /// Supervisor Mode Execution Prevention: the kernel cannot execute
     /// user pages (stops "ret2user" exploits).
@@ -194,12 +194,64 @@ pub struct UserProtections {
 /// the kernel half has no user pages, and user memory is only touched by
 /// `usercopy`, which opens SMAP for one instruction).
 pub fn enable_user_protections() -> UserProtections {
+    let wanted = supported_user_protections();
+    set_user_protection_bits(wanted);
+    if wanted.smap {
+        super::usercopy::note_smap_enabled();
+    }
+    wanted
+}
+
+/// What this CPU supports (CPUID leaf 7).
+fn supported_user_protections() -> UserProtections {
     let (ebx, ecx) = cpuid_leaf7();
-    let wanted = UserProtections {
+    UserProtections {
         smep: ebx & (1 << 7) != 0,
         smap: ebx & (1 << 20) != 0,
         umip: ecx & (1 << 2) != 0,
+    }
+}
+
+/// Turns on **exactly** `want` on this CPU (an AP, Phase 9a), so every CPU
+/// runs with the same protections as the boot CPU. Returns `false`, and
+/// changes nothing, if this CPU lacks one of them. Never touches the
+/// global "SMAP is on" flag: it describes the boot CPU's choice, and an AP
+/// with *more* features must not change what `usercopy` does everywhere
+/// (`stac`/`clac` are invalid on a CPU without SMAP).
+pub fn apply_user_protections(want: UserProtections) -> bool {
+    let have = supported_user_protections();
+    if (want.smep && !have.smep) || (want.smap && !have.smap) || (want.umip && !have.umip) {
+        return false;
+    }
+    // Clear what the firmware may have left on, then set exactly `want`.
+    let mut cr4: u64;
+    // SAFETY: reading CR4 has no side effects.
+    unsafe { asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags)) };
+    cr4 &= !(CR4_SMEP | CR4_SMAP | CR4_UMIP);
+    // SAFETY: clearing SMEP/SMAP/UMIP is always allowed (it removes
+    // restrictions this CPU does not run user code under yet: it is an AP
+    // that has not gone online). Not `nomem`: ordered with what follows.
+    unsafe { asm!("mov cr4, {}", in(reg) cr4, options(nostack, preserves_flags)) };
+    set_user_protection_bits(want);
+    let check: u64;
+    // SAFETY: reading CR4 has no side effects.
+    unsafe { asm!("mov {}, cr4", out(reg) check, options(nomem, nostack, preserves_flags)) };
+    let got = UserProtections {
+        smep: check & CR4_SMEP != 0,
+        smap: check & CR4_SMAP != 0,
+        umip: check & CR4_UMIP != 0,
     };
+    got == want
+}
+
+/// Initial APIC ID of this CPU (CPUID leaf 1, EBX[31:24]): the xAPIC ID
+/// the firmware assigned, without touching the local APIC.
+pub fn initial_apic_id() -> u32 {
+    core::arch::x86_64::__cpuid(1).ebx >> 24
+}
+
+/// Sets the CR4 bits of `wanted`, which the caller checked are supported.
+fn set_user_protection_bits(wanted: UserProtections) {
     let mut cr4: u64;
     // SAFETY: reading CR4 has no side effects.
     unsafe { asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags)) };
@@ -217,10 +269,6 @@ pub fn enable_user_protections() -> UserProtections {
     // breaks the kernel, which never runs, reads or writes user pages
     // outside `usercopy`. Not `nomem`: accesses must not move across it.
     unsafe { asm!("mov cr4, {}", in(reg) cr4, options(nostack, preserves_flags)) };
-    if wanted.smap {
-        super::usercopy::note_smap_enabled();
-    }
-    wanted
 }
 
 const MSR_GS_BASE: u32 = 0xC000_0101;
@@ -444,6 +492,19 @@ pub fn enable_write_protect() {
     // SAFETY: only adds the WP bit; it makes no currently valid access of
     // the kernel fail (the kernel never writes to read-only pages).
     unsafe { asm!("mov cr0, {}", in(reg) cr0, options(nostack, preserves_flags)) };
+}
+
+/// Clears CR4.PGE. Changing PGE flushes the whole TLB, global entries
+/// included, so a CR3 load after it leaves nothing from the old tables
+/// (Phase 9a: before switching from the bootloader's tables).
+pub fn disable_global_pages() {
+    let mut cr4: u64;
+    // SAFETY: reading CR4 has no side effects.
+    unsafe { asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags)) };
+    cr4 &= !CR4_PGE;
+    // SAFETY: clearing PGE only changes TLB retention (and flushes it);
+    // every mapping stays valid. Not `nomem`: ordered with the CR3 load.
+    unsafe { asm!("mov cr4, {}", in(reg) cr4, options(nostack, preserves_flags)) };
 }
 
 /// Sets CR4.PGE so mappings marked global survive CR3 reloads (the kernel

@@ -565,6 +565,20 @@ pub fn Process::status(&self) -> Status;                              // Running
 - Marcador de arranque: `[proc] user-mode self-test passed`.
 - Um programa acaba por `exit` (6c), por falha ou por `kill`.
 
+### Vários CPUs (Fase 9a, D-069)
+Fornece: CLAUDE (`kernel/src/arch/x86_64/smp.rs`). Usa: a CI.
+- **Pedido ao Limine:** `MpRequest` com flags 0 (xAPIC). O kernel nunca envia INIT/SIPI.
+- **Até 16 CPUs** (`gdt::MAX_CPUS`); os outros ficam parados.
+- **Marcador de arranque:** `[smp] O of R CPUs online (F refused, S skipped, T silent)`.
+  - `R`: CPUs que o Limine reportou;
+  - `O`: CPUs a correr o kernel (com o BSP);
+  - `F`: APs que arrancaram mas recusaram ficar online (proteção em falta ou APIC ID errado);
+  - `S`: não arrancados (acima de 16, ID ≥ 0xFF ou sem memória);
+  - `T`: não responderam a tempo.
+  - Com 1 CPU: `[smp] 1 of 1 CPUs online (0 refused, 0 skipped, 0 silent)`.
+- **Feature de teste** `selftest-smp-refuse`: o primeiro AP recebe um APIC ID esperado errado e tem de recusar. Com 4 CPUs: `3 of 4 CPUs online (1 refused, ...)`.
+- **Para a CI (Codex):** casos com `-smp 4` (como no #111) a esperar `4 of 4 CPUs online`, e com `-smp 4` mais `selftest-smp-refuse` a esperar `1 refused`.
+
 ### KASLR (Fase 8c, D-068)
 Fornece: CLAUDE (kernel, linker script). Usa: `xtask` (configuração do Limine) e a CI.
 - **Formato do kernel:** `kitty-kernel` é um ELF64 `ET_DYN` (PIE) com `PT_DYNAMIC` e **só** relocações `R_X86_64_RELATIVE`, sem PLT. Quem o carrega tem de o relocar (o Limine fá-lo).

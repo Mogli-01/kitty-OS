@@ -120,14 +120,28 @@ pub fn init() {
     unsafe {
         idt_ptr.write(table);
     }
+    READY.store(true, Ordering::Release);
+    load();
+}
 
+/// Set once the table is filled in, so [`load`] never installs an empty IDT.
+static READY: AtomicBool = AtomicBool::new(false);
+
+/// Loads the (shared) IDT on the current CPU. The boot CPU does it in
+/// [`init`]; each AP calls it while starting (Phase 9a). Does nothing
+/// before [`init`] filled the table.
+pub fn load() {
+    if !READY.load(Ordering::Acquire) {
+        return;
+    }
     let pointer = DescriptorTablePointer {
         limit: (size_of::<[Gate; IDT_ENTRIES]>() - 1) as u16,
-        base: idt_ptr.addr() as u64,
+        base: IDT.0.get().addr() as u64,
     };
-    // SAFETY: `pointer` describes a fully initialised 'static IDT whose
-    // present gates all point at valid stubs in kernel code with the kernel
-    // code selector. `lidt` only reads the 10-byte operand.
+    // SAFETY: `READY` is only set after the 'static IDT is fully written,
+    // and it is never written again; its present gates all point at valid
+    // stubs in kernel code with the kernel code selector, and their IST
+    // slots exist in every CPU's TSS. `lidt` only reads the 10-byte operand.
     unsafe {
         asm!("lidt [{}]", in(reg) &pointer, options(readonly, nostack, preserves_flags));
     }

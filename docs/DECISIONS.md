@@ -1361,3 +1361,26 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
   - sem KPTI (D-060), uma fuga por canal lateral revela a base.
 - **Correções da revisão de segurança:** a verificação da base, o HHDM aleatório, o aviso sem UMIP, a `.got` só de leitura e o `ASSERT` sem PLT vêm da revisão do `security-reviewer` a esta fase.
 - **Heap (depois da revisão dos PRs do Codex):** o segredo do "safe linking" da lista livre do heap (D-035) ainda vinha do TSC. O #109 do Codex apontou isto. Agora o `rng::init` corre **antes** do `heap::init` (o RNG não usa o heap) e o segredo é `rng::u64()`. Num arranque `weak`, é tão fraco como a semente do RNG, mas nunca pior do que o TSC sozinho.
+
+### D-069 — Fase 9a: arranque dos outros CPUs (2026-11-28, CLAUDE)
+- **Quem arranca os APs:** o **Limine** (`MpRequest`). Já os põe em 64 bits e deixa cada um à espera do seu `goto_address`. Fazer INIT-SIPI-SIPI à mão obrigava a um trampolim de 16 bits abaixo de 1 MiB e a mais `unsafe`, sem ganho.
+- **Um GDT, uma TSS e um bloco por CPU,** em arrays estáticos de `MAX_CPUS = 16` (8 KiB por CPU). O BSP preenche **todos** os GDT no `gdt::init`, antes de o VMM os mapear só de leitura. Cada AP faz o `lgdt`/`ltr` ainda nas tabelas do Limine, porque o `ltr` escreve o bit busy da TSS no GDT e nas nossas tabelas essa página é só de leitura. Assim nenhum GDT fica escrevível nas tabelas do kernel.
+- **Pilhas:** cada AP recebe uma pilha de kernel e três IST (#DF, NMI, #MC), todas `KernelStack` com página de guarda. Nunca são libertadas.
+- **Ordem no AP:**
+  1. GDT/TSS/GS;
+  2. NX (recusa se faltar), PAT e PGE desligado;
+  3. CR3 e RSP no mesmo bloco `asm`;
+  4. só então a IDT.
+  - A IDT vem depois porque as pilhas IST só existem nas tabelas do kernel: um NMI entregue antes cairia numa pilha por mapear e daria triple fault (revisão de segurança).
+  - Desligar o PGE antes do CR3 força um flush completo do TLB, globais incluídas. O BSP passa a fazer o mesmo.
+- **As mesmas proteções em todos os CPUs:**
+  - o AP liga **exatamente** o SMEP/SMAP/UMIP do BSP: limpa o que a firmware deixou e relê o CR4;
+  - um AP que não as suporte, ou cujo APIC ID (CPUID) não seja o que o Limine reportou, é **recusado** e fica parado;
+  - o AP nunca muda a flag global do SMAP, que descreve a escolha do BSP (`stac`/`clac` seriam inválidos num CPU sem SMAP).
+- **APs que não se usam** (acima de 16, ID ≥ 0xFF em modo xAPIC, sem memória) vão para `ap_park` (`cli; hlt`), para nenhum ficar a ler o `goto_address`: uma escrita perdida do kernel aí arrancaria um CPU nas tabelas do Limine, sem as nossas proteções. Um AP que responda depois do relatório também para (`CLOSED`).
+- **Se o APIC ID do BSP não for o que o Limine diz,** não se arranca nenhum AP.
+- **Limites da 9a (a resolver na 9b):**
+  - os APs não correm threads;
+  - não há IPIs nem TLB shootdown. Hoje é seguro porque um AP parado só toca na sua pilha;
+  - `set_kernel_stack`, o GS do user mode e a verificação de `swapgs` ainda usam o CPU 0;
+  - um pânico num AP só para esse AP (falta um "stop all").

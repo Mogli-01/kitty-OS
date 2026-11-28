@@ -126,7 +126,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 ## Fase 9 — Escala
 | Tarefa | Dono | Estado |
 |---|---|---|
-| SMP (vários núcleos), locks por CPU | CLAUDE | TODO |
+| SMP (vários núcleos), locks por CPU | CLAUDE | EM CURSO: 9a feita (APs arrancados pelo Limine com GDT/TSS/pilhas próprios e as mesmas proteções, depois parados; D-069). Falta 9b: scheduler nos APs, IPIs, TLB shootdown, `set_kernel_stack` e GS por CPU |
 | Descoberta de dispositivos PCI | CODEX | Descodificação de cabeçalhos e capacidades (#61) e interpretação de BARs em revisão. Enumeração no hardware pendente |
 | Sistema de ficheiros em disco | CODEX | TODO |
 | Mais drivers (AHCI/NVMe, rede) | CODEX | TODO |

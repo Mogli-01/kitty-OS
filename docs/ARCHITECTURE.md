@@ -66,6 +66,26 @@ CPU deteta a exceção N
   -> (se voltar) repõe os registos, iretq
 ```
 
+## Vários CPUs (Fase 9a, D-069)
+
+```
+Limine arranca todos os CPUs em 64 bits e deixa os APs à espera do goto_address
+BSP (smp::start_aps): para cada AP até MAX_CPUS (16)
+  -> índice 1.., pilha de kernel + 3 pilhas IST (KernelStack, com guarda), escritas na TSS desse CPU
+  -> goto_address = ap_entry (os que não usa vão para ap_park: cli; hlt)
+AP, nas tabelas do Limine:
+  -> lgdt/ltr do seu GDT (a página é escrevível aqui; nas nossas é só de leitura), GS base
+  -> NX (recusa se faltar), PAT, PGE desligado
+  -> mov cr3 (tabelas do kernel) + mov rsp (pilha própria), no mesmo bloco asm
+AP, nas tabelas do kernel (ap_main):
+  -> lidt (só agora: as pilhas IST só existem aqui)
+  -> CR0.WP, PGE, exatamente o SMEP/SMAP/UMIP do BSP, SSE de user
+  -> confere o APIC ID (CPUID) com o do Limine; recusa se não bater
+  -> conta-se online e fica parado (cli; hlt)
+```
+
+Na 9a os APs não correm threads. Como só tocam na própria pilha, as entradas de TLB que ficarem desatualizadas não se usam. O scheduler nos APs, os IPIs e o TLB shootdown vêm na 9b.
+
 ## Interrupções de hardware (Fase 4)
 
 ```

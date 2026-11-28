@@ -17,7 +17,7 @@ use limine::memmap::{self, Entry};
 use limine::paging::PagingMode;
 use limine::request::{
     BootloaderInfoRequest, ExecutableAddressRequest, FramebufferRequest, HhdmRequest,
-    MemmapRequest, ModulesRequest, PagingModeRequest, RsdpRequest,
+    MemmapRequest, ModulesRequest, MpRequest, PagingModeRequest, RsdpRequest,
 };
 use limine::{RequestsEndMarker, RequestsStartMarker};
 
@@ -78,6 +78,21 @@ static MODULES_REQUEST: ModulesRequest = ModulesRequest::new();
 #[unsafe(link_section = ".requests")]
 static PAGING_MODE_REQUEST: PagingModeRequest =
     PagingModeRequest::new_exact(PagingMode::X86_64_4LVL);
+
+/// Phase 9a: Limine starts every CPU in long mode and parks the APs,
+/// each waiting for us to write its `goto_address` (`smp::start_aps`).
+/// Flags 0: xAPIC mode (no x2APIC), like the rest of the kernel.
+#[used]
+#[unsafe(link_section = ".requests")]
+static MP_REQUEST: MpRequest = MpRequest::new(0);
+
+/// The bootloader's list of CPUs, if it sent one. The entries live in
+/// bootloader-reclaimable memory, which the PMM never hands out, and are
+/// reached through the HHDM, so they stay valid after the switch to the
+/// kernel's page tables.
+pub fn mp_response() -> Option<&'static limine::request::MpResponse> {
+    MP_REQUEST.response()
+}
 
 #[used]
 #[unsafe(link_section = ".requests_end_marker")]
