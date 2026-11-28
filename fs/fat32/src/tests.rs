@@ -101,6 +101,21 @@ impl ReadAt for Disk {
     }
 }
 
+impl kitty_storage::ReadSectors for Disk {
+    fn sector_bytes(&self) -> u32 {
+        SECTOR as u32
+    }
+
+    fn sector_count(&self) -> u64 {
+        self.bytes / SECTOR as u64
+    }
+
+    fn read_sectors(&self, first: u64, out: &mut [u8]) -> Result<(), ReadError> {
+        assert!(out.len().is_multiple_of(SECTOR));
+        self.read_exact_at(first * SECTOR as u64, out)
+    }
+}
+
 fn entry(alias: &[u8; 11], attrs: u8, cluster: u32, size: u32) -> [u8; 32] {
     let mut bytes = [0; 32];
     bytes[..11].copy_from_slice(alias);
@@ -415,7 +430,7 @@ fn reads_directory_and_file_data_across_sectors_within_a_cluster() {
     disk.link(3, 7);
     disk.link(7, EOC);
 
-    let fs = Fat32::mount(disk).unwrap();
+    let fs = Fat32::mount(kitty_storage::SectorReader::new(disk).unwrap()).unwrap();
     let mut file = fs.open("/bigfile.bin").unwrap();
     let mut bytes = [0; 4];
     assert_eq!(file.read_at(510, &mut bytes), Ok(4));

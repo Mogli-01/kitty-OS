@@ -1580,3 +1580,18 @@ Formato:
   para preparar a ligação ao primeiro driver de blocos.
 - Avisos: a cópia de reserva só é lida perante uma falha da primária.
   A leitura GPT → FAT32 foi validada no host.
+
+### [2026-11-28] — CODEX (leitura de sectores)
+
+- **Feito** — `SectorReader` liga uma fonte de sectores completos ao
+  `ReadAt` usado pelo GPT e pelo FAT32. Valida geometria e limites
+  antes de ler, e agrupa os sectores completos numa chamada.
+- **PRs abertos** — ramo `codex/fase9-leitura-sectores` sobre o #85.
+- **Testes/fuzzing** — 23 testes no host e em Miri, fmt, Clippy e
+  compilação release para x86_64-unknown-none. As imagens GPT do #85
+  devolveram os 51 777 bytes originais em FAT32, quer pela tabela
+  primária quer pela cópia de reserva.
+- **Proteções de segurança alteradas** — valida comprimentos e limites
+  antes de I/O; a fonte e a vista são só de leitura. Sem unsafe novo.
+- **Próximo passo** — ligar um controlador de blocos ao contrato e
+  verificar a montagem pelo VFS em QEMU.
