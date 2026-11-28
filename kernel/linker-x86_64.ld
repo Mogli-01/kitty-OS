@@ -23,6 +23,7 @@ PHDRS
     text     PT_LOAD FLAGS(5);       /* R+X */
     rodata   PT_LOAD FLAGS(4);       /* R   */
     data     PT_LOAD FLAGS(6);       /* R+W */
+    dynamic  PT_DYNAMIC FLAGS(4);    /* relocation info for KASLR (8c) */
 }
 
 SECTIONS
@@ -48,13 +49,25 @@ SECTIONS
     __rodata_start = .;
     .rodata : {
         *(.rodata .rodata.*)
+        /* Data with absolute addresses that only the bootloader writes
+         * (relocations, Phase 8c): read-only for the kernel. */
+        *(.data.rel.ro .data.rel.ro.*)
     } :rodata
+    /* Relocation and dynamic tables Limine uses to slide the kernel
+     * (KASLR): read-only. */
+    .dynsym   : { *(.dynsym) }   :rodata
+    .dynstr   : { *(.dynstr) }   :rodata
+    .gnu.hash : { *(.gnu.hash) } :rodata
+    .hash     : { *(.hash) }     :rodata
+    .rela.dyn : { *(.rela.dyn .rela.*) } :rodata
+    .dynamic  : { *(.dynamic) }  :rodata :dynamic
     __rodata_end = .;
 
     . = ALIGN(4K);
     __data_start = .;
     .data : {
         *(.data .data.*)
+        *(.got .got.*)
     } :data
 
     .bss : {

@@ -1340,3 +1340,15 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
   - **Tags recusadas:** `DT_REL*` e `DT_RELR*` são recusadas, em vez de deixarem correr um PIE por relocar.
   - **Testes:** o teste "PT_DYNAMIC em ET_EXEC" passa a testar mesmo isso, e há casos negativos novos (`relasz`, desalinhamento, segmento só de leitura, PLT, RELR, REL). O teste de ASLR só falha se a base **e** a pilha coincidirem.
   - **Fica para depois:** o `PT_GNU_RELRO` é ignorado (o `.data.rel.ro` fica RW). Mapear essas páginas só de leitura depois das relocações é o próximo endurecimento.
+
+### D-068 — Fase 8c: KASLR (2026-11-28, CLAUDE)
+- **Kernel PIE:** o kernel passa a ser compilado com `-C relocation-model=pie` (mantendo `code-model=kernel`). O `rust-lld` produz um `ET_DYN` com `PT_DYNAMIC` e só relocações `R_X86_64_RELATIVE` (~2000, para tabelas com endereços absolutos, como os stubs de interrupção).
+- **Quem desloca:** o **Limine**, com `kaslr: yes` na configuração gerada pelo `xtask`. Escolhe uma base aleatória dentro dos 2 GiB de cima (como o `code-model=kernel` exige) e aplica as relocações antes de saltar para o kernel.
+  - O kernel já usava o endereço real da imagem que o Limine reporta (`ExecutableAddressRequest`), e não o endereço de ligação, por isso o VMM, o W^X e os alias continuam certos em qualquer base.
+  - **Porquê o Limine e não o próprio kernel:** o Limine já tem o código para relocar PIE, e corre antes de haver paginação nossa. Fazê-lo no kernel obrigava a um relocador em assembly a correr no endereço errado.
+- **Tabelas com endereços absolutos** (stubs, `&'static` em statics): vão para `.data.rel.ro`, que o linker script põe no segmento `rodata` (R). O Limine escreve as relocações na memória física antes de aplicar as permissões; para o kernel essa memória é só de leitura. Antes estavam em `.rodata`, o que num PIE seria uma "text relocation".
+- **Visibilidade:** o arranque escreve só `[kaslr] kernel base randomized by the bootloader` (ou um WARNING se o kernel estiver no endereço de ligação). **Nunca escreve a base**, nem no ecrã nem na série: escrevê-la anulava a proteção. Os relatórios de crash continuam a ter endereços, mas só na série (D-023).
+- **Entropia:** observada no QEMU com granularidade de página dentro de ~2 GiB, ou seja, cerca de 19 bits. Quem a gera é o Limine (RDRAND/RDSEED/TSC).
+- **Limites:**
+  - o HHDM e a janela de MMIO do kernel não são aleatorizados por nós: o HHDM é escolhido pelo Limine (com KASLR também é deslocado), e a janela de MMIO é fixa (a aleatorizar numa fase futura);
+  - sem KPTI (D-060), uma fuga por canal lateral revela a base.

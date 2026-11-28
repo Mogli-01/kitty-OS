@@ -93,6 +93,7 @@ global_asm!(
     r#"
 .macro TRAP_NOERR n
     .global kitty_trap_\n
+    .hidden kitty_trap_\n
 kitty_trap_\n:
     push 0
     push \n
@@ -101,6 +102,7 @@ kitty_trap_\n:
 
 .macro TRAP_ERR n
     .global kitty_trap_\n
+    .hidden kitty_trap_\n
 kitty_trap_\n:
     push \n
     jmp kitty_trap_common
@@ -166,7 +168,10 @@ kitty_trap_restore:
 2:
     iretq
 
-.section .rodata
+// `.data.rel.ro`: the table holds absolute addresses, which the bootloader
+// relocates when KASLR moves the kernel (Phase 8c); the linker script puts
+// it in the read-only segment, so it is never writable once we run.
+.section .data.rel.ro.kitty_trap_stubs, "aw"
 .balign 8
 .global kitty_trap_stubs
 kitty_trap_stubs:

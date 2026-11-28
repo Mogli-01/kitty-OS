@@ -289,6 +289,9 @@ timeout: 0
 /kitty-OS
     protocol: limine
     path: boot():/boot/kitty-kernel
+    # KASLR (Phase 8c, D-068): the kernel is a relocatable PIE; Limine
+    # loads it at a random virtual base on every boot.
+    kaslr: yes
 ";
 
 // ------------------------------------------------------------ boot media ---

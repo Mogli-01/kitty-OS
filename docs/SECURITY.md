@@ -120,7 +120,7 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | `swapgs` só com CS de ring 3 + `lfence` (CVE-2019-1125); `TSS.RSP0` = pilha de kernel da thread atual | o kernel correr com o GS de user; trap de ring 3 numa pilha errada | ATIVA (verificação do GS base nas falhas de user) | 6 |
 | Primeiro 1 MiB de user nunca mapeado (`USER_MIN`) | null deref explorável | ATIVA (`map_user_frame` recusa; teste de leitura de 0) | 6 |
 | RNG do kernel: RDSEED/RDRAND com teste de saúde (valores repetidos rejeitados), jitter do TSC e tempo das IRQs, condensados com SHA-256; ChaCha20 com fast key erasure e reseed periódico (D-066) | aleatoriedade previsível; um RDRAND avariado a devolver sempre o mesmo valor; ler o estado do gerador revelar saídas antigas | ATIVA | 8 |
-| KASLR | saber onde está o kernel | PLANEADA | 8 |
+| KASLR: kernel PIE carregado pelo Limine numa base aleatória em cada arranque; tabelas com endereços absolutos em `.data.rel.ro`, que fica só de leitura; o arranque diz se a base foi aleatorizada, nunca qual é (D-068) | saber onde está o kernel (ROP, ataques a endereços fixos) | ATIVA | 8 |
 | ASLR em user space: topo da pilha aleatório (2^16 páginas + 2^8 posições de 16 B) e PIE estáticos (`ET_DYN`) numa base aleatória de 2^24 páginas, só com relocações `RELATIVE` em memória escrevível (D-067) | ROP e exploits com endereços fixos | ATIVA (os `ET_EXEC` têm só a pilha aleatória) | 8 |
 | Objetos do kernel só por handle com direitos (D-018, D-051) | acesso a buffers/canais que ninguém nos deu | PLANEADA | 6/12 |
 | Sem autoridade ambiente: syscalls "capability-first", sem nomes/caminhos globais, processo novo começa sem handles (D-055, D-058) | apps que acedem a tudo o que o utilizador pode; "confused deputy" | PLANEADA | 6 |

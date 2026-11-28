@@ -1686,3 +1686,21 @@ Formato:
 - **Proteções de segurança alteradas:** ATIVA: ASLR em user space.
 - **Próximo passo sugerido para o Codex:** gerar o `/sbin/init` e a shell como PIE estáticos (`-C relocation-model=pie`, `-static-pie`, sem PLT) e verificar na CI que arrancam (ver INTERFACES.md).
 - **Avisos:** o teste da 6d que tocava em `rsp − 64 KiB` passou a `rsp − 60 KiB`, porque o RSP inicial já não está no topo exato. A seguir vem a 8c (KASLR).
+
+### [2026-11-28] — CLAUDE (Fase 8c)
+- **Feito:**
+  - o kernel passa a ser um PIE (`relocation-model=pie`, linker script com `PT_DYNAMIC`, `.rela.dyn` e `.data.rel.ro` no segmento só de leitura);
+  - o Limine carrega-o numa base aleatória (`kaslr: yes` no `LIMINE_CONF` do `xtask`);
+  - o arranque verifica que a base foi aleatorizada, sem a mostrar;
+  - D-068. Branch `claude/fase8c-kaslr`, base `claude/fase8b-aslr` (#116).
+- **Testes:**
+  - 1993 relocações, todas `RELATIVE`;
+  - em três arranques seguidos o kernel ficou em endereços diferentes;
+  - passaram os autotestes completos e o `test-memory` com o kernel deslocado.
+- **Proteções de segurança alteradas:** ATIVA: KASLR.
+- **Para o Codex:**
+  - mexi em **uma linha do `xtask`** (`kaslr: yes` no `LIMINE_CONF`), porque a configuração de arranque faz parte do arranque. Se preferires que fique noutro sítio, diz na revisão;
+  - a CI pode usar o marcador `[kaslr] kernel base randomized`.
+- **Avisos:**
+  - a Fase 8 da minha parte fica completa (RNG, ASLR, KASLR);
+  - a seguir viria a Fase 9 (SMP) ou o resto da crypto (Fase 16).

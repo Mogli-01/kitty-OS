@@ -56,6 +56,15 @@ pub fn kmain(mut boot: BootInfo) -> ! {
     if let Some(loader) = boot.bootloader {
         kprintln!("[boot] loaded by {} {}", loader.name, loader.version);
     }
+    // KASLR (Phase 8c, D-068): the kernel is a relocatable PIE linked at
+    // LINK_BASE; the bootloader picks a random base. Only whether it moved
+    // is shown, never where (the address would defeat the point).
+    const LINK_BASE: u64 = 0xFFFF_FFFF_8000_0000;
+    if boot.kernel_image.virt_base == LINK_BASE {
+        kprintln!("[kaslr] WARNING: kernel at its link address (KASLR is off)");
+    } else {
+        kprintln!("[kaslr] kernel base randomized by the bootloader");
+    }
 
     arch::init();
     kprintln!("[cpu] GDT, TSS (IST stacks) and IDT loaded");
