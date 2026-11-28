@@ -76,6 +76,13 @@ instrução estiver ausente e `Unavailable` se todas as tentativas
 falharem. A chamada destina-se ao CPU de arranque nesta fase.
 O consumidor decide a política de fontes e mistura (#104).
 
+`security::rng::hardware_word() -> Result<u64, NoEntropy>` é a
+política comum para uma palavra no CPU de arranque. Prefere RDSEED
+e tenta RDRAND se a primeira instrução não fornecer uma palavra.
+Sem dados de ambas, devolve `NoEntropy`. Não mantém estado de gerador.
+`mm::heap::init() -> bool` indica se a máscara da lista livre usou
+essa palavra. O valor `false` indica a máscara de recurso do heap.
+
 ### Teste de arranque — ESTÁVEL
 Fornece: CLAUDE (`xtask`). Mantém: CODEX.
 `cargo xtask test [--bios] [--release]` compila o kernel com a feature

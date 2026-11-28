@@ -197,10 +197,12 @@ jobs:
             KITTY_QEMU_CPU=max,rdseed=off run_case entropy-rdrand --features selftest-entropy \
               --expect '[entropy] retry self-test passed' \
               --expect '[entropy] RDSEED: unsupported' \
-              --expect '[entropy] RDRAND: ready'
+              --expect '[entropy] RDRAND: ready' \
+              --expect '[mm] heap link mask: hardware random word'
             KITTY_QEMU_CPU=max,rdseed=off,rdrand=off run_case entropy-unsupported --features selftest-entropy \
               --expect '[entropy] RDSEED: unsupported' \
-              --expect '[entropy] RDRAND: unsupported'
+              --expect '[entropy] RDRAND: unsupported' \
+              --expect '[mm] heap link mask: legacy fallback, hardware entropy unavailable'
           fi
 
           run_case xapic-pit --features selftest-xapic \
