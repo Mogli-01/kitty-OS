@@ -86,6 +86,14 @@ struct Thread {
     user: Option<UserThread>,
 }
 
+impl Drop for UserThread {
+    fn drop(&mut self) {
+        // Runs when the thread is reaped (or a parked one discarded): its
+        // CR3 is not loaded any more, so the address space can go.
+        self.process.thread_reaped();
+    }
+}
+
 /// What a user thread has on top of a kernel thread.
 struct UserThread {
     /// Keeps the process (and its address space) alive while the thread

@@ -116,12 +116,10 @@ pub fn dispatch(number: u64, args: [u64; 6]) -> i64 {
             0
         }
         nr::HANDLE_CLOSE => with_handle(a0, |h| {
-            process
-                .handles()
-                .lock()
-                .close(h)
-                .map(|()| 0)
-                .map_err(handle_err)
+            // Take under the lock, drop after it: closing the last handle
+            // to a process may free memory (security review).
+            let taken = process.handles().lock().take(h);
+            taken.map(|_| 0).map_err(handle_err)
         }),
         nr::HANDLE_DUP => with_handle(a0, |h| {
             let rights = u32::try_from(a1)
@@ -343,7 +341,10 @@ fn process_spawn(process: &Process, image: u64, grants: u64, count: u64) -> Resu
             flags: word(8),
         });
     }
-    let image = proc::read_file(file).ok_or(E_TOOBIG)?;
+    if file.len() > proc::MAX_EXEC_FILE {
+        return Err(E_TOOBIG);
+    }
+    let image = proc::read_file(file).ok_or(E_NOMEM)?;
     match proc::spawn::spawn(process, &image, &list) {
         Ok((handle, _child)) => Ok(i64::from(handle)),
         Err(SpawnFailure::BadHandle) => Err(E_BADHANDLE),

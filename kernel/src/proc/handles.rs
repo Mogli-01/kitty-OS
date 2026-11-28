@@ -75,6 +75,18 @@ pub enum Object {
 }
 
 impl Object {
+    /// Whether two objects are the same kernel object (identity, not just
+    /// the same type).
+    pub fn same(&self, other: &Object) -> bool {
+        match (self, other) {
+            (Object::Console, Object::Console) => true,
+            (Object::Dir(a), Object::Dir(b)) => Arc::ptr_eq(a, b),
+            (Object::File(a), Object::File(b)) => a == b,
+            (Object::Process(a), Object::Process(b)) => Arc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
+
     /// Type code reported by `handle_info` (stable ABI, D-058):
     /// 1 CONSOLE, 2 FILE, 3 DIR, 4 PROCESS.
     pub fn kind(&self) -> u32 {

@@ -71,6 +71,13 @@ pub enum ElfError {
     Map(MapError),
 }
 
+/// Whether `[start, end)` touches the main stack or its guard page
+/// (security review: a segment there would silently replace the guard).
+fn overlaps_stack(start: u64, end: u64) -> bool {
+    let guard_bottom = super::STACK_TOP - (super::spawn::STACK_PAGES + 1) * PAGE;
+    start < super::STACK_TOP && end > guard_bottom
+}
+
 /// One validated loadable segment.
 #[derive(Clone, Copy, Debug)]
 struct Segment {
@@ -191,7 +198,8 @@ impl<'a> Image<'a> {
                 .ok_or(ElfError::OutOfRange)?;
             // USER_MAP_END is page-aligned: `mem_end <= USER_MAP_END` keeps
             // the rounded-up last page inside too (and cannot overflow).
-            if seg.vaddr < USER_MIN || mem_end > USER_MAP_END {
+            if seg.vaddr < USER_MIN || mem_end > USER_MAP_END || overlaps_stack(seg.vaddr, mem_end)
+            {
                 return Err(ElfError::OutOfRange);
             }
             total = total.saturating_add(seg.end_page() - seg.first_page());
@@ -226,6 +234,14 @@ impl<'a> Image<'a> {
             entry,
             segments,
         })
+    }
+
+    /// Pages the image will occupy.
+    pub fn pages(&self) -> u64 {
+        self.segments
+            .iter()
+            .map(|s| (s.end_page() - s.first_page()) / PAGE)
+            .sum()
     }
 
     /// Entry point (validated to be in an executable segment).

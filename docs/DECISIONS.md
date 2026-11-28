@@ -1250,3 +1250,31 @@ normal `--initrd` valida o arquivo no host antes de preparar o meio.
   - ainda não há `process_spawn` (6d);
   - `clock_now` e `random_fill` estão reservados (`E_NOSYS`);
   - um NMI ou #MC nas primeiras instruções da entrada `syscall` (antes do `swapgs`) corre com o GS de user. É inofensivo porque nenhum handler usa o GS; se um dia algum usar, tem de verificar o MSR.
+
+### D-064 — Implementação da 6d: ELF loader, ficheiros, `process_spawn`, `/sbin/init` (2026-11-28, CLAUDE)
+- **ELF loader:** o ELF é input não confiável. É validado **por inteiro** antes de se mapear uma página, com aritmética verificada e sem `unwrap`. As regras estão no FASE6 §6 e no INTERFACES.
+  - Os bytes são **copiados** para frames novos. O initrd é partilhado e só de leitura, e o programa nunca o pode alterar.
+  - O resto de cada página fica a zero (`.bss`).
+  - A pilha tem 64 KiB, com página de guarda.
+  - Não há `PT_INTERP`/`PT_DYNAMIC`/TLS: só executáveis estáticos.
+- **Raiz para processos:** o kernel monta a sua própria vista do initrd (`proc::fs`) com o `kitty-vfs` do Codex.
+  - **DIR** é um caminho canónico; **FILE** é a vista só de leitura do `kitty-vfs`.
+  - O `open_at` só aceita caminhos relativos ao DIR do handle, sem `.`, `..`, componentes vazios nem NUL. Os direitos são ⊆ os do diretório, e nunca `WRITE`/`MAP`, porque a raiz é só de leitura.
+  - **Porquê:** sem caminhos globais, a autoridade de um processo sobre ficheiros é exatamente o conjunto de diretórios que lhe deram (D-055).
+- **`process_spawn` tudo ou nada (#79):**
+  - todos os grants são validados (flags, direitos definidos, `DUP`/`TRANSFER`, direitos ⊆, nenhum handle movido repetido);
+  - a seguir é construído o filho, com o ELF carregado, a pilha, a tabela e uma thread **estacionada** (`sched::spawn_user_parked`);
+  - só depois, sob o lock da tabela do pai, os handles movidos são verificados de novo (o mesmo número garante a mesma geração), o pai recebe o handle PROCESS e os handles movidos saem do pai;
+  - se algo falhar, o pai fica como estava e a thread estacionada é descartada; só no fim o filho corre;
+  - **porquê a thread estacionada:** criar a thread é a última coisa que pode falhar por falta de memória. Fazê-lo antes do commit, sem a deixar correr, garante que o filho nunca usa handles que o pai ainda não perdeu.
+- **Morte de um processo:** os seus handles são libertados logo, e não quando a última referência ao `Process` desaparece. Os objetos são devolvidos já (importante para o DISPLAY e o INPUT exclusivos), e handles PROCESS entre processos não se mantêm vivos uns aos outros.
+- **`/sbin/init`:** recebe 0 = CONSOLE e 1 = DIR da raiz. Testado à mão com um initrd que tem um init de 61 bytes escrito em código máquina: `[init] /sbin/init started` e o init escreve pela syscall.
+- **Limites:** ainda não há `argv`/`envp`, `wait` bloqueante (só `process_status`), escrita em ficheiros, nem assinatura das imagens (Fase 16, `E_BADSIG` reservado).
+- **Revisto depois do `security-reviewer` (DoS por memória):**
+  - **Limites:** no máximo 256 processos ao mesmo tempo (`MAX_PROCESSES`). Ficam sempre 2048 frames (8 MiB) livres para o kernel: um spawn ou a leitura de uma imagem que os comesse dá `E_NOMEM`, e as alocações do próprio kernel nunca ficam sem memória por causa de pedidos de user.
+  - **Zombies:** o espaço de endereçamento de um processo é libertado quando a sua thread é recolhida. Um processo morto, preso a um handle PROCESS do pai, guarda só o pid e o estado.
+  - **Pilha:** um segmento ELF que toque na pilha ou na página de guarda é recusado (`OutOfRange`).
+  - **Locks:** `handle_close` e o commit do spawn largam os objetos depois de largar o lock.
+  - **Commit:** o commit compara também a identidade do objeto movido (`Object::same`), e não só o número, a pensar em quando houver várias threads por processo.
+  - **Erros:** uma falta de memória ao ler a imagem dá `E_NOMEM`, e não `E_TOOBIG`.
+  - **Limite que fica:** a libertação de um processo grande acontece no `schedule` seguinte, com as interrupções desligadas (D-060). Vai para uma thread "reaper" quando houver processos grandes.

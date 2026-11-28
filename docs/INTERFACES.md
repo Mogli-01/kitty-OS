@@ -499,6 +499,18 @@ Fornece: CLAUDE (`kernel/src/syscall`, D-063). Usa: CODEX (biblioteca de syscall
 - **Do lado do kernel (driver de teclado):** `console::input_push(&[u8])`, que é seguro em IRQ e não usa heap. O buffer tem 4 KiB e, quando está cheio, descarta os bytes novos (`console::input_dropped()`).
 - **Marcador:** `[syscall] self-test passed`. Também aparece `[user] hello from ring 3 via syscall`, escrito pelo próprio programa.
 
+### Ficheiros, ELF e `process_spawn` (Fase 6d) — INSTÁVEL (ABI de user)
+Fornece: CLAUDE (`kernel/src/proc/{elf,fs,spawn}.rs`, D-064). Usa: CODEX (`/sbin/init`, shell, biblioteca de syscalls).
+- **O `/sbin/init`** é lido do initrd e arranca com o handle `0` = CONSOLE (`READ|WRITE|DUP|TRANSFER`) e o handle `1` = DIR da raiz (`READ|EXEC|DUP|TRANSFER`).
+  - Para lançar a shell: `open_at(1, "bin/sh", READ|EXEC)` → `process_spawn(h, grants, n)`.
+  - Linhas de arranque: `[init] /sbin/init started (pid N)` ou `[init] /sbin/init missing or invalid (<razão>)`.
+- **Formato do executável:** ELF64 estático `ET_EXEC` x86_64, sem intérprete, sem `PT_DYNAMIC` e sem TLS. Até 16 `PT_LOAD`, nunca W+X, sem dois segmentos na mesma página, todos entre 1 MiB e `0x7FFF_FFFF_F000`. A entrada fica num segmento executável. Até 64 MiB de memória e até 16 MiB de ficheiro.
+- **Pilha:** 64 KiB com topo em `0x0000_7FFF_FFFF_0000` e página de guarda por baixo. RSP alinhado a 16 na entrada.
+- **No arranque do processo:** todos os registos a zero; ainda não há `argv`/`envp` (virão num contrato próprio).
+- **Números das syscalls:** 9–12, ver a tabela em `docs/FASE6.md` §3.
+- **Marcador:** `[proc] ELF loader and process_spawn self-test passed`.
+- **Para a CI do Codex:** um caso com `--initrd` que contenha um `/sbin/init` mínimo, e as linhas `[init] /sbin/init started` e o que esse init escrever.
+
 ### Processos e user mode: `proc`, `mm::uspace`, `sched::spawn_user` (Fase 6b) — INSTÁVEL
 Fornece: CLAUDE. Usa: núcleo (6c/6d: syscalls, ELF loader).
 ```rust

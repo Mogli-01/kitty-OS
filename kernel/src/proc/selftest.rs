@@ -155,7 +155,6 @@ fn syscalls() -> Result<u64, &'static str> {
     }
     let slot = |i: u64| {
         process
-            .space()
             .peek_u64(DATA_BASE + 8 * i)
             .map_or(i64::MIN, |v| v as i64)
     };
@@ -167,7 +166,7 @@ fn syscalls() -> Result<u64, &'static str> {
     if slot(14) != 0x1234 {
         return Err("a register changed across a system call");
     }
-    let echoed = process.space().peek_u64(DATA_BASE + 0x800);
+    let echoed = process.peek_u64(DATA_BASE + 0x800);
     if echoed != Some(u64::from_le_bytes(*b"kitty\n\0\0")) {
         return Err("console_read did not deliver the pushed bytes");
     }
@@ -216,7 +215,7 @@ fn hygiene_and_preemption() -> Result<(), &'static str> {
     let before = counter(&secret);
     // Both keep running between our yields only if the timer preempts them.
     let both_progress = wait_until(|| counter(&secret) > before + 1000, 2_000_000);
-    let leaked = clean.space().peek_u64(DATA_BASE);
+    let leaked = clean.peek_u64(DATA_BASE);
     secret.kill();
     clean.kill();
     let ended = wait_until(
@@ -238,7 +237,7 @@ fn hygiene_and_preemption() -> Result<(), &'static str> {
 
 /// The spinning programs' counter (DATA + 8).
 fn counter(process: &Arc<Process>) -> u64 {
-    process.space().peek_u64(DATA_BASE + 8).unwrap_or(0)
+    process.peek_u64(DATA_BASE + 8).unwrap_or(0)
 }
 
 /// Yields until `done()` or `rounds` yields.
@@ -374,6 +373,11 @@ pub fn elf() -> Result<(), &'static str> {
     let top = build_test_elf(&[(0x7FFF_FFFF_F000, RX, code, 0x1000)], 0x7FFF_FFFF_F000);
     if Image::parse(&top).err() != Some(ElfError::OutOfRange) {
         return Err("a segment in the last user page was accepted");
+    }
+    let guard = super::STACK_TOP - (super::spawn::STACK_PAGES + 1) * 4096;
+    let on_guard = build_test_elf(&[(guard, RX, code, 0x1000)], guard);
+    if Image::parse(&on_guard).err() != Some(ElfError::OutOfRange) {
+        return Err("a segment on the stack guard page was accepted");
     }
     let process = super::spawn::spawn_from_kernel(
         &good,

@@ -77,6 +77,10 @@ fn build(
     objects: Vec<(Object, Rights)>,
 ) -> Result<(Arc<Process>, sched::ThreadId), SpawnFailure> {
     let elf = Image::parse(image).map_err(SpawnFailure::Elf)?;
+    // Image + stack + a generous allowance for page tables and the thread.
+    if !super::can_commit(elf.pages() + STACK_PAGES + 32) {
+        return Err(SpawnFailure::NoMemory);
+    }
     let mut space = UserSpace::new().map_err(|_| SpawnFailure::NoMemory)?;
     elf.load(&mut space).map_err(SpawnFailure::Elf)?;
     for i in 1..=STACK_PAGES {
@@ -91,7 +95,7 @@ fn build(
     for (object, rights) in objects {
         handles.insert(object, rights).map_err(handle_failure)?;
     }
-    let process = Process::new(space, handles);
+    let process = Process::new(space, handles).ok_or(SpawnFailure::NoMemory)?;
     let thread = sched::spawn_user_parked("user", Arc::clone(&process), elf.entry(), STACK_TOP)
         .map_err(|_| SpawnFailure::NoMemory)?;
     Ok((process, thread))
@@ -144,17 +148,32 @@ pub fn spawn(
             objects.push((object, want));
         }
     }
+    // What each moved handle referred to when validated: at commit time
+    // the parent must still hold *the same object* under that number.
+    let mut expected = Vec::new();
+    expected
+        .try_reserve(objects.len())
+        .map_err(|_| SpawnFailure::NoMemory)?;
+    expected.extend(objects.iter().map(|(o, _)| o.clone()));
+    let mut moved = Vec::new();
+    moved
+        .try_reserve(grants.len())
+        .map_err(|_| SpawnFailure::NoMemory)?;
     // 2. Build the child, parked (the only step that allocates a lot).
     let (child, thread) = build(image, objects)?;
     // 3. Commit under the parent's lock: re-check the moved handles, give
     //    the parent its PROCESS handle, take the moved handles.
     let committed = {
         let mut table = parent.handles().lock();
-        let still_valid = grants.iter().filter(|g| g.flags == SPAWN_MOVE).all(|g| {
-            table
-                .get(g.handle)
-                .is_ok_and(|(_, r)| r.contains(Rights::TRANSFER))
-        });
+        let still_valid = grants
+            .iter()
+            .zip(expected.iter())
+            .filter(|(g, _)| g.flags == SPAWN_MOVE)
+            .all(|(g, was)| {
+                table
+                    .get(g.handle)
+                    .is_ok_and(|(now, r)| r.contains(Rights::TRANSFER) && now.same(was))
+            });
         if !still_valid {
             Err(SpawnFailure::BadHandle)
         } else if !table.has_room() {
@@ -162,25 +181,25 @@ pub fn spawn(
         } else {
             match table.insert(Object::Process(Arc::clone(&child)), Rights::READ) {
                 Ok(h) => {
-                    let mut moved = Vec::new();
                     for g in grants.iter().filter(|g| g.flags == SPAWN_MOVE) {
                         if let Ok(taken) = table.take(g.handle) {
-                            // Released after the lock (objects may hold
-                            // processes, whose drop frees memory).
-                            if moved.try_reserve(1).is_ok() {
-                                moved.push(taken);
-                            }
+                            // Capacity reserved above: no allocation and
+                            // no drop under the lock.
+                            moved.push(taken);
                         }
                     }
-                    Ok((h, moved))
+                    Ok(h)
                 }
                 Err(e) => Err(handle_failure(e)),
             }
         }
     };
+    // Released after the lock (objects may hold processes, whose drop
+    // frees memory).
+    drop(moved);
+    drop(expected);
     match committed {
-        Ok((h, moved)) => {
-            drop(moved);
+        Ok(h) => {
             sched::unpark(thread);
             Ok((h, child))
         }
