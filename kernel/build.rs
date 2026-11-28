@@ -5,5 +5,7 @@ fn main() {
     let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
     let script = format!("{manifest_dir}/linker-{arch}.ld");
     println!("cargo:rustc-link-arg-bins=-T{script}");
+    println!("cargo:rustc-link-arg-bins=-pie");
+    println!("cargo:rustc-link-arg-bins=--no-dynamic-linker");
     println!("cargo:rerun-if-changed={script}");
 }

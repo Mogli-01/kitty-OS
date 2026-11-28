@@ -294,6 +294,8 @@ timeout: 0
 
 /kitty-OS
     protocol: limine
+    kaslr: yes
+    randomise_hhdm_base: no
     path: boot():/boot/kitty-kernel
 ";
 
