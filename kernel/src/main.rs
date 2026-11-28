@@ -164,6 +164,20 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
         // the kernel image: on this CPU they reveal the KASLR base.
         kprintln!("[kaslr] WARNING: no UMIP, user code can learn the kernel base (sgdt/sidt)");
     }
+    let smp = arch::x86_64::smp::start_aps(prot);
+    kprintln!(
+        "[smp] {} of {} CPUs online ({} refused, {} skipped, {} silent){}",
+        smp.online,
+        smp.reported,
+        smp.refused,
+        smp.skipped,
+        smp.silent,
+        if smp.bsp_mismatch {
+            " -- WARNING: boot CPU APIC ID differs from the bootloader's, APs not started"
+        } else {
+            ""
+        }
+    );
     assert!(mm::user::selftest(), "user-copy self-test failed");
     kprintln!("[mm] user-copy self-test passed (round trip, fault recovery, range checks)");
     #[cfg(feature = "selftest-smap")]

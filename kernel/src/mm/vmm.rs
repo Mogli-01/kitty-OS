@@ -122,6 +122,9 @@ pub fn init(boot: &BootInfo) -> VmmReport {
     // WC = 1, UC = 3) and are loaded immediately below; nothing touches a
     // mapping whose type changed in between.
     unsafe { cpu::program_pat() };
+    // A full flush: with PGE off the CR3 load drops global entries too, so
+    // nothing from the bootloader's tables survives (Phase 9a review).
+    cpu::disable_global_pages();
     // SAFETY: `space` maps the running code, the current stack (checked
     // above), every kernel section and all RAM through the HHDM at the same
     // virtual addresses the kernel already uses, so every live pointer stays
@@ -157,7 +160,10 @@ fn map_kernel_image(space: &mut AddressSpace, limine_root: PhysAddr) -> u64 {
         page_up(sym(&raw const __data_end)),
     );
     let guards = stacks::guard_pages();
-    let read_only_tables = [gdt::table_page(), idt::table_page()];
+    // Every CPU's GDT (Phase 9a: one per CPU) and the shared IDT.
+    let gdt_pages = gdt::table_pages();
+    let idt_page = idt::table_page();
+    let read_only_table = |virt: u64| virt == idt_page || gdt_pages.contains(&virt);
 
     let mut pages = 0;
     let mut virt = page_down(start);
@@ -167,7 +173,7 @@ fn map_kernel_image(space: &mut AddressSpace, limine_root: PhysAddr) -> u64 {
         } else if (data.0..data.1).contains(&virt) {
             if guards.contains(&virt) {
                 None
-            } else if read_only_tables.contains(&virt) {
+            } else if read_only_table(virt) {
                 Some(MapFlags::KERNEL_RO)
             } else {
                 Some(MapFlags::KERNEL_RW)

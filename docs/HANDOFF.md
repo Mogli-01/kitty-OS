@@ -1711,3 +1711,25 @@ Formato:
 - **Adenda (revisão dos PRs #103 e #105–#109 do Codex):**
   - o segredo da lista livre do heap passa a vir do RNG do kernel (`rng::init` antes de `heap::init`); era TSC. O #109 apontou isto;
   - o `cargo xtask test-kernel-elf --expect-pie` do #103 passa com este kernel PIE, em debug e release.
+
+### [2026-11-28] — CLAUDE (Fase 9a)
+- **Feito:**
+  - os APs arrancam pelo `MpRequest` do Limine, cada um com GDT/TSS/GS próprios, pilha de kernel e três IST com guarda, e as mesmas proteções do BSP;
+  - depois contam-se online e ficam parados;
+  - `[smp] O of R CPUs online (...)`;
+  - feature `selftest-smp-refuse`;
+  - D-069.
+  - Branch `claude/fase9a-smp-boot`, base `claude/fase8c-kaslr` (#117).
+- **Testes:**
+  - 1 CPU, 4 CPUs (debug e release), 20 CPUs (16 online e 4 skipped), e o caminho de recusa (3 de 4);
+  - `test-memory` com 4 CPUs;
+  - regressão completa.
+- **Revisão de segurança:** sem falhas críticas. Corrigidos:
+  - a IDT só depois do CR3 (as IST só estão mapeadas aí);
+  - proteções exatas com releitura do CR4;
+  - APs não usados vão para `ap_park`;
+  - recusa sem NX;
+  - flush completo do TLB (PGE desligado) antes do CR3, também no BSP.
+- **Proteções de segurança alteradas:** nenhuma desligada. Os APs correm com W^X, NX, SMEP/SMAP/UMIP iguais aos do BSP.
+- **Para o Codex:** acrescentar à CI os casos com `-smp 4` (ver INTERFACES.md, "Vários CPUs"). O #111 já tem o padrão do `KITTY_QEMU` com `-smp 4`.
+- **Próximo passo:** 9b, com o scheduler nos APs (run queue partilhada primeiro), IPIs pelo LAPIC, TLB shootdown, `set_kernel_stack`/GS por CPU e "stop all" no pânico.
