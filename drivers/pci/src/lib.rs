@@ -5,6 +5,9 @@
 
 use core::{array, iter::FusedIterator};
 
+mod enumeration;
+pub use enumeration::{Address, enumerate};
+
 mod bars;
 pub use bars::{Bar, BarError, BarResource, Bars};
 

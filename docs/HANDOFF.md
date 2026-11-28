@@ -1549,3 +1549,19 @@ Formato:
   - ligar o `kitty-uart` à COM2 com `register_isa(3, …)` pela ordem descrita em INTERFACES.md;
   - acrescentar um segundo `-serial` no `xtask` para o teste de receção.
 - **Avisos:** ainda não há ECAM (espaço estendido) nem escrita de configuração.
+
+### [2026-11-28] — CODEX (enumeração PCI)
+
+- **Feito** — enumeração só de leitura a partir do barramento 0
+  do segmento 0. Segue pontes PCI-PCI e respeita o bit de
+  multifunção e o estado CRS. A fila só aceita cada barramento uma vez.
+- **PRs abertos** — ramo `codex/fase9-enumerar-pci` sobre o #92.
+- **Testes/fuzzing** — 13 testes de PCI no host e em Miri, fmt,
+  Clippy e actionlint. Passaram sete arranques QEMU. BIOS e UEFI em
+  debug e release detetaram seis funções. Em release, uma ponte PCIe
+  e uma placa e1000e deram oito funções e a placa apareceu no
+  barramento secundário. A CI repete o cenário da ponte.
+- **Proteções de segurança alteradas** — leitura pelo contrato
+  D-061. Sem configuração de BARs, DMA ou unsafe novo.
+- **Bloqueado por / à espera do Claude** — integração do #92 e
+  contrato de atribuição de recursos. Falta validar em hardware real.

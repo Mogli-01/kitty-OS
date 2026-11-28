@@ -76,3 +76,5 @@ fn init_scheduler_timer() {
         pit::init();
     }
 }
+
+pub mod pci;
