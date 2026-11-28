@@ -97,6 +97,7 @@ pub fn run() -> Result<Report, &'static str> {
     elf()?;
     spawn_rules()?;
     input()?;
+    random()?;
     if !super::fs::selftest_paths() {
         return Err("open_at accepted a path that leaves its directory");
     }
@@ -597,6 +598,41 @@ pub fn input() -> Result<(), &'static str> {
     input::flush();
     if !to_console || !kept_from_console || input::active() {
         return Err("keyboard text reached the console while INPUT was being read");
+    }
+    drop(process);
+    Ok(())
+}
+
+// ---------------------------------------------------------------- 8a ---
+
+/// `random_fill` from ring 3: two requests give different, non-zero
+/// bytes; a kernel pointer is `E_FAULT`; length 0 is 0.
+pub fn random() -> Result<(), &'static str> {
+    let code = test_program(TestProgram::Random);
+    let image = build_test_elf(
+        &[(0x40_0000, RX, code, 0x1000), (0x40_1000, RW, &[], 0x1000)],
+        0x40_0000,
+    );
+    let process = super::spawn::spawn_test_from_kernel(
+        &image,
+        alloc::vec![(Object::Console, super::CONSOLE_RIGHTS)],
+    )
+    .map_err(|_| "could not start the random_fill process")?;
+    wait_until(|| process.status() != Status::Running, 1_000_000);
+    if process.status() != Status::Exited(8) {
+        return Err("the random_fill process did not exit(8)");
+    }
+    let word = |at: u64| process.peek_u64(DATA_BASE + at).unwrap_or(u64::MAX);
+    if word(0) != 32 || word(8) != 32 {
+        return Err("random_fill did not fill 32 bytes");
+    }
+    if word(16) as i64 != crate::syscall::errno::E_FAULT || word(24) != 0 {
+        return Err("random_fill accepted a kernel pointer or mishandled length 0");
+    }
+    let a: [u64; 4] = [word(0x100), word(0x108), word(0x110), word(0x118)];
+    let b: [u64; 4] = [word(0x200), word(0x208), word(0x210), word(0x218)];
+    if a == b || a == [0; 4] || b == [0; 4] {
+        return Err("random_fill returned repeated or zero bytes");
     }
     drop(process);
     Ok(())

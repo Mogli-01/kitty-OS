@@ -68,7 +68,8 @@ pub mod nr {
     pub const CONSOLE_READ: u64 = 6;
     /// `clock_now() -> ms` (reserved: E_NOSYS until the clock lands)
     pub const CLOCK_NOW: u64 = 7;
-    /// `random_fill(buf, len)` (reserved: E_NOSYS until Phase 8/16)
+    /// `random_fill(buf, len) -> bytes` (Phase 8a): up to 512 random bytes
+    /// per call from the kernel CSPRNG; no handle (it grants no authority)
     pub const RANDOM_FILL: u64 = 8;
     /// `open_at(dir, path, path_len, rights) -> h` (needs READ on `dir`;
     /// rights ⊆ the directory's, never WRITE/MAP: the root is read-only)
@@ -147,7 +148,8 @@ pub fn dispatch(number: u64, args: [u64; 6]) -> i64 {
         nr::PROCESS_SPAWN => process_spawn(&process, a0, a1, a2).unwrap_or_else(|e| e),
         nr::PROCESS_STATUS => process_status(&process, a0).unwrap_or_else(|e| e),
         nr::INPUT_READ => input_read(&process, a0, a1, a2).unwrap_or_else(|e| e),
-        nr::CLOCK_NOW | nr::RANDOM_FILL => E_NOSYS,
+        nr::RANDOM_FILL => random_fill(a0, a1).unwrap_or_else(|e| e),
+        nr::CLOCK_NOW => E_NOSYS,
         _ => E_NOSYS,
     }
 }
@@ -403,4 +405,19 @@ fn input_read(process: &Process, handle: u64, buf: u64, max: u64) -> Result<i64,
     let data = bytes.get(..n * 24).ok_or(E_INVAL)?;
     copy_to_user(UserSlice::new(buf, n * 24).map_err(user_err)?, data).map_err(user_err)?;
     Ok(n as i64)
+}
+
+fn random_fill(buf: u64, len: u64) -> Result<i64, i64> {
+    let len = usize::try_from(len).map_err(|_| E_TOOBIG)?.min(CHUNK);
+    let dst = UserSlice::new(buf, len).map_err(user_err)?;
+    let mut bytes = [0u8; CHUNK];
+    let out = bytes.get_mut(..len).ok_or(E_TOOBIG)?;
+    crate::rng::fill(out);
+    let result = copy_to_user(dst, out)
+        .map(|()| len as i64)
+        .map_err(user_err);
+    // The bytes are the process's secret now: do not leave a copy on the
+    // kernel stack.
+    kitty_crypto::wipe(&mut bytes);
+    result
 }

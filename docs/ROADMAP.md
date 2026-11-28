@@ -118,7 +118,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 ## Fase 8 — Aleatoriedade e permissões
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Gerador de números aleatórios do kernel (RDRAND/RDSEED + entropia); é a base do CSPRNG da Fase 16 | CLAUDE | TODO |
+| Gerador de números aleatórios do kernel (RDRAND/RDSEED + entropia, ChaCha20 com fast key erasure, `random_fill`) (8a, D-066) | CLAUDE | FEITO |
 | KASLR (kernel PIE + deslocamento do Limine) | CLAUDE | TODO |
 | ASLR em user space | CLAUDE | TODO |
 | Modelo de capacidades/permissões por processo | CLAUDE | MOVIDA (base na Fase 6, D-058; utilizadores e permissões na Fase 15) |
@@ -193,8 +193,8 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 ## Fase 16 — Criptografia, arranque verificado e disco encriptado
 | Tarefa | Dono | Estado |
 |---|---|---|
-| Biblioteca de criptografia própria (`kernel/src/crypto`, educativa e não auditada, D-056): SHA-256, ChaCha20-Poly1305, Ed25519, Argon2id, com os vetores de teste oficiais | CLAUDE | TODO |
-| CSPRNG sobre RDRAND/RDSEED + entropia (evolui o RNG da Fase 8) | CLAUDE | TODO |
+| Biblioteca de criptografia própria (crate `kitty-crypto`, educativa e não auditada, D-056/D-066): SHA-256 e ChaCha20 FEITOS (vetores FIPS 180-4 / RFC 8439); faltam Poly1305, Ed25519 e Argon2id | CLAUDE | EM CURSO |
+| CSPRNG sobre RDRAND/RDSEED + entropia (feito na Fase 8a) | CLAUDE | FEITO |
 | Binários assinados: o ELF loader recusa programas sem uma assinatura Ed25519 válida (`E_BADSIG`), com um modo de desenvolvimento explícito para testes | CLAUDE | TODO |
 | Ferramenta no xtask para gerar chaves e assinar o kernel e os programas (a chave privada nunca entra no repositório) | CODEX | TODO |
 | Camada de disco encriptado no sistema de ficheiros: password pedida no arranque, chave derivada com Argon2id | CODEX | TODO |

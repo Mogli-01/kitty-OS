@@ -100,7 +100,7 @@ Princípios:
 | 5 | `console_write(h, buf, len)` | `WRITE` | bytes aceites |
 | 6 | `console_read(h, buf, len)` | `READ` | bytes lidos (bloqueia) |
 | 7 | `clock_now()` | — | reservado (`E_NOSYS` até haver relógio) |
-| 8 | `random_fill(buf, len)` | — | reservado (`E_NOSYS` até à Fase 8/16) |
+| 8 | `random_fill(buf, len)` | — | bytes aleatórios do CSPRNG do kernel (máx. 512 por chamada) (8a, D-066) |
 | 9 | `open_at(dir, path, path_len, rights)` | `READ` no `dir`; `rights` ⊆ direitos do `dir`, nunca `WRITE`/`MAP` | handle FILE ou DIR |
 | 10 | `file_read(h, buf, len, offset)` | `READ` | bytes lidos (máx. 512 por chamada; 0 no fim) |
 | 11 | `process_spawn(image, grants, n)` | `EXEC` no ficheiro | handle PROCESS (`READ`) |

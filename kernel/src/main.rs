@@ -35,6 +35,7 @@ pub mod input;
 pub mod mm;
 mod panic;
 pub mod proc;
+pub mod rng;
 #[allow(unsafe_code)]
 pub mod sched;
 pub mod security;
@@ -112,6 +113,22 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     let prot = arch::x86_64::cpu::enable_user_protections();
     arch::x86_64::cpu::enable_user_sse();
     arch::x86_64::syscall_entry::init();
+    let seed = rng::init();
+    if let Err(why) = rng::selftest() {
+        panic!("RNG self-test failed: {}", why);
+    }
+    kprintln!(
+        "[rng] seeded (RDSEED {} words, RDRAND {} words, {} rejected, {} jitter samples){}; SHA-256 and ChaCha20 known-answer tests passed",
+        seed.rdseed,
+        seed.rdrand,
+        seed.rejected,
+        seed.jitter,
+        if seed.weak {
+            " -- WARNING: no trusted hardware RNG, weak entropy"
+        } else {
+            ""
+        }
+    );
     kprintln!(
         "[cpu] user-mode protections: SMEP {}, SMAP {}, UMIP {}",
         if prot.smep { "on" } else { "UNSUPPORTED" },
@@ -248,6 +265,7 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
             kprintln!(
                 "[input] self-test passed: one reader at a time, lost marker, no dup, ring emptied for the next owner"
             );
+            kprintln!("[rng] random_fill self-test passed from ring 3");
         }
         Err(why) => panic!("user-mode self-test failed: {}", why),
     }
@@ -286,6 +304,10 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     arch::x86_64::selftest::write_idt();
     #[cfg(feature = "selftest-heap-overflow")]
     arch::x86_64::selftest::heap_overflow();
+
+    // Interrupts have been running for a while: their timing is in the
+    // pool. Mix it in before the first real process gets random bytes.
+    rng::reseed_now();
 
     match proc::start_init() {
         Ok(init) => {

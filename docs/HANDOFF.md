@@ -1652,3 +1652,24 @@ Formato:
 - **Proteções de segurança alteradas:** ATIVA: INPUT com um só leitor e fila esvaziada a cada troca de dono.
 - **Próximo passo sugerido para o Codex:** em `kernel/src/devices/ps2.rs`, converter cada `kitty_ps2::InputEvent` e chamar `crate::input::push_key(evento, texto do layout)` para as teclas e `crate::input::push` para o rato, **em vez de** `console::input_push` (ver INTERFACES.md, secção INPUT).
 - **Avisos:** a parte do núcleo na Fase 6 fica completa (6a–6e). O que falta é do Codex: o `/sbin/init`, a shell e o push do PS/2. Depois disso vem a ronda 1 de red team.
+
+### [2026-11-28] — CLAUDE (Fase 8a)
+- **Feito:**
+  - crate `kitty-crypto` (SHA-256 e ChaCha20 com vetores oficiais, testes no host);
+  - RDRAND/RDSEED com teste de saúde;
+  - gerador do kernel (`rng`) com pool de entropia, ChaCha20 com fast key erasure, reseed e o tempo das IRQs como entropia;
+  - syscall 8 `random_fill`;
+  - D-066. Branch `claude/fase8a-rng`, base `claude/fase6e-input` (#114).
+- **Testes:**
+  - os KATs no arranque e no host;
+  - o teste de saúde rejeita uma fonte "presa";
+  - duas saídas diferentes e não nulas;
+  - `below()` sem sair do intervalo;
+  - em ring 3, `random_fill` com dois buffers diferentes, `E_FAULT` com um ponteiro do kernel e 0 com comprimento 0.
+- **Proteções de segurança alteradas:** ATIVAS: o RNG do kernel e o CSPRNG. A crypto passa a PARCIAL (SHA-256 e ChaCha20).
+- **Próximo passo sugerido para o Codex:**
+  - `cargo test -p kitty-crypto` (e Miri) na CI;
+  - no #80, os vetores de crypto podem ser testados diretamente contra o `kitty-crypto`.
+- **Avisos:**
+  - a crypto é educativa e não auditada;
+  - a seguir vêm a 8b (ASLR em user space, que usa `rng::below`) e a 8c (KASLR).

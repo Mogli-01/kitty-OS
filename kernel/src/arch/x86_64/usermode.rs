@@ -467,6 +467,39 @@ kitty_ut_input_start:
 .global kitty_ut_input_end
 kitty_ut_input_end:
 
+// Phase 8a: random_fill twice (32 bytes each), once with a kernel pointer,
+// once with length 0. Results at DATA (+0, +8, +16, +24); bytes at
+// DATA + 0x100 and DATA + 0x200. Then exit(8).
+.global kitty_ut_random_start
+kitty_ut_random_start:
+    mov r12, 0x401000
+    mov eax, 8
+    lea rdi, [r12 + 0x100]
+    mov esi, 32
+    syscall
+    mov [r12 + 0], rax
+    mov eax, 8
+    lea rdi, [r12 + 0x200]
+    mov esi, 32
+    syscall
+    mov [r12 + 8], rax
+    mov eax, 8
+    movabs rdi, 0xFFFF800000000000
+    mov esi, 32
+    syscall
+    mov [r12 + 16], rax
+    mov eax, 8
+    lea rdi, [r12 + 0x300]
+    xor esi, esi
+    syscall
+    mov [r12 + 24], rax
+    mov eax, 0
+    mov edi, 8
+    syscall
+    ud2
+.global kitty_ut_random_end
+kitty_ut_random_end:
+
 // Blocks forever in console_read (to test killing a blocked process).
 .global kitty_ut_reader_start
 kitty_ut_reader_start:
@@ -508,6 +541,8 @@ unsafe extern "C" {
     static kitty_ut_elf_end: u8;
     static kitty_ut_input_start: u8;
     static kitty_ut_input_end: u8;
+    static kitty_ut_random_start: u8;
+    static kitty_ut_random_end: u8;
 }
 
 /// The user test programs.
@@ -538,6 +573,8 @@ pub enum TestProgram {
     ElfMain,
     /// Reads INPUT events twice through handle 1, tries `dup`, `exit(5)`.
     InputReader,
+    /// Calls `random_fill` (good, bad pointer, empty), `exit(8)`.
+    Random,
 }
 
 /// Machine code of `program`.
@@ -568,6 +605,10 @@ pub fn test_program(program: TestProgram) -> &'static [u8] {
         TestProgram::InputReader => (
             &raw const kitty_ut_input_start,
             &raw const kitty_ut_input_end,
+        ),
+        TestProgram::Random => (
+            &raw const kitty_ut_random_start,
+            &raw const kitty_ut_random_end,
         ),
         TestProgram::Secret => (
             &raw const kitty_ut_secret_start,
