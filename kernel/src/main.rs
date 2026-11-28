@@ -30,6 +30,7 @@ pub mod boot_info;
 pub mod console;
 pub mod devices;
 pub mod firmware;
+pub mod input;
 #[allow(unsafe_code)]
 pub mod mm;
 mod panic;
@@ -244,6 +245,9 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
             kprintln!(
                 "[proc] ELF loader and process_spawn self-test passed: valid image ran, 14 malformed images refused, COPY/MOVE rules held"
             );
+            kprintln!(
+                "[input] self-test passed: one reader at a time, lost marker, no dup, ring emptied for the next owner"
+            );
         }
         Err(why) => panic!("user-mode self-test failed: {}", why),
     }
@@ -284,7 +288,24 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     arch::x86_64::selftest::heap_overflow();
 
     match proc::start_init() {
-        Ok(pid) => kprintln!("[init] /sbin/init started (pid {})", pid),
+        Ok(init) => {
+            kprintln!("[init] /sbin/init started (pid {})", init.pid());
+            // Test builds exit QEMU right after the boot: give init a
+            // bounded chance to run (and, if it is short, to end) first,
+            // so its output is deterministic in tests. Bounded by time
+            // (about 1 s of timer ticks) as well as by iterations, so an
+            // init that never blocks cannot hang a test run.
+            #[cfg(feature = "qemu-exit")]
+            {
+                let deadline = sched::ticks() + 100;
+                for _ in 0..200_000 {
+                    if init.status() != proc::Status::Running || sched::ticks() > deadline {
+                        break;
+                    }
+                    sched::yield_now();
+                }
+            }
+        }
         Err(why) => kprintln!("[init] /sbin/init missing or invalid ({})", why),
     }
 

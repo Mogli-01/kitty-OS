@@ -72,6 +72,8 @@ pub enum Object {
     File(kitty_vfs::File<'static>),
     /// A process (the parent's handle to a child).
     Process(Arc<Process>),
+    /// The right to read keyboard/mouse events (one at a time, D-065).
+    Input(Arc<crate::input::InputGrant>),
 }
 
 impl Object {
@@ -83,18 +85,20 @@ impl Object {
             (Object::Dir(a), Object::Dir(b)) => Arc::ptr_eq(a, b),
             (Object::File(a), Object::File(b)) => a == b,
             (Object::Process(a), Object::Process(b)) => Arc::ptr_eq(a, b),
+            (Object::Input(a), Object::Input(b)) => Arc::ptr_eq(a, b),
             _ => false,
         }
     }
 
     /// Type code reported by `handle_info` (stable ABI, D-058):
-    /// 1 CONSOLE, 2 FILE, 3 DIR, 4 PROCESS.
+    /// 1 CONSOLE, 2 FILE, 3 DIR, 4 PROCESS, 5 INPUT.
     pub fn kind(&self) -> u32 {
         match self {
             Object::Console => 1,
             Object::File(_) => 2,
             Object::Dir(_) => 3,
             Object::Process(_) => 4,
+            Object::Input(_) => 5,
         }
     }
 }

@@ -499,9 +499,26 @@ Fornece: CLAUDE (`kernel/src/syscall`, D-063). Usa: CODEX (biblioteca de syscall
 - **Do lado do kernel (driver de teclado):** `console::input_push(&[u8])`, que é seguro em IRQ e não usa heap. O buffer tem 4 KiB e, quando está cheio, descarta os bytes novos (`console::input_dropped()`).
 - **Marcador:** `[syscall] self-test passed`. Também aparece `[user] hello from ring 3 via syscall`, escrito pelo próprio programa.
 
+### INPUT: `input::push` e `input_read` (Fase 6e) — INSTÁVEL
+Fornece: CLAUDE (`kernel/src/input.rs`, D-065). Usa: CODEX (driver PS/2 e, mais tarde, USB HID e o compositor).
+```rust
+#[repr(C)] pub struct input::InputEvent { pub time_ns: u64, pub kind: u16, pub code: u16,
+                                          pub value: u32, pub dx: i32, pub dy: i32 } // 24 B
+pub const KIND_KEY: u16 = 1; pub const KIND_MOUSE: u16 = 2; pub const KIND_LOST: u16 = 3;
+pub fn input::push(event: InputEvent);                 // rato (e teclas sem texto): seguro em IRQ, sem heap
+pub fn input::push_key(event: InputEvent, text: &[u8]); // tecla + o texto do layout; o kernel decide o destino
+pub fn input::dropped() -> u64;          // eventos descartados (diagnóstico)
+```
+- **Driver (Codex):** converte cada `kitty_ps2::InputEvent` e chama `input::push_key`, para as teclas, ou `input::push`, para o rato. **Já não chama `console::input_push` diretamente.** O kernel encaminha o texto para a consola só enquanto ninguém estiver a ler o INPUT; depois da primeira `input_read` do dono, o texto deixa de chegar à consola (anti-keylogger).
+- **Conversão:** Uma tecla vira `kind=1`, `code=KeyCode` e `value` 0/1/2; o rato vira `kind=2`, com os botões em `value` e `dx`/`dy`. O `time_ns` fica a 0 por agora; o kernel passa a preenchê-lo quando o relógio do #94 entrar.
+- **Leitor:** o handle INPUT tem `READ|TRANSFER`, **sem `DUP`**. O `/sbin/init` recebe-o como **handle 2** e passa-o ao compositor com `SPAWN_MOVE`. A syscall 13, `input_read(h, buf, max ≤ 32)`, bloqueia até haver pelo menos 1 evento.
+- **Perda:** a fila tem 256 eventos. Quando está cheia, os eventos novos são descartados. Depois de o leitor ter lido todos os eventos que estavam na fila, recebe um `KIND_LOST`, que serve para repor o estado das teclas e dos botões.
+- **Troca de dono:** a fila é esvaziada sempre que o handle é fechado, o dono morre ou o handle é movido. O dono seguinte nunca vê eventos do anterior.
+- **Marcador:** `[input] self-test passed`.
+
 ### Ficheiros, ELF e `process_spawn` (Fase 6d) — INSTÁVEL (ABI de user)
 Fornece: CLAUDE (`kernel/src/proc/{elf,fs,spawn}.rs`, D-064). Usa: CODEX (`/sbin/init`, shell, biblioteca de syscalls).
-- **O `/sbin/init`** é lido do initrd e arranca com o handle `0` = CONSOLE (`READ|WRITE|DUP|TRANSFER`) e o handle `1` = DIR da raiz (`READ|EXEC|DUP|TRANSFER`).
+- **O `/sbin/init`** é lido do initrd e arranca com o handle `0` = CONSOLE (`READ|WRITE|DUP|TRANSFER`), o handle `1` = DIR da raiz (`READ|EXEC|DUP|TRANSFER`) e o handle `2` = INPUT (`READ|TRANSFER`).
   - Para lançar a shell: `open_at(1, "bin/sh", READ|EXEC)` → `process_spawn(h, grants, n)`.
   - Linhas de arranque: `[init] /sbin/init started (pid N)` ou `[init] /sbin/init missing or invalid (<razão>)`.
 - **Formato do executável:** ELF64 estático `ET_EXEC` x86_64, sem intérprete, sem `PT_DYNAMIC` e sem TLS. Até 16 `PT_LOAD`, nunca W+X, sem dois segmentos na mesma página, todos entre 1 MiB e `0x7FFF_FFFF_F000`. A entrada fica num segmento executável. Até 64 MiB de memória e até 16 MiB de ficheiro.

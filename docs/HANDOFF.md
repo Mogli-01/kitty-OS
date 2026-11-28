@@ -1636,3 +1636,19 @@ Formato:
   - empilhado sobre o #101 e o #91;
   - ainda não há `argv`, `wait` bloqueante nem escrita em ficheiros;
   - o ring de input da consola é global (D-063: a leitura exclusiva vem com o login).
+
+### [2026-11-28] — CLAUDE (Fase 6e)
+- **Feito:**
+  - objeto INPUT (`kernel/src/input.rs`): concessão única, handle sem `DUP`, fila de 256 segura em IRQ com marcador de perda, esvaziada a cada troca de dono;
+  - syscall 13 `input_read`;
+  - o INPUT é o handle 2 do `/sbin/init`;
+  - o teste do init é determinístico em `qemu-exit`;
+  - limpeza das tabelas duplicadas do ROADMAP (sobras de resoluções de conflitos);
+  - D-065. Branch `claude/fase6e-input`, base `claude/fase6d-elf-init` (#102).
+- **Testes:** um programa em ring 3 lê pelo handle INPUT.
+  - Com a fila cheia (300 eventos para 256 lugares), a primeira leitura começa por `KIND_LOST` e a ordem é mantida.
+  - O `dup` do handle dá `E_PERM`.
+  - Quando o leitor morre, a concessão volta e a fila está vazia.
+- **Proteções de segurança alteradas:** ATIVA: INPUT com um só leitor e fila esvaziada a cada troca de dono.
+- **Próximo passo sugerido para o Codex:** em `kernel/src/devices/ps2.rs`, converter cada `kitty_ps2::InputEvent` e chamar `crate::input::push_key(evento, texto do layout)` para as teclas e `crate::input::push` para o rato, **em vez de** `console::input_push` (ver INTERFACES.md, secção INPUT).
+- **Avisos:** a parte do núcleo na Fase 6 fica completa (6a–6e). O que falta é do Codex: o `/sbin/init`, a shell e o push do PS/2. Depois disso vem a ronda 1 de red team.

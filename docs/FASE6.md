@@ -105,6 +105,7 @@ Princípios:
 | 10 | `file_read(h, buf, len, offset)` | `READ` | bytes lidos (máx. 512 por chamada; 0 no fim) |
 | 11 | `process_spawn(image, grants, n)` | `EXEC` no ficheiro | handle PROCESS (`READ`) |
 | 12 | `process_status(h)` | `READ` | 0 a correr; `1<<32 \| código` terminou; `2<<32 \| vetor` falha; `3<<32` morto |
+| 13 | `input_read(h, buf, max)` | `READ` no INPUT | eventos de 24 B (máx. 32; bloqueia até ≥ 1) |
 
 - **Grants do `process_spawn`:** `n` (≤ 64) registos de 16 bytes `{handle: u32, rights: u32, flags: u32, 0: u32}`, com `flags = 1` (`SPAWN_COPY`) ou `2` (`SPAWN_MOVE`). A lista é copiada **uma vez** para o kernel. O handle `i` do filho é o grant `i`.
 - **Caminhos do `open_at`:** sempre relativos ao diretório do handle, só com componentes simples (sem vazio, `.`, `..` nem NUL) e com no máximo 255 bytes. Um processo não consegue sair do diretório que lhe deram.
@@ -232,9 +233,12 @@ pub struct InputEvent {
 - **Leitura:** `input_read(h, buf, max) -> n` bloqueia até haver ≥ 1 evento
   e copia até `max` eventos inteiros (`buf` com `max * 24` bytes válidos).
 - **Perda:** fila circular de 256 eventos por objeto INPUT. Se encher, o
-  evento novo é descartado e o próximo `input_read` começa por um evento
-  `kind = 3` (perdidos); o compositor deve repor o estado dos botões e
-  teclas (assumir tudo solto).
+  evento novo é descartado. Depois dos eventos que estavam na fila, o leitor
+  recebe um evento `kind = 3` (perdidos) e deve repor o estado dos botões e
+  das teclas, assumindo tudo solto (D-065).
+- **Encaminhamento do teclado:** o driver chama `input::push_key(evento,
+  texto)`. O texto só vai para a consola enquanto o dono do INPUT não lê;
+  depois disso, só o dono vê as teclas.
 - **Troca de consumidor:** ao fechar ou transferir o handle, a fila é
   **esvaziada**. O
   consumidor seguinte nunca vê teclas destinadas ao anterior (por exemplo,
@@ -257,7 +261,8 @@ pub struct InputEvent {
    sensíveis (Fases 7 e 15).
 4. **6d** (FEITO, D-064) carregador ELF, `process_spawn` e arranque de `/sbin/init` a
    partir do initrd.
-5. **6e** objeto INPUT e `input_read` (com a Fase 11 do Codex).
+5. **6e** (FEITO, D-065) objeto INPUT e `input_read`. Do lado do Codex falta
+   ligar o driver PS/2 ao `input::push` (Fase 11).
 
 O Codex pode, em paralelo: construir `/sbin/init` (shell) como ELF64
 estático contra esta ABI, a biblioteca de syscalls em `userland/`, e o

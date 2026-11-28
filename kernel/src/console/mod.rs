@@ -273,6 +273,11 @@ pub fn input_push(bytes: &[u8]) {
     INPUT_WAIT.wake_all();
 }
 
+/// Bytes waiting for `console_read` (diagnostics, tests).
+pub fn input_pending() -> usize {
+    INPUT.lock().len
+}
+
 /// Bytes dropped so far because nobody read the console fast enough.
 pub fn input_dropped() -> u64 {
     INPUT.lock().dropped
