@@ -147,7 +147,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 |---|---|---|
 | SMP (vários núcleos), locks por CPU | CLAUDE | TODO |
 | Descoberta de dispositivos PCI | CODEX | Descodificação de cabeçalhos e capacidades (#61) e interpretação de BARs em revisão. Enumeração no hardware pendente |
-| Sistema de ficheiros em disco | CODEX | Leitor FAT32 só de leitura no #84. Partições GPT com validação e vistas limitadas em revisão. Leitura GPT → FAT32 verificada no host. Ligação ao VFS e ao driver de blocos pendente |
+| Sistema de ficheiros em disco | CODEX | Leitor FAT32 no #84 e partições GPT no #85. Adaptação de sectores a leituras de bytes em revisão em `codex/fase9-leitura-sectores`. Ligação ao VFS e ao driver de blocos pendente |
 | Mais drivers (AHCI/NVMe, rede) | CODEX | TODO |
 
 ## Fase 10 — Gráficos base

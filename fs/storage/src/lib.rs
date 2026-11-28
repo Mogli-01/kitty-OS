@@ -5,7 +5,10 @@
 
 extern crate alloc;
 
+mod blocks;
 pub mod gpt;
+
+pub use blocks::{ReadSectors, SectorReader};
 
 mod crc32;
 
@@ -17,6 +20,7 @@ pub struct ReadError;
 ///
 /// The contents and length must remain unchanged while a parser uses the
 /// source. Implementations for sector devices support unaligned byte requests.
+/// On error the output may contain a partial read.
 pub trait ReadAt {
     fn byte_len(&self) -> u64;
     fn read_exact_at(&self, offset: u64, out: &mut [u8]) -> Result<(), ReadError>;

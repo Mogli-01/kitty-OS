@@ -488,6 +488,16 @@ continua o arranque sem a raiz. `selftest-initrd` verifica a listagem e
 os bytes de `/etc/kitty.txt` no arquivo de teste e emite
 `[vfs] initrd read verified (/etc/kitty.txt)` quando ambos coincidem.
 
+### Leitura de sectores para GPT e FAT32 — INSTÁVEL
+
+`kitty_storage::ReadSectors` descreve a geometria e lê sectores completos
+em memória emprestada, mesmo que o destino não esteja alinhado.
+`SectorReader::new(device)` valida a geometria de 512 a 4096 bytes por
+sector. A vista `ReadAt` permite ler intervalos de bytes arbitrários.
+O controlador tem de manter os dados e a geometria estáveis durante a
+utilização da vista. Se uma leitura falhar, o destino pode conter dados
+parciais. O consumidor só deve usar o resultado se a leitura tiver sucesso.
+
 ## Planeadas (assinaturas propostas, podem mudar)
 
 | Interface | Fornece | Usa | Fase |

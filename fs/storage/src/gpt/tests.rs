@@ -143,6 +143,23 @@ impl Image {
     }
 }
 
+impl crate::ReadSectors for &Image {
+    fn sector_bytes(&self) -> u32 {
+        self.sector_bytes as u32
+    }
+
+    fn sector_count(&self) -> u64 {
+        SECTORS
+    }
+
+    fn read_sectors(&self, first: u64, out: &mut [u8]) -> Result<(), ReadError> {
+        assert!(out.len().is_multiple_of(self.sector_bytes));
+        self.bytes
+            .as_slice()
+            .read_exact_at(first * self.sector_bytes as u64, out)
+    }
+}
+
 fn crc(bytes: &[u8]) -> u32 {
     let mut checksum = Crc32::new();
     checksum.update(bytes);
@@ -180,7 +197,8 @@ fn reads_metadata_and_bounds_the_partition_view_to_its_inclusive_range() {
         image.bytes[start..start + 3].copy_from_slice(b"cat");
         image.bytes[start - 1] = b'x';
         image.bytes[start + sector_bytes * 4] = b'y';
-        let disk = image.read().unwrap();
+        let sectors = crate::SectorReader::new(&image).unwrap();
+        let disk = Gpt::read(sectors, sector_bytes as u32).unwrap();
         assert_eq!(disk.disk_id(), DISK_ID);
         assert_eq!(disk.header_copy(), HeaderCopy::Primary);
         let [efi, data] = disk.partitions() else {
