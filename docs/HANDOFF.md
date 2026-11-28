@@ -1549,3 +1549,9 @@ Formato:
   - ligar o `kitty-uart` à COM2 com `register_isa(3, …)` pela ordem descrita em INTERFACES.md;
   - acrescentar um segundo `-serial` no `xtask` para o teste de receção.
 - **Avisos:** ainda não há ECAM (espaço estendido) nem escrita de configuração.
+
+### [2026-11-28] — CLAUDE (revisão do #92)
+- **Feito:** o autoteste de topologia PCI (host bridge presente, 255:31.7 vazio) passa para a feature `selftest-pci-topology`. O arranque normal só deteta e não para em máquinas sem PCI ou sem dispositivo em 00:00.0. As verificações de entrada continuam em todos os arranques.
+- **Testes:** arranque normal (UEFI debug e release) e com `--features selftest-pci-topology`.
+- **Proteções de segurança alteradas:** nenhuma.
+- **Para o Codex:** se quiseres, junta `--features selftest-pci-topology --expect '[pci] topology self-test passed'` à matriz do QEMU na CI.

@@ -366,7 +366,10 @@ pub const CONVENTIONAL_LEN: usize = 256;   // cabeçalho + listas de capacidades
   - `Absent` não é um erro, é "não há nada aqui".
   - Com o CRS Software Visibility de PCIe ligado (não está por omissão), o vendor pode aparecer como 0x0001; nesse caso a função está a arrancar e não deve ser usada.
 - **Custo:** um `read_config` de 256 B faz ~130 acessos a portas com as interrupções desligadas (~100–200 µs em hardware real). Serve para a enumeração; não é para leituras frequentes.
-- Marcador de arranque: `[pci] read-only configuration access ready (host bridge vendor 0x....)`.
+- **Marcadores de arranque:**
+  - um arranque normal **só deteta** e nunca para por causa do hardware. Escreve `[pci] read-only configuration access ready (host bridge vendor 0x....)`, ou `[pci] configuration mechanism #1 present, no device at 00:00.0`, ou `[pci] no configuration mechanism #1 on this machine`;
+  - as verificações de entrada (números e comprimentos inválidos recusados) correm sempre, porque não dependem do hardware;
+  - a feature `selftest-pci-topology` (só para a matriz do QEMU) verifica também que o host bridge responde e que 255:31.7 está vazio, e escreve `[pci] topology self-test passed (...)`. Isto é uma propriedade do QEMU, não do contrato (revisão do #92).
 
 ### UART para drivers: COM2 (`LegacyDevice::Com2`) — INSTÁVEL
 Fornece: CLAUDE (issue #72, D-061). Usa: CODEX (`kitty-uart`).

@@ -138,32 +138,59 @@ pub fn read_config(addr: PciAddress, dst: &mut [u8]) -> Result<(), ConfigError> 
     Ok(())
 }
 
-/// Boot self-test: the host bridge at 00:00.0 exists, a function number
-/// out of range is refused, a wrong length is refused, and an empty slot
-/// reads as absent. `Ok(None)`: this machine has no mechanism #1.
-/// `Err`: a check failed (a kernel bug, the caller panics).
-pub fn selftest() -> Result<Option<u16>, &'static str> {
-    let host = PciAddress::new(0, 0, 0).map_err(|_| "00:00.0 refused")?;
+/// What a normal boot learned about PCI configuration access. Never a
+/// failure: a machine without PCI, or without a device at 00:00.0, is not
+/// a kernel bug (review of #92).
+pub enum Probe {
+    /// Mechanism #1 works; vendor ID of the host bridge at 00:00.0.
+    HostBridge(u16),
+    /// Mechanism #1 works but 00:00.0 did not answer.
+    NoHostBridge,
+    /// No configuration mechanism #1 on this machine.
+    Unavailable,
+}
+
+/// Boot detection, tolerant of missing hardware.
+pub fn probe_host_bridge() -> Probe {
+    let Ok(host) = PciAddress::new(0, 0, 0) else {
+        return Probe::NoHostBridge;
+    };
     let mut header = [0u8; HEADER_LEN];
     match read_config(host, &mut header) {
-        Err(ConfigError::Unavailable) => return Ok(None),
-        Err(_) => return Err("host bridge 00:00.0 not readable"),
-        Ok(()) => {}
+        Ok(()) => Probe::HostBridge(u16::from_le_bytes([header[0], header[1]])),
+        Err(ConfigError::Unavailable) => Probe::Unavailable,
+        Err(_) => Probe::NoHostBridge,
     }
-    let vendor = u16::from_le_bytes([header[0], header[1]]);
+}
+
+/// Boot self-test of the input checks, which hold on any machine: device
+/// and function numbers out of range and lengths other than 64/256 are
+/// refused before any port is touched.
+pub fn validation_selftest() -> Result<(), &'static str> {
     let bad_number = PciAddress::new(0, 32, 0) == Err(ConfigError::OutOfRange)
         && PciAddress::new(0, 0, 8) == Err(ConfigError::OutOfRange);
-    let bad_len = read_config(host, &mut [0u8; 16]) == Err(ConfigError::OutOfRange);
-    let empty = PciAddress::new(255, 31, 7).map(|a| read_config(a, &mut [0u8; HEADER_LEN]))
-        == Ok(Err(ConfigError::Absent));
     if !bad_number {
         return Err("device/function numbers out of range were accepted");
     }
-    if !bad_len {
+    let any = PciAddress::new(0, 0, 0).map_err(|_| "00:00.0 refused")?;
+    if read_config(any, &mut [0u8; 16]) != Err(ConfigError::OutOfRange) {
         return Err("a length other than 64/256 was accepted");
     }
+    Ok(())
+}
+
+/// Topology self-test for the QEMU test matrix only (feature
+/// `selftest-pci-topology`): on QEMU's q35/i440fx the host bridge answers
+/// and 255:31.7 is empty. Real machines guarantee neither.
+#[cfg(feature = "selftest-pci-topology")]
+pub fn topology_selftest() -> Result<u16, &'static str> {
+    let Probe::HostBridge(vendor) = probe_host_bridge() else {
+        return Err("host bridge 00:00.0 not readable");
+    };
+    let empty = PciAddress::new(255, 31, 7).map(|a| read_config(a, &mut [0u8; HEADER_LEN]))
+        == Ok(Err(ConfigError::Absent));
     if !empty {
         return Err("an empty slot did not read as absent");
     }
-    Ok(Some(vendor))
+    Ok(vendor)
 }
