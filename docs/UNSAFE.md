@@ -44,3 +44,11 @@ Verificação rápida: `git grep -n "unsafe" -- kernel/src`.
 
 Dependências externas com `unsafe`: crate `limine` (leitura volátil das
 respostas do bootloader). Usado só em `arch/x86_64/boot.rs`.
+
+
+### Adaptador de syscalls da primeira shell
+
+- `userland/shell/src/bin/init.rs`: a instrução `syscall` usa os
+  registos e clobbers da ABI publicada em FASE6.md. As slices ficam vivas
+  durante a syscall síncrona. O símbolo de entrada chama Rust com
+  alinhamento System V.

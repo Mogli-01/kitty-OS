@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-use crate::{SessionEvent, ShellSession};
+use crate::{CommandLine, ExecuteError, SessionEvent, ShellSession};
 
 const PROMPT: &[u8] = b"kitty> ";
 
@@ -13,6 +13,16 @@ pub trait Console {
 
     fn read(&mut self, buffer: &mut [u8]) -> Result<usize, Self::Error>;
     fn write(&mut self, bytes: &[u8]) -> Result<usize, Self::Error>;
+
+    /// Whether to show the final edited line before executing it.
+    fn echo_input(&self) -> bool {
+        false
+    }
+
+    /// Optional file service. An unavailable service returns None.
+    fn cat(&mut self, _path: &str) -> Option<Result<(), Self::Error>> {
+        None
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -41,12 +51,18 @@ pub fn run_console<C: Console>(console: &mut C) -> Result<(), ConsoleError<C::Er
             failure: None,
         };
         for &byte in bytes {
-            let event = session.push(byte, &mut output);
+            if byte == b'\n' && output.console.echo_input() {
+                write_all(output.console, session.line().as_bytes())?;
+                write_all(output.console, b"\n")?;
+            }
+            let event = session.push_with(byte, &mut output, ConsoleOutput::execute);
             if let Some(error) = output.failure.take() {
                 return Err(error);
             }
             match event {
-                Ok(SessionEvent::Submitted) => write_all(output.console, PROMPT)?,
+                Ok(SessionEvent::Submitted) => {
+                    write_all(output.console, PROMPT)?;
+                }
                 Ok(SessionEvent::Cancelled) => {
                     write_all(output.console, b"^C\n")?;
                     write_all(output.console, PROMPT)?;
@@ -61,6 +77,27 @@ pub fn run_console<C: Console>(console: &mut C) -> Result<(), ConsoleError<C::Er
 struct ConsoleOutput<'a, C: Console> {
     console: &'a mut C,
     failure: Option<ConsoleError<C::Error>>,
+}
+
+impl<C: Console> ConsoleOutput<'_, C> {
+    fn execute(command: &CommandLine, output: &mut Self) -> Result<(), ExecuteError> {
+        let mut words = command.words();
+        if words.next() != Some("cat") {
+            return command.execute(output);
+        }
+        let path = words.next().ok_or(ExecuteError::UnexpectedArguments)?;
+        if words.next().is_some() {
+            return Err(ExecuteError::UnexpectedArguments);
+        }
+        match output.console.cat(path) {
+            None => Err(ExecuteError::UnknownCommand),
+            Some(Ok(())) => Ok(()),
+            Some(Err(error)) => {
+                output.failure = Some(ConsoleError::Write(error));
+                Err(ExecuteError::Output(fmt::Error))
+            }
+        }
+    }
 }
 
 impl<C: Console> fmt::Write for ConsoleOutput<'_, C> {

@@ -257,7 +257,7 @@ impl Console for RecordedConsole<'_> {
     }
 }
 
-fn wait_for(
+pub(super) fn wait_for(
     child: &mut Child,
     log: &Path,
     stage: &str,

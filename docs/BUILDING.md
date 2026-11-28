@@ -79,5 +79,17 @@ cargo xtask test-keyboard --release --bios
 ```
 
 O teste verifica Ctrl+C, Backspace, setas, Enter e texto acentuado.
-A execução da shell no convidado depende das syscalls de consola e do
-carregamento de `/sbin/init`.
+Para usar a shell dentro do kitty-OS com a ABI dos PRs #101/#102:
+
+```sh
+cargo xtask shell-initrd
+cargo xtask run --release --initrd build/shell/shell.tar
+cargo xtask test-shell --release
+cargo xtask test-shell --release --bios
+```
+
+O arquivo contém o ELF `/sbin/init` e `etc/kitty.txt`. No QEMU, podes
+executar `help`, `echo "olá mundo"` e `cat etc/kitty.txt`. A consola
+de arranque apresenta a linha editada ao premir Enter. A edição usa
+o layout PT-PT. A série preserva UTF-8 e identifica as linhas do
+utilizador com o prefixo `[u]`.

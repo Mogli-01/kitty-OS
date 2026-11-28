@@ -3,3 +3,13 @@ name = "kitty-shell"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
+
+[features]
+init-image = []
+
+[[bin]]
+name = "kitty-init"
+path = "src/bin/init.rs"
+required-features = ["init-image"]
+test = false
+bench = false

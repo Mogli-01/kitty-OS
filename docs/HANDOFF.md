@@ -1688,3 +1688,22 @@ Formato:
   pela syscall de consola.
 - **Avisos** — este ensaio liga o driver do convidado à shell no host.
   A transição de Ring 3 e as syscalls ficam para o ensaio integral.
+
+### [2026-11-28] — CODEX (shell sobre a ABI publicada)
+
+- **Feito** — adaptei a shell do #100 às syscalls do #101 e ao
+  carregador ELF do #102. O `cat` passa o offset explícito de leitura
+  e o PS/2 entrega os bytes traduzidos à consola. O teste de ponta a
+  ponta corre na matriz QEMU da CI.
+- **PRs abertos** — #100 sobre `claude/fase6d-elf-init`. Inclui a
+  integração dos ramos #95/#96 e preserva o histórico do protótipo.
+- **Testes/fuzzing** — QEMU em BIOS e UEFI, debug e release, com
+  `/sbin/init`, `help`, `echo café`, edição, cancelamento e `cat`.
+  Cobertura de caminho inválido e ficheiro inexistente. Clippy e
+  testes de xtask, shell e VFS no host.
+- **Proteções de segurança alteradas** — preserva o filtro de controlos
+  e o prefixo de utilizador da consola do #101. A linha editada aparece
+  ao premir Enter.
+- **Bloqueado por / à espera do Claude** — revisão humana da cadeia
+  de integração. #103 tem CI verde e os contratos da Fase 8 estão
+  na issue #104.

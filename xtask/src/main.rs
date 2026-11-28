@@ -40,6 +40,7 @@ mod initrd_tests;
 mod input_tests;
 mod memory_tests;
 mod scheduler_bench;
+mod shell_tests;
 mod visual_test;
 
 /// Limine binary release we boot with. Pinned to an exact commit of the
@@ -137,6 +138,10 @@ fn main() -> ExitCode {
         "test-mouse" => input_tests::run(&opts, input_tests::MOUSE),
         "bench-scheduler" => scheduler_bench::run(&opts),
         "test-initrd" => initrd_tests::run(&opts),
+        "test-shell" => shell_tests::run(&opts),
+        "shell-initrd" => shell_tests::package(&build_dir().join("shell"))
+            .map(|path| println!("shell initrd: {}", path.display())),
+
         _ => {
             eprintln!(
                 "usage: cargo xtask <build|esp|iso|run|test> [--release] [--bios] [--features a,b] [--initrd path] [--expect-panic] [--expect text]"
@@ -149,6 +154,8 @@ fn main() -> ExitCode {
             );
             eprintln!("       cargo xtask bench-scheduler [--release] [--bios]");
             eprintln!("       cargo xtask test-initrd [--release] [--bios]");
+            eprintln!("       cargo xtask test-shell [--release] [--bios]");
+            eprintln!("       cargo xtask shell-initrd");
             return ExitCode::FAILURE;
         }
     };
