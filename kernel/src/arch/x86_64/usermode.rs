@@ -295,6 +295,136 @@ kitty_ut_secret_start:
     jmp 4b
 .global kitty_ut_secret_end
 kitty_ut_secret_end:
+
+// Phase 6c: exercises every system call and its error paths. Results go
+// to DATA + 8*i (see `proc::selftest`); then exit(42).
+.global kitty_ut_syscalls_start
+kitty_ut_syscalls_start:
+    mov r12, 0x401000
+    // [0] console_write(0, msg, len) = len
+    mov eax, 5
+    xor edi, edi
+    lea rsi, [rip + 90f]
+    mov edx, 37 // length of the message at 90:
+    syscall
+    mov [r12 + 0], rax
+    // [1] console_write(0, kernel address, 8) = E_FAULT
+    mov eax, 5
+    xor edi, edi
+    movabs rsi, 0xFFFF800000000000
+    mov edx, 8
+    syscall
+    mov [r12 + 8], rax
+    // [2] console_write(0, msg, 5000) = E_TOOBIG
+    mov eax, 5
+    xor edi, edi
+    lea rsi, [rip + 90f]
+    mov edx, 5000
+    syscall
+    mov [r12 + 16], rax
+    // [3] console_write(7, msg, 1) = E_BADHANDLE
+    mov eax, 5
+    mov edi, 7
+    lea rsi, [rip + 90f]
+    mov edx, 1
+    syscall
+    mov [r12 + 24], rax
+    // [4] handle_dup(0, READ) = h2
+    mov eax, 3
+    xor edi, edi
+    mov esi, 1
+    syscall
+    mov [r12 + 32], rax
+    mov r13, rax
+    // [5] console_write(h2, msg, 1) = E_PERM (no WRITE)
+    mov eax, 5
+    mov rdi, r13
+    lea rsi, [rip + 90f]
+    mov edx, 1
+    syscall
+    mov [r12 + 40], rax
+    // [6] handle_info(h2) = (1 << 32) | READ
+    mov eax, 4
+    mov rdi, r13
+    syscall
+    mov [r12 + 48], rax
+    // [7] handle_close(h2) = 0
+    mov eax, 2
+    mov rdi, r13
+    syscall
+    mov [r12 + 56], rax
+    // [8] handle_close(h2) again = E_BADHANDLE
+    mov eax, 2
+    mov rdi, r13
+    syscall
+    mov [r12 + 64], rax
+    // [9] handle_dup(0, undefined right bit 6) = E_INVAL
+    mov eax, 3
+    xor edi, edi
+    mov esi, 0x40
+    syscall
+    mov [r12 + 72], rax
+    // [10] handle_dup(0, MAP) = E_PERM (rights would grow)
+    mov eax, 3
+    xor edi, edi
+    mov esi, 4
+    syscall
+    mov [r12 + 80], rax
+    // [11] unknown call 999 = E_NOSYS
+    mov eax, 999
+    syscall
+    mov [r12 + 88], rax
+    // [12] console_read(0, DATA + 0x800, 64) = bytes
+    mov eax, 6
+    xor edi, edi
+    lea rsi, [r12 + 0x800]
+    mov edx, 64
+    syscall
+    mov [r12 + 96], rax
+    // [13] TSC cycles for 1000 null system calls
+    rdtsc
+    shl rdx, 32
+    or rax, rdx
+    mov r14, rax
+    mov r15d, 1000
+5:
+    mov eax, 999
+    syscall
+    dec r15d
+    jnz 5b
+    rdtsc
+    shl rdx, 32
+    or rax, rdx
+    sub rax, r14
+    mov [r12 + 104], rax
+    // [14] registers survive a system call (r12-r14 callee data, rbx)
+    mov rbx, 0x1234
+    mov eax, 1
+    syscall
+    mov [r12 + 112], rbx
+    // exit(42)
+    mov eax, 0
+    mov edi, 42
+    syscall
+    ud2
+90:
+    .ascii "[user] hello from ring 3 via syscall\n"
+91:
+.global kitty_ut_syscalls_end
+kitty_ut_syscalls_end:
+
+// Blocks forever in console_read (to test killing a blocked process).
+.global kitty_ut_reader_start
+kitty_ut_reader_start:
+6:
+    mov eax, 6
+    xor edi, edi
+    mov rsi, 0x401000
+    mov edx, 16
+    syscall
+    jmp 6b
+.global kitty_ut_reader_end
+kitty_ut_reader_end:
 .section .text
 "#
 );
@@ -316,6 +446,10 @@ unsafe extern "C" {
     static kitty_ut_clean_end: u8;
     static kitty_ut_secret_start: u8;
     static kitty_ut_secret_end: u8;
+    static kitty_ut_syscalls_start: u8;
+    static kitty_ut_syscalls_end: u8;
+    static kitty_ut_reader_start: u8;
+    static kitty_ut_reader_end: u8;
 }
 
 /// The user test programs.
@@ -337,6 +471,10 @@ pub enum TestProgram {
     Clean,
     /// Fills SSE registers with a secret, then counts.
     Secret,
+    /// Every system call and its errors (6c), then `exit(42)`.
+    Syscalls,
+    /// Blocks in `console_read` forever.
+    Reader,
 }
 
 /// Machine code of `program`.
@@ -354,6 +492,14 @@ pub fn test_program(program: TestProgram) -> &'static [u8] {
         TestProgram::Clean => (
             &raw const kitty_ut_clean_start,
             &raw const kitty_ut_clean_end,
+        ),
+        TestProgram::Syscalls => (
+            &raw const kitty_ut_syscalls_start,
+            &raw const kitty_ut_syscalls_end,
+        ),
+        TestProgram::Reader => (
+            &raw const kitty_ut_reader_start,
+            &raw const kitty_ut_reader_end,
         ),
         TestProgram::Secret => (
             &raw const kitty_ut_secret_start,

@@ -15,12 +15,17 @@
 //! (ring-3 entry, traps), `mm` (address spaces) and `sched` (switching).
 
 use alloc::sync::Arc;
-use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 
 use crate::arch::x86_64::usermode;
 use crate::mm::paging::MapError;
 use crate::mm::uspace::{UserPerm, UserSpace};
 use crate::sched::{self, SpawnError};
+use crate::sync::SpinLock;
+
+pub mod handles;
+
+use handles::{HandleTable, Object, Rights};
 
 /// Where test images put their code (docs/FASE6.md §1: ELF segments start
 /// at 4 MiB).
@@ -40,10 +45,13 @@ pub enum Status {
     Killed,
     /// Killed by the CPU exception `vector` it caused.
     Fault(u8),
+    /// Ended itself with `exit(code)`.
+    Exited(i32),
 }
 
 const STATUS_RUNNING: u32 = 0;
 const STATUS_KILLED: u32 = 1;
+const STATUS_EXITED: u32 = 2;
 const STATUS_FAULT: u32 = 0x100;
 
 /// Why a process could not be created.
@@ -69,6 +77,9 @@ pub struct Process {
     space: UserSpace,
     kill: AtomicBool,
     status: AtomicU32,
+    exit_code: AtomicI32,
+    /// Its handles (D-051). Never held across a user copy or a block.
+    handles: SpinLock<HandleTable>,
 }
 
 static NEXT_PID: AtomicU32 = AtomicU32::new(1);
@@ -96,6 +107,17 @@ impl Process {
         if !audit.is_clean() || audit.mappings != 3 {
             return Err(ProcError::AuditFailed);
         }
+        // The `init` ABI (docs/FASE6.md §6): handle 0 = CONSOLE.
+        let mut handles = HandleTable::new();
+        handles
+            .insert(
+                Object::Console,
+                Rights::READ
+                    .union(Rights::WRITE)
+                    .union(Rights::DUP)
+                    .union(Rights::TRANSFER),
+            )
+            .map_err(|_| ProcError::Map(MapError::OutOfMemory))?;
         Ok(Arc::new(Self {
             pid: NEXT_PID.fetch_add(1, Ordering::Relaxed),
             uid: 0,
@@ -103,6 +125,8 @@ impl Process {
             space,
             kill: AtomicBool::new(false),
             status: AtomicU32::new(STATUS_RUNNING),
+            exit_code: AtomicI32::new(0),
+            handles: SpinLock::new(handles),
         }))
     }
 
@@ -131,14 +155,27 @@ impl Process {
         match self.status.load(Ordering::Acquire) {
             STATUS_RUNNING => Status::Running,
             STATUS_KILLED => Status::Killed,
+            STATUS_EXITED => Status::Exited(self.exit_code.load(Ordering::Acquire)),
             other => Status::Fault((other & 0xFF) as u8),
         }
     }
 
     /// Asks the process to die. It ends before running another user
-    /// instruction after its next trap into the kernel.
+    /// instruction after its next trap into the kernel; a thread blocked in
+    /// a system call is woken so it can notice.
     pub fn kill(&self) {
         self.kill.store(true, Ordering::Release);
+        crate::console::wake_input_readers();
+    }
+
+    /// Whether [`Process::kill`] was called (blocking calls give up).
+    pub fn is_killed(&self) -> bool {
+        self.kill.load(Ordering::Acquire)
+    }
+
+    /// Its handle table (short critical sections only).
+    pub fn handles(&self) -> &SpinLock<HandleTable> {
+        &self.handles
     }
 
     fn end(&self, status: u32) {
@@ -163,6 +200,16 @@ pub fn exit_current_on_fault(vector: u8) -> ! {
     if let Some(process) = sched::current_process() {
         process.end(STATUS_FAULT | u32::from(vector));
         // Drop our reference *before* leaving: `exit` never returns.
+        drop(process);
+    }
+    sched::exit()
+}
+
+/// `exit(code)` system call: ends the current thread. Never returns.
+pub fn exit_current(code: i32) -> ! {
+    if let Some(process) = sched::current_process() {
+        process.exit_code.store(code, Ordering::Release);
+        process.end(STATUS_EXITED);
         drop(process);
     }
     sched::exit()

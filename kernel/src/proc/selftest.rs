@@ -23,6 +23,8 @@ pub struct Report {
     pub preemption_tested: bool,
     /// Whether `sgdt` was stopped by UMIP (else UMIP is unavailable).
     pub umip: bool,
+    /// Average TSC cycles of a null system call, measured in ring 3.
+    pub syscall_cycles: u64,
 }
 
 /// Runs the self-test. `Err` names the first check that failed.
@@ -90,6 +92,9 @@ pub fn run() -> Result<Report, &'static str> {
         return Err("spawn_user accepted a non-user entry point or stack");
     }
 
+    let syscall_cycles = syscalls()?;
+    blocked_then_killed()?;
+
     let preemption_tested = timer_running();
     if preemption_tested {
         hygiene_and_preemption()?;
@@ -103,7 +108,81 @@ pub fn run() -> Result<Report, &'static str> {
         faults_ok,
         preemption_tested,
         umip,
+        syscall_cycles,
     })
+}
+
+/// Expected results of the `Syscalls` program, slot by slot.
+fn expected_syscall_results() -> [(i64, &'static str); 13] {
+    use crate::syscall::errno::*;
+    const MSG_LEN: i64 = "[user] hello from ring 3 via syscall\n".len() as i64;
+    [
+        (MSG_LEN, "console_write did not accept the whole message"),
+        (
+            E_FAULT,
+            "console_write with a kernel pointer was not E_FAULT",
+        ),
+        (E_TOOBIG, "console_write of 5000 bytes was not E_TOOBIG"),
+        (E_BADHANDLE, "console_write on handle 7 was not E_BADHANDLE"),
+        (1, "handle_dup(0, READ) did not return handle 1"),
+        (E_PERM, "writing through a READ-only handle was not E_PERM"),
+        ((1 << 32) | 1, "handle_info did not report CONSOLE + READ"),
+        (0, "handle_close failed"),
+        (E_BADHANDLE, "a closed handle still worked"),
+        (E_INVAL, "an undefined right bit was not E_INVAL"),
+        (E_PERM, "handle_dup could add a right"),
+        (E_NOSYS, "an unknown system call was not E_NOSYS"),
+        (6, "console_read did not return the 6 pushed bytes"),
+    ]
+}
+
+/// Runs the `Syscalls` program: every call and error path, input read,
+/// registers preserved, `exit(42)`. Returns the cost of a null call.
+fn syscalls() -> Result<u64, &'static str> {
+    crate::console::input_push(b"kitty\n");
+    let process = Process::from_test_image(test_program(TestProgram::Syscalls))
+        .map_err(|_| "could not create the syscall process")?;
+    super::start(&process, "selftest-syscalls")
+        .map_err(|_| "could not start the syscall process")?;
+    wait_until(|| process.status() != Status::Running, 1_000_000);
+    if process.status() != Status::Exited(42) {
+        return Err("the syscall process did not exit(42)");
+    }
+    let slot = |i: u64| {
+        process
+            .space()
+            .peek_u64(DATA_BASE + 8 * i)
+            .map_or(i64::MIN, |v| v as i64)
+    };
+    for (i, (want, why)) in expected_syscall_results().into_iter().enumerate() {
+        if slot(i as u64) != want {
+            return Err(why);
+        }
+    }
+    if slot(14) != 0x1234 {
+        return Err("a register changed across a system call");
+    }
+    let echoed = process.space().peek_u64(DATA_BASE + 0x800);
+    if echoed != Some(u64::from_le_bytes(*b"kitty\n\0\0")) {
+        return Err("console_read did not deliver the pushed bytes");
+    }
+    Ok((slot(13).max(0) as u64) / 1000)
+}
+
+/// A process blocked in `console_read` must still die when killed.
+fn blocked_then_killed() -> Result<(), &'static str> {
+    let process = Process::from_test_image(test_program(TestProgram::Reader))
+        .map_err(|_| "could not create the reader process")?;
+    let thread = super::start(&process, "selftest-reader")
+        .map_err(|_| "could not start the reader process")?;
+    if !wait_until(|| sched::is_blocked(thread), 1_000_000) {
+        return Err("the reader never blocked in console_read");
+    }
+    process.kill();
+    if !wait_until(|| process.status() == Status::Killed, 1_000_000) {
+        return Err("a process blocked in a system call could not be killed");
+    }
+    Ok(())
 }
 
 /// Runs a program that is expected to fault; returns how it ended.

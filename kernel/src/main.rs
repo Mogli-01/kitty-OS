@@ -110,6 +110,7 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
 
     let prot = arch::x86_64::cpu::enable_user_protections();
     arch::x86_64::cpu::enable_user_sse();
+    arch::x86_64::syscall_entry::init();
     kprintln!(
         "[cpu] user-mode protections: SMEP {}, SMAP {}, UMIP {}",
         if prot.smep { "on" } else { "UNSUPPORTED" },
@@ -219,16 +220,22 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
     kprintln!("[sched] user entry validation self-test passed (RIP/RSP strictly below USER_END)");
 
     match proc::selftest::run() {
-        Ok(r) => kprintln!(
-            "[proc] user-mode self-test passed: {} ring-3 faults killed their process (UMIP {}), preemption + register hygiene {}",
-            r.faults_ok,
-            if r.umip { "on" } else { "off" },
-            if r.preemption_tested {
-                "checked"
-            } else {
-                "skipped (no timer)"
-            }
-        ),
+        Ok(r) => {
+            kprintln!(
+                "[proc] user-mode self-test passed: {} ring-3 faults killed their process (UMIP {}), preemption + register hygiene {}",
+                r.faults_ok,
+                if r.umip { "on" } else { "off" },
+                if r.preemption_tested {
+                    "checked"
+                } else {
+                    "skipped (no timer)"
+                }
+            );
+            kprintln!(
+                "[syscall] self-test passed: every call and error path, handles with generations, blocked process killed (~{} cycles per null syscall)",
+                r.syscall_cycles
+            );
+        }
         Err(why) => panic!("user-mode self-test failed: {}", why),
     }
 

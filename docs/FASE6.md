@@ -80,11 +80,26 @@ Princípios:
   processo recebe um handle como **primeiro argumento**. As únicas
   exceções são `exit`, `yield`, `clock_now`, `random_fill` e as operações
   sobre a própria tabela (`handle_close`, `handle_dup`, `handle_info`).
-- As syscalls sensíveis chamam `audit::record` (sem efeito até à Fase 15),
-  para a auditoria não exigir mexer em cada syscall depois.
-- `sysret` só com RIP canónico na metade de user (o `sysretq` com RIP não
-  canónico faz #GP em ring 0 nalguns CPUs: verificar e, se for o caso,
-  sair por `iretq`).
+- As syscalls sensíveis (abrir ficheiros, rede, permissões) vão chamar
+  `audit::record` desde que existam; as da 6c não são sensíveis.
+- **Implementação (6c, D-063):**
+  - a entrada é `syscall`. O FMASK limpa IF, DF, TF, AC, NT e IOPL: o SMAP fica fechado mesmo que o programa tenha posto AC = 1;
+  - a seguir vêm `swapgs` e a troca para a pilha de kernel da thread;
+  - a saída é **sempre por `iretq`**, pelo mesmo caminho das interrupções, e nunca por `sysret`. Como um `iretq` para um RIP não canónico também falharia em ring 0, a última página de user nunca é mapeada e a saída verifica o RIP;
+  - RCX e R11 voltam com o RIP e o RFLAGS de user, como faria o `sysret`; os outros registos são preservados.
+- **Números (ABI estável):**
+
+| N.º | Chamada | Direito | Resultado |
+|---|---|---|---|
+| 0 | `exit(code: i32)` | — | não volta |
+| 1 | `yield()` | — | 0 |
+| 2 | `handle_close(h)` | — | 0 |
+| 3 | `handle_dup(h, rights)` | `DUP`, e `rights` ⊆ direitos de `h` | novo handle |
+| 4 | `handle_info(h)` | — | `(tipo << 32) \| direitos` (tipo 1 = CONSOLE) |
+| 5 | `console_write(h, buf, len)` | `WRITE` | bytes aceites |
+| 6 | `console_read(h, buf, len)` | `READ` | bytes lidos (bloqueia) |
+| 7 | `clock_now()` | — | reservado (`E_NOSYS` até haver relógio) |
+| 8 | `random_fill(buf, len)` | — | reservado (`E_NOSYS` até à Fase 8/16) |
 
 ## 4. Memória de user: `UserPtr` e `copy_*_user` (D-050)
 
@@ -120,9 +135,15 @@ Princípios:
 - **Criar processos:** `process_spawn(imagem, handles, n) -> h_proc` é a
   única forma de criar um processo e de lhe dar autoridade. `imagem` é um
   handle de ficheiro com `EXEC`; `handles` aponta para `n` pares
-  `(handle, direitos)` (no máximo 64), copiados para a tabela nova com
-  direitos iguais ou **menores**. O processo novo não herda nada por
-  omissão. (Implementado na 6d, junto com o carregador ELF.)
+  triplos `(handle, direitos, flags)` (no máximo 64). O processo novo não
+  herda nada por omissão. (Implementado na 6d, junto com o carregador ELF.)
+  - **Regras (issue #79, D-063):**
+    - `SPAWN_COPY` exige `DUP` e o pai fica com o handle;
+    - `SPAWN_MOVE` exige `TRANSFER` e o handle **sai** do pai;
+    - em ambos os casos, os direitos do filho ⊆ os direitos de origem.
+  - **Tudo ou nada:** todas as entradas são validadas antes de mexer em qualquer tabela. Os handles movidos só saem do pai no **último passo**, sob o lock da tabela, quando já nada pode falhar. Se o spawn falhar, o pai mantém tudo.
+  - **Erros:** um handle repetido numa lista que o move dá `E_INVAL`. Uma geração que mudou entre a validação e o último passo dá `E_BADHANDLE`, e o filho é destruído.
+  - Os objetos exclusivos (INPUT e DISPLAY) não têm `DUP`, por isso só passam por `SPAWN_MOVE`.
 - **Transferência por canal (Fase 12):** exige `TRANSFER`, retira o handle
   ao emissor e os direitos só podem diminuir.
 - Não há nomes globais.
@@ -152,8 +173,12 @@ Princípios:
   Mais nada. A ordem fixa (0 = CONSOLE, 1 = DIR, 2 = INPUT, 3 = DISPLAY)
   faz parte da ABI do `init`.
 - `console_write(h, buf, len) -> n`: escreve em todas as consolas do kernel
-  (ecrã + série). `len ≤ 4096` (senão `E_TOOBIG`); bytes UTF-8, os
-  inválidos aparecem como `?`; **escrita parcial permitida** (devolve quantos
+  (ecrã + série). `len ≤ 4096` (senão `E_TOOBIG`). Os bytes são UTF-8: os
+  inválidos aparecem como `?`, e **todos os caracteres de controlo exceto
+  `\n` e `\t` também** (C0, DEL e C1, incluindo ESC), tal como os
+  caracteres invisíveis e de bidi. Na série, cada linha de user começa por
+  `[u] `; no ecrã, tem outra cor. Assim, um programa não manda sequências
+  de escape para o terminal nem cria linhas que pareçam do kernel; **escrita parcial permitida** (devolve quantos
   bytes foram aceites); `E_FAULT` se o buffer for inválido, `E_PERM` sem
   `WRITE`.
 - `console_read(h, buf, len) -> n`: **bloqueia** (`WaitQueue`) até haver
@@ -218,9 +243,10 @@ pub struct InputEvent {
 1. **6a** SMEP/SMAP/UMIP + `UserPtr` + `copy_*_user` com recuperação de #PF.
 2. **6b** processos, espaços de endereçamento de user, `TSS.RSP0`, `swapgs`,
    entrada em ring 3, exceções de user matam o processo.
-3. **6c** `syscall`/`sysret`, tabela de syscalls, handles e direitos
-   (com `handle_info` e o formato de direitos da D-058), objeto CONSOLE,
-   pontos de auditoria sem efeito.
+3. **6c** (FEITO, D-063) `syscall` (saída por `iretq`), tabela de syscalls,
+   handles e direitos (com `handle_info` e o formato de direitos da D-058),
+   objeto CONSOLE. Os pontos de auditoria entram com as primeiras syscalls
+   sensíveis (Fases 7 e 15).
 4. **6d** carregador ELF, `process_spawn` e arranque de `/sbin/init` a
    partir do initrd.
 5. **6e** objeto INPUT e `input_read` (com a Fase 11 do Codex).

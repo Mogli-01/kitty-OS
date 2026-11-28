@@ -119,20 +119,38 @@ static TABLES: CpuTables = CpuTables {
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// Per-CPU block that the kernel's GS base points at (Phase 6b, D-060).
-/// Today nothing reads it through GS; the `swapgs` self-check compares the
-/// GS base MSR with its address. Phase 6c puts the `syscall` scratch slots
-/// here (kernel RSP, saved user RSP).
+/// Invariant (D-063): only the `syscall` entry assembly addresses this
+/// block through GS; no Rust code uses GS-relative accesses (see the note
+/// in `trap.rs` about NMI/#MC in the entry window).
+///
+/// The `syscall` entry (6c) uses it through GS: it saves the user RSP in
+/// slot [`PERCPU_USER_RSP`] and loads the kernel stack from slot
+/// [`PERCPU_KERNEL_RSP`], because `syscall` does not switch stacks.
 #[repr(C, align(64))]
 pub struct PerCpu {
-    _reserved: [u64; 8],
+    slots: [u64; 8],
 }
 
+/// Byte offset (from GS) of the scratch slot for the user RSP.
+pub const PERCPU_USER_RSP: usize = 0;
+/// Byte offset (from GS) of the current thread's kernel stack top.
+pub const PERCPU_KERNEL_RSP: usize = 8;
+
+/// The block, written only by `set_kernel_stack` (IF=0) and by the
+/// `syscall` entry (IF=0, before the stack switch).
+struct PerCpuCell(UnsafeCell<PerCpu>);
+
+// SAFETY: one CPU; every access happens with interrupts disabled (the
+// scheduler's `set_kernel_stack`, and the `syscall` entry, which runs with
+// IF cleared by FMASK), so there are never two concurrent accesses.
+unsafe impl Sync for PerCpuCell {}
+
 /// The boot CPU's block (Phase 9 / SMP: one per CPU).
-static PERCPU: PerCpu = PerCpu { _reserved: [0; 8] };
+static PERCPU: PerCpuCell = PerCpuCell(UnsafeCell::new(PerCpu { slots: [0; 8] }));
 
 /// Address the kernel GS base must hold while the kernel runs.
 pub fn percpu_address() -> u64 {
-    (&raw const PERCPU).addr() as u64
+    PERCPU.0.get().addr() as u64
 }
 
 /// Operand of `lgdt`/`lidt`: 16-bit limit followed by a 64-bit base.
@@ -266,4 +284,12 @@ pub(crate) unsafe fn set_kernel_stack(top: u64) {
     // delivered, which cannot happen with IF=0). The field is only 4-byte
     // aligned in the packed struct, hence the unaligned write.
     unsafe { rsp0.write_unaligned(top) };
+    let slot = PERCPU
+        .0
+        .get()
+        .cast::<u64>()
+        .wrapping_add(PERCPU_KERNEL_RSP / 8);
+    // SAFETY: `slot` is inside the live per-CPU block; with IF=0 on one CPU
+    // the `syscall` entry (the only other user) cannot run concurrently.
+    unsafe { slot.write_volatile(top) };
 }
