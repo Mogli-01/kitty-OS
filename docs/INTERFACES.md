@@ -514,7 +514,8 @@ Fornece: CLAUDE (`kernel/src/proc/{elf,fs,spawn}.rs`, D-064). Usa: CODEX (`/sbin
   - Para lançar a shell: `open_at(1, "bin/sh", READ|EXEC)` → `process_spawn(h, grants, n)`.
   - Linhas de arranque: `[init] /sbin/init started (pid N)` ou `[init] /sbin/init missing or invalid (<razão>)`.
 - **Formato do executável:** ELF64 estático `ET_EXEC` x86_64, sem intérprete, sem `PT_DYNAMIC` e sem TLS. Até 16 `PT_LOAD`, nunca W+X, sem dois segmentos na mesma página, todos entre 1 MiB e `0x7FFF_FFFF_F000`. A entrada fica num segmento executável. Até 64 MiB de memória e até 16 MiB de ficheiro.
-- **Pilha:** 64 KiB com topo inicial em `0x0000_7FFF_FFFF_0000` e página de guarda por baixo. RSP alinhado a 16 na entrada. O ELF não pode ocupar a janela reservada para 4096 posições de pilha alinhadas a páginas, incluindo as possíveis guardas. O topo continua fixo até ligar o ASLR.
+- **Pilha:** 64 KiB e uma página de guarda. O núcleo escolhe, por processo, um dos 4096 topos alinhados a páginas até `0x0000_7FFF_FFFF_0000`. O RSP inicial fica alinhado a 16. Os segmentos ELF mantêm os endereços do executável e ficam fora da região reservada à pilha e às guardas.
+- **Entropia para ASLR:** tenta RDSEED e depois RDRAND. Se nenhuma fonte fornecer dados, `process_spawn` devolve `E_AGAIN` sem alterar os handles do pai. O núcleo regista a falta de entropia se tiver de recusar `/sbin/init`.
 - **No arranque do processo:** todos os registos a zero; ainda não há `argv`/`envp` (virão num contrato próprio).
 - **Números das syscalls:** 9–12, ver a tabela em `docs/FASE6.md` §3.
 - **Marcador:** `[proc] ELF loader and process_spawn self-test passed`.

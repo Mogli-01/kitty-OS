@@ -236,9 +236,7 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
                 "[syscall] self-test passed: every call and error path, handles with generations, blocked process killed (~{} cycles per null syscall)",
                 r.syscall_cycles
             );
-            kprintln!(
-                "[proc] ELF loader and process_spawn self-test passed: image, stack window and COPY/MOVE verified"
-            );
+            kprintln!("[proc] ELF loader and process_spawn self-test passed");
         }
         Err(why) => panic!("user-mode self-test failed: {}", why),
     }

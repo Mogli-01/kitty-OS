@@ -308,6 +308,7 @@ pub fn start_init() -> Result<u32, &'static str> {
         .map(|p| p.pid())
         .map_err(|e| match e {
             spawn::SpawnFailure::Elf(_) => "invalid ELF image",
+            spawn::SpawnFailure::NoEntropy => "ASLR entropy unavailable",
             _ => "could not create the process",
         })
 }

@@ -351,6 +351,7 @@ fn process_spawn(process: &Process, image: u64, grants: u64, count: u64) -> Resu
         Err(SpawnFailure::Perm) => Err(E_PERM),
         Err(SpawnFailure::Invalid) => Err(E_INVAL),
         Err(SpawnFailure::Elf(_)) => Err(E_BADIMAGE),
+        Err(SpawnFailure::NoEntropy) => Err(E_AGAIN),
         Err(SpawnFailure::NoMemory) => Err(E_NOMEM),
     }
 }

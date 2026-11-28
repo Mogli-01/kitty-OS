@@ -22,6 +22,7 @@ use alloc::vec::Vec;
 use super::elf::{ElfError, Image};
 use super::handles::{HandleError, HandleTable, Object, Rights};
 use super::{Process, STACK_TOP};
+use crate::arch::x86_64::entropy::Source;
 use crate::mm::uspace::{UserPerm, UserSpace};
 use crate::sched;
 
@@ -35,11 +36,16 @@ pub const MAX_GRANTS: usize = 64;
 /// below them is never mapped (guard).
 pub const STACK_PAGES: u64 = 16;
 /// Number of page-aligned choices for the stack top once ASLR is enabled.
-/// The current loader maps the uppermost choice.
 const STACK_TOP_SLOTS: u64 = 4096;
 /// Lowest possible guard page. Reserve the entire window up to STACK_TOP,
 /// including the stack and guard for both extreme choices.
 pub(super) const STACK_WINDOW_START: u64 = STACK_TOP - (STACK_TOP_SLOTS + STACK_PAGES) * 4096;
+
+pub(super) fn stack_top_from_word(word: u64) -> u64 {
+    // A power-of-two slot count makes this selection unbiased.
+    const { assert!(STACK_TOP_SLOTS.is_power_of_two()) };
+    STACK_TOP - (word & (STACK_TOP_SLOTS - 1)) * 4096
+}
 
 /// One handle given to the child.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,6 +70,8 @@ pub enum SpawnFailure {
     Invalid,
     /// The image was refused.
     Elf(ElfError),
+    /// The stack could not be randomized using the approved hardware sources.
+    NoEntropy,
     /// Out of memory, or the parent's table is full.
     NoMemory,
 }
@@ -83,6 +91,11 @@ fn build(
     objects: Vec<(Object, Rights)>,
 ) -> Result<(Arc<Process>, sched::ThreadId), SpawnFailure> {
     let elf = Image::parse(image).map_err(SpawnFailure::Elf)?;
+    let word = Source::Rdseed
+        .read_word()
+        .or_else(|_| Source::Rdrand.read_word())
+        .map_err(|_| SpawnFailure::NoEntropy)?;
+    let stack_top = stack_top_from_word(word);
     // Image + stack + a generous allowance for page tables and the thread.
     if !super::can_commit(elf.pages() + STACK_PAGES + 32) {
         return Err(SpawnFailure::NoMemory);
@@ -91,7 +104,7 @@ fn build(
     elf.load(&mut space).map_err(SpawnFailure::Elf)?;
     for i in 1..=STACK_PAGES {
         space
-            .map_page(STACK_TOP - i * 4096, UserPerm::ReadWrite, &[])
+            .map_page(stack_top - i * 4096, UserPerm::ReadWrite, &[])
             .map_err(|_| SpawnFailure::NoMemory)?;
     }
     if !space.audit().is_clean() {
@@ -102,7 +115,7 @@ fn build(
         handles.insert(object, rights).map_err(handle_failure)?;
     }
     let process = Process::new(space, handles).ok_or(SpawnFailure::NoMemory)?;
-    let thread = sched::spawn_user_parked("user", Arc::clone(&process), elf.entry(), STACK_TOP)
+    let thread = sched::spawn_user_parked("user", Arc::clone(&process), elf.entry(), stack_top)
         .map_err(|_| SpawnFailure::NoMemory)?;
     Ok((process, thread))
 }

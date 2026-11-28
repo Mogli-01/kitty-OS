@@ -1695,3 +1695,25 @@ Formato:
 - **Benchmark** — sem medições nesta ronda.
 - **Bloqueado por / à espera do Claude** — política de fontes e
   integração do gerador com o ASLR dos processos (#104).
+
+### [2026-11-28] — CODEX (ASLR da pilha de processos)
+
+- **Feito** — a criação de um processo ELF escolhe uma das 4096
+  posições da pilha do #107. Tenta RDSEED e depois RDRAND do #106.
+  Sem acesso a entropia devolve `E_AGAIN`, sem transferir handles.
+  O kernel continua a arrancar se não puder criar `/sbin/init`.
+- **PRs abertos** — ramo `codex/fase8-aslr-pilha` sobre o #107,
+  com a dependência #106 integrada para validar os dois caminhos.
+- **Testes/fuzzing** — oito arranques QEMU do loader em BIOS e UEFI,
+  incluindo fallback para RDRAND e recusa sem as duas instruções.
+  Num checkout com o #100 a shell passou nos dois firmwares release
+  e o mesmo initrd foi recusado sem entropia. Uma sondagem local
+  observou três posições diferentes em três arranques por firmware.
+  Fmt, Clippy, 12 testes de xtask e actionlint passaram.
+- **Proteções de segurança alteradas** — aleatoriza a pilha com guarda
+  e mantém os segmentos ET_EXEC nas bases do ELF. Sem unsafe novo.
+- **Benchmarks** — sem medições.
+- **Bloqueado por / à espera do Claude** — revisão da política de
+  entropia da #104 e integração dos PRs do loader e das fontes.
+- **Próximo passo** — validar a política sem hardware e fechar
+  o plano do gerador do núcleo separado da seleção da pilha.

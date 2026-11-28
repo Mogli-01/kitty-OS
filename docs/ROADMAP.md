@@ -139,7 +139,7 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 |---|---|---|
 | Gerador de números aleatórios do kernel (RDRAND/RDSEED + entropia); é a base do CSPRNG da Fase 16 | CLAUDE | Leituras RDSEED/RDRAND e limite de tentativas testados em QEMU, em revisão no #106. Política de fontes e gerador pendentes (#104) |
 | KASLR (kernel PIE + deslocamento do Limine) | CLAUDE | TODO |
-| ASLR em user space | CLAUDE | Reserva da janela de pilha em revisão em `codex/fase8-janela-pilha`. Seleção aleatória e política sem entropia pendentes (#104) |
+| ASLR em user space | CLAUDE | Janela da pilha no #107. Seleção por processo e recusa sem entropia em revisão em `codex/fase8-aslr-pilha`. Segmentos ET_EXEC mantêm a base fixa |
 | Modelo de capacidades/permissões por processo | CLAUDE | MOVIDA (base na Fase 6, D-058; utilizadores e permissões na Fase 15) |
 
 ## Fase 9 — Escala

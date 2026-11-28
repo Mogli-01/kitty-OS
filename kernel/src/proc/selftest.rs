@@ -393,15 +393,27 @@ pub fn elf() -> Result<(), &'static str> {
     if Image::parse(&after_window).is_err() {
         return Err("a segment beginning after the stack window was refused");
     }
-    let process = super::spawn::spawn_from_kernel(
+    let lowest_guard =
+        super::spawn::stack_top_from_word(u64::MAX) - (super::spawn::STACK_PAGES + 1) * 4096;
+    if super::spawn::stack_top_from_word(0) != super::STACK_TOP || lowest_guard != window {
+        return Err("stack selection disagrees with the reserved window");
+    }
+    let process = match super::spawn::spawn_from_kernel(
         &good,
         alloc::vec![(Object::Console, super::CONSOLE_RIGHTS)],
-    )
-    .map_err(|_| "the valid ELF image could not be started")?;
+    ) {
+        Ok(process) => process,
+        Err(SpawnFailure::NoEntropy) => {
+            crate::kprintln!("[proc] ELF spawn refused: ASLR entropy unavailable");
+            return Ok(());
+        }
+        Err(_) => return Err("the valid ELF image could not be started"),
+    };
     wait_until(|| process.status() != Status::Running, 1_000_000);
     if process.status() != Status::Exited(7) {
         return Err("the ELF image did not run to exit(7)");
     }
+    crate::kprintln!("[proc] ELF ran with randomized stack");
     Ok(())
 }
 
@@ -456,12 +468,20 @@ pub fn spawn_rules() -> Result<(), &'static str> {
     }
     // A real move: the child gets CONSOLE as handle 0, the parent loses it
     // and gets a PROCESS handle instead.
-    let (h, child) = super::spawn::spawn(
+    let (h, child) = match super::spawn::spawn(
         &parent,
         &image,
         &[g(0, super::CONSOLE_RIGHTS.bits(), SPAWN_MOVE)],
-    )
-    .map_err(|_| "a valid spawn failed")?;
+    ) {
+        Ok(spawned) => spawned,
+        Err(SpawnFailure::NoEntropy) => {
+            if parent.handles().lock().len() != before || parent.handles().lock().get(0).is_err() {
+                return Err("a spawn without entropy changed the parent's handles");
+            }
+            return Ok(());
+        }
+        Err(_) => return Err("a valid spawn failed"),
+    };
     let parent_lost = parent.handles().lock().get(0).is_err();
     let parent_has_child =
         matches!(parent.handles().lock().get(h), Ok((Object::Process(_), r)) if r == Rights::READ);
