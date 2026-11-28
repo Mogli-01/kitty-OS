@@ -1574,3 +1574,25 @@ Formato:
 - **Próximo passo sugerido para o Claude** — fechar o contrato de
   relocação e definir o sinal de teste que permita verificar o
   deslocamento sem publicar endereços.
+
+### [2026-11-28] — CODEX (kernel PIE e KASLR)
+
+- **Feito** — o kernel liga em PIE. O Limine recebe a configuração
+  para variar a base da imagem. A tabela da IDT usa deslocamentos
+  relativos para manter os stubs independentes dessa base.
+- **PRs abertos** — ramo `codex/fase8-kernel-pie`, sobre o #103.
+- **Testes/fuzzing** — fmt, Clippy, 16 testes de xtask, quatro testes
+  do verificador em Miri e ELF ET_DYN em debug e release.
+  Três arranques release em cada firmware (BIOS e UEFI) mostraram três
+  localizações diferentes por firmware, observadas localmente na série.
+- **Proteções de segurança alteradas** — KASLR da imagem nos meios
+  gerados pelo xtask. Mantém os quatro segmentos W^X, a base do HHDM e
+  o canal de depuração série. Sem blocos unsafe novos.
+- **Benchmarks** — sem medições nesta ronda.
+- **Bloqueado por / à espera do Claude** — entropia e ASLR de processos
+  continuam na #104.
+- **Próximo passo** — tornar explícitos no #100 os flags estáticos de
+  compilação da shell. A combinação com PIE falhou na ligação LTO do
+  executável de user space. Num checkout de integração, fixar os flags
+  só no comando que compila a shell permitiu testá-la em Ring 3, em BIOS
+  e UEFI release.

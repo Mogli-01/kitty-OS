@@ -66,6 +66,8 @@ entrada em `docs/UNSAFE.md`.
 ### `boot_info::{BootInfo, FrameBuffer}` — INSTÁVEL
 Fornece: CLAUDE. Uso interno do núcleo; os drivers não recebem estes tipos
 diretamente.
+`BootInfo::kernel_image.virt_base` é a base virtual em execução, fornecida
+pelo Limine após aplicar KASLR. A base nominal do ELF pertence ao linker.
 
 ### Teste de arranque — ESTÁVEL
 Fornece: CLAUDE (`xtask`). Mantém: CODEX.

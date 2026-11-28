@@ -64,13 +64,13 @@ inválido e um arranque sem módulo. Os logs e meios do teste ficam em
 ## Verificar o layout ELF do kernel
 
 ```sh
-cargo xtask test-kernel-elf --release
+cargo xtask test-kernel-elf --release --expect-pie
 ```
 
 O teste verifica o alinhamento ELF, a separação por página, W^X e a
 localização da entrada. Também recusa imagens que declarem um
 interpretador externo ou peçam uma pilha executável. Indica se a imagem
-é `ET_EXEC` ou `ET_DYN`. Ao testar a transição para PIE, acrescenta
-`--expect-pie` para exigir `ET_DYN`. A verificação lê o ficheiro
-compilado. A confirmação do deslocamento efetivo exige arrancar o
-kernel com o Limine.
+é `ET_EXEC` ou `ET_DYN`. A opção `--expect-pie` exige `ET_DYN`.
+Os meios gerados pelo xtask pedem ao Limine que aleatorize a base da
+imagem do kernel. A verificação no host complementa o teste de arranque
+em QEMU, que verifica se a imagem arranca com essa opção.

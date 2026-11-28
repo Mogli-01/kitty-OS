@@ -22,12 +22,13 @@ PHDRS
     requests PT_LOAD FLAGS(4);       /* R   */
     text     PT_LOAD FLAGS(5);       /* R+X */
     rodata   PT_LOAD FLAGS(4);       /* R   */
+    dynamic  PT_DYNAMIC FLAGS(4);
     data     PT_LOAD FLAGS(6);       /* R+W */
 }
 
 SECTIONS
 {
-    /* Top 2 GiB of the address space: required by -C code-model=kernel. */
+    /* Nominal higher-half base. Limine chooses the runtime base. */
     . = 0xffffffff80000000;
     __kernel_start = .;
 
@@ -49,6 +50,16 @@ SECTIONS
     .rodata : {
         *(.rodata .rodata.*)
     } :rodata
+    /* Limine processes these relocations before applying page permissions.
+       Keep the metadata and relocated read-only data inside our R segment. */
+    .dynsym : { *(.dynsym) } :rodata
+    .dynstr : { *(.dynstr) } :rodata
+    .gnu.hash : { *(.gnu.hash) } :rodata
+    .hash : { *(.hash) } :rodata
+    .rela.dyn : { *(.rela.dyn) } :rodata
+    .dynamic : { *(.dynamic) } :rodata :dynamic
+    .got : { *(.got .got.*) } :rodata
+    .data.rel.ro : { *(.data.rel.ro .data.rel.ro.*) } :rodata
     __rodata_end = .;
 
     . = ALIGN(4K);

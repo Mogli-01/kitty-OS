@@ -138,8 +138,8 @@ ronda de red team vs blue team (`docs/REDTEAM.md`).
 | Tarefa | Dono | Estado |
 |---|---|---|
 | Gerador de números aleatórios do kernel (RDRAND/RDSEED + entropia); é a base do CSPRNG da Fase 16 | CLAUDE | TODO |
-| KASLR (kernel PIE + deslocamento do Limine) | CLAUDE | TODO |
-| Validar o layout ELF do kernel antes e depois da transição para PIE | CODEX | Validação de segmentos, entrada, interpretador e declaração da pilha em revisão no #103. Teste com o kernel PIE pendente |
+| KASLR (kernel PIE + deslocamento do Limine) | CLAUDE | PIE e deslocamento da imagem verificados em BIOS e UEFI, em revisão no ramo `codex/fase8-kernel-pie` |
+| Validar o layout ELF do kernel antes e depois da transição para PIE | CODEX | Verificador em revisão no #103. O ramo `codex/fase8-kernel-pie` exige ET_DYN na CI |
 | ASLR em user space | CLAUDE | TODO |
 | Modelo de capacidades/permissões por processo | CLAUDE | MOVIDA (base na Fase 6, D-058; utilizadores e permissões na Fase 15) |
 

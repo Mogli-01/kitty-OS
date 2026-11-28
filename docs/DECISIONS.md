@@ -47,13 +47,19 @@ mapeado, em que estado fica a máquina). Fixá-la evita que um update do
 crate mude isso em silêncio. Se o Limine não suportar a revisão, o kernel
 escreve um aviso na série e pára.
 
-### D-007 — Imagem do kernel estática no topo de 2 GiB, W^X por segmento (2026-11-25, CLAUDE)
+### D-007 — Imagem do kernel no topo de 2 GiB, W^X por segmento (2026-11-25, CLAUDE)
 `-C relocation-model=static -C code-model=kernel`, kernel ligado em
 `0xFFFFFFFF80000000`, um `PT_LOAD` por tipo de permissão (R / RX / R / RW),
 alinhados a 4 KiB, e `.requests` em segmento só de leitura.
 **Porquê:** W^X logo desde o arranque, sem esperar pela nossa paginação
 (Fase 3). **Consequência:** sem KASLR por agora; na Fase 8 o kernel passa a
 PIE (relocatable) e o Limine aplica o deslocamento aleatório.
+
+**Atualização da Fase 8 (2026-11-28, CODEX):** compilar com
+`relocation-model=pic` e ligar em PIE, com a mesma base nominal e os
+mesmos quatro segmentos de carga. O Limine aplica as relocações antes
+de mapear os segmentos. Os meios gerados pelo xtask ativam KASLR para
+a imagem e conservam a base do mapa direto HHDM.
 
 ### D-008 — Confinamento do `unsafe` imposto pelo compilador (2026-11-25, CLAUDE)
 `#![deny(unsafe_code)]` no crate e `#[allow(unsafe_code)]` apenas em
