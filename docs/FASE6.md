@@ -33,6 +33,10 @@ Princípios:
 | a partir de `0x0000_0000_0040_0000` | segmentos `PT_LOAD` do ELF (nos endereços pedidos, se válidos) |
 | … | heap do processo (`mem_map`, Fase 6b) |
 | `0x0000_7FFF_FFFF_0000` (topo) | pilha da thread principal, 64 KiB, com página de guarda por baixo |
+
+O ELF reserva a janela das 4096 posições previstas para a pilha na Fase 8,
+incluindo as respetivas páginas de guarda. Nesta fase o processo
+arranca na posição mais alta.
 | `0x0000_8000_0000_0000` e acima | metade do kernel: inacessível em ring 3 (bit U=0) |
 
 - As páginas de user têm U=1, NX salvo `.text`, e **W^X** como no kernel.

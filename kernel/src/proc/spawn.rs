@@ -34,6 +34,12 @@ pub const MAX_GRANTS: usize = 64;
 /// Pages of the main thread's stack (64 KiB, docs/FASE6.md §1); the page
 /// below them is never mapped (guard).
 pub const STACK_PAGES: u64 = 16;
+/// Number of page-aligned choices for the stack top once ASLR is enabled.
+/// The current loader maps the uppermost choice.
+const STACK_TOP_SLOTS: u64 = 4096;
+/// Lowest possible guard page. Reserve the entire window up to STACK_TOP,
+/// including the stack and guard for both extreme choices.
+pub(super) const STACK_WINDOW_START: u64 = STACK_TOP - (STACK_TOP_SLOTS + STACK_PAGES) * 4096;
 
 /// One handle given to the child.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

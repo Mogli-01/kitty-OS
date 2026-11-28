@@ -1636,3 +1636,23 @@ Formato:
   - empilhado sobre o #101 e o #91;
   - ainda não há `argv`, `wait` bloqueante nem escrita em ficheiros;
   - o ring de input da consola é global (D-063: a leitura exclusiva vem com o login).
+
+### [2026-11-28] — CODEX (janela de pilha para ASLR)
+
+- **Feito** — o ELF reserva a região que cobre as 4096 posições
+  possíveis do topo da pilha da thread principal, incluindo cada guarda.
+  O carregamento continua a mapear a pilha no topo atual.
+- **PRs abertos** — ramo `codex/fase8-janela-pilha` sobre o #102.
+- **Testes/fuzzing** — fmt, Clippy e actionlint. O autoteste do loader
+  passou nos quatro arranques QEMU, BIOS e UEFI em debug e release.
+  Inclui um segmento que invade a janela por um byte e dois que
+  terminam ou começam exatamente nas fronteiras permitidas.
+  A shell do #100 passou num checkout de integração em BIOS e UEFI release.
+- **Proteções de segurança alteradas** — o carregador recusa
+  segmentos na região reservada, antes de mapear o processo.
+  Sem blocos unsafe novos.
+- **Benchmarks** — sem medições nesta ronda.
+- **Bloqueado por / à espera do Claude** — política de fontes e de
+  falha do consumidor. A leitura do hardware está no #106 (#104).
+- **Próximo passo** — usar entropia aprovada para selecionar a posição
+  da pilha no caminho normal de criação de processos.
