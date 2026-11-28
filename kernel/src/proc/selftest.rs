@@ -379,6 +379,20 @@ pub fn elf() -> Result<(), &'static str> {
     if Image::parse(&on_guard).err() != Some(ElfError::OutOfRange) {
         return Err("a segment on the stack guard page was accepted");
     }
+    let window = super::spawn::STACK_WINDOW_START;
+    let below = window - 4096;
+    let before_window = build_test_elf(&[(below, RX, code, 0x1000)], below);
+    if Image::parse(&before_window).is_err() {
+        return Err("a segment ending at the stack window was refused");
+    }
+    let crossing_window = build_test_elf(&[(below, RX, code, 0x1001)], below);
+    if Image::parse(&crossing_window).err() != Some(ElfError::OutOfRange) {
+        return Err("a segment crossing into the stack window was accepted");
+    }
+    let after_window = build_test_elf(&[(super::STACK_TOP, RX, code, 0x1000)], super::STACK_TOP);
+    if Image::parse(&after_window).is_err() {
+        return Err("a segment beginning after the stack window was refused");
+    }
     let process = super::spawn::spawn_from_kernel(
         &good,
         alloc::vec![(Object::Console, super::CONSOLE_RIGHTS)],

@@ -189,7 +189,8 @@ jobs:
 
           run_case boot \
             --expect '[sched] cooperative self-test passed' \
-            --expect '[sched] wait queue self-test passed'
+            --expect '[sched] wait queue self-test passed' \
+            --expect '[proc] ELF loader and process_spawn self-test passed: image, stack window and COPY/MOVE verified'
           grep -F -- '[cpu] breakpoint at rip=' build/serial-logs/boot.log
           grep -F -- '[cpu] breakpoint exception handled, execution resumed' build/serial-logs/boot.log
 

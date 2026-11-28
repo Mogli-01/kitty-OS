@@ -71,11 +71,9 @@ pub enum ElfError {
     Map(MapError),
 }
 
-/// Whether `[start, end)` touches the main stack or its guard page
-/// (security review: a segment there would silently replace the guard).
+/// Whether `[start, end)` touches any possible main stack or guard page.
 fn overlaps_stack(start: u64, end: u64) -> bool {
-    let guard_bottom = super::STACK_TOP - (super::spawn::STACK_PAGES + 1) * PAGE;
-    start < super::STACK_TOP && end > guard_bottom
+    start < super::STACK_TOP && end > super::spawn::STACK_WINDOW_START
 }
 
 /// One validated loadable segment.

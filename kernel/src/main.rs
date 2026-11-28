@@ -237,7 +237,7 @@ extern "C" fn kmain_on_kernel_stack() -> ! {
                 r.syscall_cycles
             );
             kprintln!(
-                "[proc] ELF loader and process_spawn self-test passed: valid image ran, 14 malformed images refused, COPY/MOVE rules held"
+                "[proc] ELF loader and process_spawn self-test passed: image, stack window and COPY/MOVE verified"
             );
         }
         Err(why) => panic!("user-mode self-test failed: {}", why),
