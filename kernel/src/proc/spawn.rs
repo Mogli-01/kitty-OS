@@ -22,9 +22,9 @@ use alloc::vec::Vec;
 use super::elf::{ElfError, Image};
 use super::handles::{HandleError, HandleTable, Object, Rights};
 use super::{Process, STACK_TOP};
-use crate::arch::x86_64::entropy::Source;
 use crate::mm::uspace::{UserPerm, UserSpace};
 use crate::sched;
+use crate::security::rng;
 
 /// Grant flag: copy the handle (needs `DUP`).
 pub const SPAWN_COPY: u32 = 1;
@@ -91,10 +91,7 @@ fn build(
     objects: Vec<(Object, Rights)>,
 ) -> Result<(Arc<Process>, sched::ThreadId), SpawnFailure> {
     let elf = Image::parse(image).map_err(SpawnFailure::Elf)?;
-    let word = Source::Rdseed
-        .read_word()
-        .or_else(|_| Source::Rdrand.read_word())
-        .map_err(|_| SpawnFailure::NoEntropy)?;
+    let word = rng::hardware_word().map_err(|_| SpawnFailure::NoEntropy)?;
     let stack_top = stack_top_from_word(word);
     // Image + stack + a generous allowance for page tables and the thread.
     if !super::can_commit(elf.pages() + STACK_PAGES + 32) {

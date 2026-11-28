@@ -199,11 +199,13 @@ jobs:
               --expect '[entropy] retry self-test passed' \
               --expect '[entropy] RDSEED: unsupported' \
               --expect '[entropy] RDRAND: ready' \
+              --expect '[mm] heap link mask: hardware random word' \
               --expect '[proc] ELF ran with randomized stack'
             KITTY_QEMU_CPU=max,rdseed=off,rdrand=off run_case entropy-unsupported --features selftest-entropy \
               --expect '[entropy] RDSEED: unsupported' \
               --expect '[entropy] RDRAND: unsupported' \
-              --expect '[proc] ELF spawn refused: ASLR entropy unavailable'
+              --expect '[proc] ELF spawn refused: ASLR entropy unavailable' \
+              --expect '[mm] heap link mask: legacy fallback, hardware entropy unavailable'
           fi
 
           run_case xapic-pit --features selftest-xapic \

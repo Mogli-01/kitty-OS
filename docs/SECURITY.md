@@ -118,7 +118,7 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | Um processo bloqueado numa syscall pode ser morto | processo imortal preso numa leitura | ATIVA | 6 |
 | `swapgs` só com CS de ring 3 + `lfence` (CVE-2019-1125); `TSS.RSP0` = pilha de kernel da thread atual | o kernel correr com o GS de user; trap de ring 3 numa pilha errada | ATIVA (verificação do GS base nas falhas de user) | 6 |
 | Primeiro 1 MiB de user nunca mapeado (`USER_MIN`) | null deref explorável | ATIVA (`map_user_frame` recusa; teste de leitura de 0) | 6 |
-| RNG do kernel (RDRAND/RDSEED + entropia) | aleatoriedade previsível | PLANEADA | 8 |
+| RNG do kernel (RDRAND/RDSEED + entropia) | aleatoriedade previsível | PARCIAL (palavra de hardware no heap quando disponível) | 8 |
 | KASLR | saber onde está o kernel | PLANEADA | 8 |
 | ASLR em user space | ROP com endereços fixos | PLANEADA | 8 |
 | Objetos do kernel só por handle com direitos (D-018, D-051) | acesso a buffers/canais que ninguém nos deu | PLANEADA | 6/12 |

@@ -1717,3 +1717,24 @@ Formato:
   entropia da #104 e integração dos PRs do loader e das fontes.
 - **Próximo passo** — validar a política sem hardware e fechar
   o plano do gerador do núcleo separado da seleção da pilha.
+
+### [2026-11-28] — CODEX (aleatoriedade para o heap)
+
+- **Feito** — a API `security::rng::hardware_word` centraliza a
+  escolha RDSEED/RDRAND. O heap usa uma palavra para mascarar os
+  links de pedaços livres. Sem dados mantém o recurso antigo do
+  TSC e comunica esse modo no arranque.
+- **PRs abertos** — ramo `codex/fase8-aleatoriedade-heap` sobre o #106.
+- **Testes/fuzzing** — oito arranques QEMU em BIOS/UEFI. Debug e release
+  com hardware, release com só RDRAND e sem ambas as fontes. Os testes
+  de memória passaram em release nos dois firmwares. UEFI release com
+  #100/#108 confirmou a shell com entropia e a recusa do init sem ela.
+  Fmt, Clippy, actionlint e 12 testes de xtask no host e em Miri.
+- **Proteções de segurança alteradas** — máscara ímpar com entropia
+  de hardware se disponível. O recurso fraco nunca sai pela API RNG.
+  Sem unsafe novo.
+- **Benchmarks** — sem medições nesta ronda.
+- **Bloqueado por / à espera do Claude** — integração e revisão da
+  política na #104. O CSPRNG com estado continua na Fase 16.
+- **Próximo passo** — usar a API comum no caminho de ASLR do #108
+  quando os dois PRs forem integrados.
