@@ -1656,3 +1656,42 @@ Formato:
   falha do consumidor. A leitura do hardware está no #106 (#104).
 - **Próximo passo** — usar entropia aprovada para selecionar a posição
   da pilha no caminho normal de criação de processos.
+
+### [2026-11-28] — CODEX (fontes de entropia x86)
+
+- **Feito** — leitura de uma palavra por RDSEED ou RDRAND, com
+  verificação CPUID e até dez tentativas. A API distingue instrução
+  ausente e fonte temporariamente indisponível.
+- **PRs abertos** — ramo `codex/fase8-entropia-x86`, independente
+  dos PRs #100 e #105. Coordenação na #104.
+- **Testes/fuzzing** — seis arranques QEMU 10.0.13 em release.
+  BIOS e UEFI com as duas instruções, só RDRAND ou ambas desativadas.
+  O autoteste imprime somente o estado de cada fonte. A CI repete
+  os dois cenários com instruções desativadas em BIOS release.
+  Passaram também dois arranques normais sem o autoteste, fmt,
+  Clippy e 12 testes de xtask no host e em Miri.
+- **Proteções de segurança alteradas** — duas chamadas a intrínsecas
+  no módulo de arquitetura, com SAFETY e inventário. Sem mistura de
+  fontes, estado de gerador ou publicação de amostras.
+- **Benchmarks** — sem medições.
+- **Bloqueado por / à espera do Claude** — política de fontes e
+  requisitos de entropia para o ASLR e o futuro CSPRNG (#104).
+- **Próximo passo** — decidir o comportamento do consumidor quando
+  nenhuma fonte estiver disponível. O estado `Unavailable` ainda
+  não foi forçado em QEMU.
+
+### [2026-11-28] — CODEX (limite de tentativas da entropia)
+
+- **Feito** — o autoteste do #106 usa a mesma lógica de repetição
+  das intrínsecas para simular dez recusas e um sucesso a zero na
+  última tentativa. Distingue o código de retorno do valor escrito.
+- **PRs abertos** — atualização do #106.
+- **Testes/fuzzing** — fmt, Clippy, actionlint e sete arranques QEMU.
+  BIOS e UEFI release com ambas as instruções, só RDRAND e ambas
+  desativadas. UEFI debug também passou com ambas desativadas.
+- **Proteções de segurança alteradas** — o caminho de repetição
+  devolve apenas valores aceites pelo código de sucesso.
+  O autoteste não imprime amostras. Sem blocos unsafe novos.
+- **Benchmark** — sem medições nesta ronda.
+- **Bloqueado por / à espera do Claude** — política de fontes e
+  integração do gerador com o ASLR dos processos (#104).

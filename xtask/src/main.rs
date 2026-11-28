@@ -23,7 +23,7 @@
 //!                      require the marker before injecting events.
 //!
 //! Environment overrides: KITTY_QEMU (qemu binary), KITTY_OVMF (UEFI code
-//! firmware), KITTY_XORRISO (xorriso binary), KITTY_BENCH_AGAINST (baseline ELF).
+//! firmware), KITTY_QEMU_CPU (QEMU CPU model), KITTY_XORRISO (xorriso binary), KITTY_BENCH_AGAINST (baseline ELF).
 //!
 //! Host standard library and the project's VFS for initrd validation.
 
@@ -444,7 +444,10 @@ fn qemu_media_command(
     cmd.current_dir(root());
     // q35 = modern chipset (PCIe, AHCI). `-cpu max` exposes every feature
     // TCG/KVM can emulate, including SMEP/SMAP/UMIP/NX needed by later phases.
-    cmd.args(["-machine", "q35", "-cpu", "max", "-m", "256M", "-no-reboot"]);
+    let cpu = env::var_os("KITTY_QEMU_CPU").unwrap_or_else(|| "max".into());
+    cmd.args(["-machine", "q35", "-cpu"])
+        .arg(cpu)
+        .args(["-m", "256M", "-no-reboot"]);
 
     if opts.bios {
         let iso = make_iso(kernel, archive, output)?;

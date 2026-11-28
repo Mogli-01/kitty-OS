@@ -67,6 +67,15 @@ entrada em `docs/UNSAFE.md`.
 Fornece: CLAUDE. Uso interno do núcleo; os drivers não recebem estes tipos
 diretamente.
 
+### Entropia de hardware x86 — INSTÁVEL
+
+`arch::x86_64::entropy::Source::{Rdseed, Rdrand}` permite escolher a
+instrução. `Source::read_word() -> Result<u64, ReadError>` verifica CPUID
+no CPU atual e tenta ler até dez vezes. Devolve `Unsupported` se a
+instrução estiver ausente e `Unavailable` se todas as tentativas
+falharem. A chamada destina-se ao CPU de arranque nesta fase.
+O consumidor decide a política de fontes e mistura (#104).
+
 ### Teste de arranque — ESTÁVEL
 Fornece: CLAUDE (`xtask`). Mantém: CODEX.
 `cargo xtask test [--bios] [--release]` compila o kernel com a feature
