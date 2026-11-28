@@ -103,7 +103,7 @@ Estados: **ATIVA** · **PARCIAL** · **PLANEADA**.
 | Invariante: a metade de baixo só tem páginas U (D-054) | `copy_*_user` alcançar páginas de supervisor mapeadas em baixo | REGRA (auditoria na 6b) | 6 |
 | Espaços de endereçamento separados por processo | um processo ler outro | PLANEADA | 6 |
 | Página nula nunca mapeada | null deref explorável | PLANEADA | 6 |
-| RNG do kernel (RDRAND/RDSEED + entropia) | aleatoriedade previsível | PLANEADA | 8 |
+| RNG do kernel (RDRAND/RDSEED + entropia) | aleatoriedade previsível | PARCIAL (palavra de hardware no heap quando disponível) | 8 |
 | KASLR | saber onde está o kernel | PLANEADA | 8 |
 | ASLR em user space | ROP com endereços fixos | PLANEADA | 8 |
 | Objetos do kernel só por handle com direitos (D-018, D-051) | acesso a buffers/canais que ninguém nos deu | PLANEADA | 6/12 |

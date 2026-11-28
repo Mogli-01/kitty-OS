@@ -99,8 +99,16 @@ fn rsdp_phys() -> Option<u64> {
 /// Second half of boot, running on the guarded kernel stack.
 extern "C" fn kmain_on_kernel_stack() -> ! {
     kprintln!("[mm] running on the kernel stack (guard page below it)");
-    mm::heap::init();
+    let heap_entropy = mm::heap::init();
     mm::heap::selftest();
+    kprintln!(
+        "[mm] heap link mask: {}",
+        if heap_entropy {
+            "hardware random word"
+        } else {
+            "legacy fallback, hardware entropy unavailable"
+        }
+    );
     sched::init();
     kprintln!(
         "[mm] kernel heap ready ({} pages mapped); heap self-test passed",

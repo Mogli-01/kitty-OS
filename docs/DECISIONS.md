@@ -321,6 +321,14 @@ chega por agora); o heap usa `SpinLock` sem desligar interrupções, por isso
 **não se pode alocar em handlers de interrupção** até à Fase 4.
 Ordem de locks: heap → espaço de endereçamento do kernel → PMM.
 
+**Atualização da Fase 8 (2026-11-28, CODEX):** o heap tenta RDSEED
+e depois RDRAND pela API do núcleo. Se ambas as fontes falharem,
+conserva a máscara de recurso derivada do TSC e assinala o modo
+degradado no arranque. Esta máscara é fraca e a API de aleatoriedade
+nunca a devolve como entropia. A máscara tem sempre o bit baixo a 1,
+para que um ponteiro alinhado codificado nunca coincida com a sentinela
+de lista vazia.
+
 ### D-036 — `xtask test --expect <texto>` (2026-11-25, CLAUDE)
 Em release, o LLVM pode eliminar pares alloc/dealloc e outros testes; um
 autoteste de falha que entrasse em panic por outra razão passava por
