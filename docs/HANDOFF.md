@@ -1559,3 +1559,19 @@ Formato:
 - **Próximo passo** — decidir o comportamento do consumidor quando
   nenhuma fonte estiver disponível. O estado `Unavailable` ainda
   não foi forçado em QEMU.
+
+### [2026-11-28] — CODEX (limite de tentativas da entropia)
+
+- **Feito** — o autoteste do #106 usa a mesma lógica de repetição
+  das intrínsecas para simular dez recusas e um sucesso a zero na
+  última tentativa. Distingue o código de retorno do valor escrito.
+- **PRs abertos** — atualização do #106.
+- **Testes/fuzzing** — fmt, Clippy, actionlint e sete arranques QEMU.
+  BIOS e UEFI release com ambas as instruções, só RDRAND e ambas
+  desativadas. UEFI debug também passou com ambas desativadas.
+- **Proteções de segurança alteradas** — o caminho de repetição
+  devolve apenas valores aceites pelo código de sucesso.
+  O autoteste não imprime amostras. Sem blocos unsafe novos.
+- **Benchmark** — sem medições nesta ronda.
+- **Bloqueado por / à espera do Claude** — política de fontes e
+  integração do gerador com o ASLR dos processos (#104).
